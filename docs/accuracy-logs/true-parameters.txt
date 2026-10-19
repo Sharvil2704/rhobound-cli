@@ -1,0 +1,832 @@
+# Measured at rhobound-cli 2349b17 (the commit before the docs commit), Go 1.27.2 linux/arm64, 8-core box,
+# GOMAXPROCS=3 under a 2500M memory cap, ACC_TRUTH_REPS 64 (the default), 2026-10-19 UTC.
+# The model with the true parameters: TestAccuracy, TestChainDamping (ACC_WORST=1), TestFanOut (ACC_WORST=1),
+# TestHoldout; and TestGlueEndToEnd, TestStructureEndToEnd. Each run with ACC_SEED=<s>, s = 301..308.
+# Ranges over the seeds first (a table script, kept outside the repository), then the summary lines of every run.
+== TestAccuracy (32 scenarios at rho .70 and .77 after the change; truth 64 x 500 s per seed): median / max |error| %,
+   level (both load levels pooled) | change; ranges over the seeds. Columns: basic (plain) and refined (both)
+  ACC chain             basic level 3.1-5.4 / 17.0-18.0 change 1.9-4.6 / 24.0-26.7 | refined level 0.5-1.2 / 6.2-7.0 change 3.7-5.5 / 4.8-8.5 | arrivals only level 0.6-1.3 / 2.3-3.7 change 8.6-12.2 / 9.5-13.5 | matched max only level 3.1-5.4 / 17.0-18.0 change 1.9-4.6 / 24.0-26.7  (n seeds=8)
+  ACC fan-out           basic level 7.7-10.1 / 18.8-20.0 change 7.5-12.3 / 11.0-15.4 | refined level 0.8-2.1 / 2.2-3.2 change 2.1-5.9 / 5.0-9.7 | arrivals only level 7.7-10.1 / 18.8-20.0 change 7.5-12.3 / 11.0-15.4 | matched max only level 0.8-2.1 / 2.2-3.2 change 2.1-5.9 / 5.0-9.7  (n seeds=8)
+  ACC replicas          basic level 0.1-0.5 / 0.1-0.8 change 0.2-1.8 / 0.2-1.8 | refined level 0.1-0.5 / 0.1-0.8 change 0.2-1.8 / 0.2-1.8 | arrivals only level 0.1-0.5 / 0.1-0.8 change 0.2-1.8 / 0.2-1.8 | matched max only level 0.1-0.5 / 0.1-0.8 change 0.2-1.8 / 0.2-1.8  (n seeds=8)
+  ACC single c=1        basic level 0.3-0.9 / 0.8-3.1 change 0.6-1.5 / 1.4-5.5 | refined level 0.3-0.9 / 0.8-3.1 change 0.6-1.5 / 1.4-5.5 | arrivals only level 0.3-0.9 / 0.8-3.1 change 0.6-1.5 / 1.4-5.5 | matched max only level 0.3-0.9 / 0.8-3.1 change 0.6-1.5 / 1.4-5.5  (n seeds=8)
+  ACC single c=2        basic level 0.5-1.1 / 2.7-6.1 change 0.3-1.5 / 0.8-2.9 | refined level 0.5-1.1 / 2.7-6.1 change 0.3-1.5 / 0.8-2.9 | arrivals only level 0.5-1.1 / 2.7-6.1 change 0.3-1.5 / 0.8-2.9 | matched max only level 0.5-1.1 / 2.7-6.1 change 0.3-1.5 / 0.8-2.9  (n seeds=8)
+  ACC single c=4        basic level 0.7-1.1 / 5.4-7.1 change 0.7-1.3 / 2.1-5.4 | refined level 0.7-1.1 / 5.4-7.1 change 0.7-1.3 / 2.1-5.4 | arrivals only level 0.7-1.1 / 5.4-7.1 change 0.7-1.3 / 2.1-5.4 | matched max only level 0.7-1.1 / 5.4-7.1 change 0.7-1.3 / 2.1-5.4  (n seeds=8)
+  ACC single c=8        basic level 0.6-0.8 / 4.6-5.9 change 1.6-2.1 / 6.5-9.1 | refined level 0.6-0.8 / 4.6-5.9 change 1.6-2.1 / 6.5-9.1 | arrivals only level 0.6-0.8 / 4.6-5.9 change 1.6-2.1 / 6.5-9.1 | matched max only level 0.6-0.8 / 4.6-5.9 change 1.6-2.1 / 6.5-9.1  (n seeds=8)
+  ACC single shifted    basic level 0.2-0.8 / 0.3-1.4 change 0.5-1.2 / 0.7-2.6 | refined level 0.2-0.8 / 0.3-1.4 change 0.5-1.2 / 0.7-2.6 | arrivals only level 0.2-0.8 / 0.3-1.4 change 0.5-1.2 / 0.7-2.6 | matched max only level 0.2-0.8 / 0.3-1.4 change 0.5-1.2 / 0.7-2.6  (n seeds=8)
+  ACC ALL               basic level 0.5-0.9 / 18.8-20.0 change 0.9-1.5 / 24.0-26.7 | refined level 0.5-0.8 / 6.4-7.1 change 0.8-1.5 / 7.4-9.7 | arrivals only level 0.5-0.8 / 18.8-20.0 change 0.9-1.5 / 11.4-15.4 | matched max only level 0.5-0.9 / 17.0-18.0 change 0.8-1.5 / 24.0-26.7  (n seeds=8)
+
+== TestChainDamping (360 chains a -> b, true parameters, truth 64 x 400 s per seed): median / p90 / max |error| %, ranges over the seeds
+  CHAIN chain-a w=0.00 level 2.3-2.4 / 7.7-8.3 / 16.7-18.6   change 17.3-18.3 / 31.6-32.6 / 56.4-59.0  (n seeds=8)
+  CHAIN chain-a w=0.25 level 1.7-1.9 / 6.1-6.6 / 13.3-15.1   change 13.1-13.6 / 23.2-24.1 / 44.7-47.1  (n seeds=8)
+  CHAIN chain-a w=0.50 level 1.2-1.4 / 4.4-5.0 / 9.8-11.7   change 8.9-9.6 / 16.7-17.4 / 33.0-35.1  (n seeds=8)
+  CHAIN chain-a w=0.65 level 1.0-1.2 / 3.4-3.9 / 7.8-9.6   change 6.5-7.2 / 13.3-14.0 / 25.9-28.0  (n seeds=8)
+  CHAIN chain-a w=0.80 level 0.9-1.1 / 2.9-3.2 / 6.1-7.6   change 4.7-5.1 / 10.2-10.9 / 18.9-20.8  (n seeds=8)
+  CHAIN chain-a w=1.00 level 0.8-0.9 / 2.4-2.7 / 4.8-5.7   change 4.4-4.9 / 9.7-10.3 / 13.5-15.3  (n seeds=8)
+  CHAIN chain-b w=0.00 level 2.3-2.4 / 8.5-9.2 / 20.2-21.6   change 2.5-2.7 / 16.7-18.8 / 45.9-47.0  (n seeds=8)
+  CHAIN chain-b w=0.25 level 1.5-1.7 / 6.4-6.9 / 15.2-16.6   change 1.5-1.8 / 11.3-13.0 / 31.9-33.2  (n seeds=8)
+  CHAIN chain-b w=0.50 level 0.9-1.1 / 4.4-4.9 / 10.1-11.6   change 1.4-1.8 / 5.6-6.8 / 18.2-19.4  (n seeds=8)
+  CHAIN chain-b w=0.65 level 0.9-1.1 / 3.2-3.5 / 8.0-9.1   change 1.9-2.3 / 4.8-5.7 / 10.5-12.3  (n seeds=8)
+  CHAIN chain-b w=0.80 level 0.8-1.0 / 2.6-3.0 / 6.0-7.0   change 2.5-2.8 / 6.1-6.9 / 10.0-12.3  (n seeds=8)
+  CHAIN chain-b w=1.00 level 0.8-0.9 / 2.5-2.8 / 6.1-7.1   change 4.5-5.0 / 10.3-10.9 / 14.8-18.0  (n seeds=8)
+
+== TestFanOut (32 fan-outs, true parameters; truth 64 x 400 s per seed): median / p90 / max |error| %, ranges over the seeds
+  FAN matched   fanout-b level 6.4-7.1 / 12.1-13.3 / 16.8-18.0   change 2.1-3.3 / 4.2-6.5 / 5.7-8.3  (n seeds=8)
+  FAN matched   fanout-c level 7.4-8.0 / 13.3-14.6 / 18.9-20.1   change 44.7-48.4 / 93.6-102.2 / 120.6-129.3  (n seeds=8)
+  FAN matched+r fanout-b level 1.3-1.8 / 2.3-3.1 / 3.0-4.0   change 2.1-3.3 / 3.6-5.9 / 5.0-7.2  (n seeds=8)
+  FAN matched+r fanout-c level 1.5-2.0 / 3.2-3.5 / 4.2-4.9   change 25.6-30.2 / 45.1-48.7 / 51.3-57.7  (n seeds=8)
+  FAN plain     fanout-b level 7.4-8.7 / 17.0-18.2 / 26.8-27.6   change 3.5-5.9 / 7.0-9.9 / 8.4-13.7  (n seeds=8)
+  FAN plain     fanout-c level 8.9-10.0 / 19.0-19.9 / 29.0-30.1   change 61.5-65.4 / 113.9-123.6 / 153.1-163.0  (n seeds=8)
+  FANC change in a branch that is not the slowest (matched+r): 128 cases over the seeds, error +0.20 to +1.09 ms, over-predicted in 128; |error| up to 1.73% of the latency
+  FANB change in the slowest branch (matched+r): 128 cases, error -0.50 to +1.88 ms
+
+== TestHoldout (60 random scenarios per seed, family drawn by the seed; true parameters; truth 64 x 400 s): median / p90 / max |error| %, ranges over the seeds
+  HOLD w=0.00 level 0.9-1.9 / 3.6-7.7 / 8.3-19.0   change 5.3-9.5 / 20.7-26.1 / 32.5-69.6   % of latency 0.25-0.50 / 0.81-1.22 / 1.75-4.16   |z|>3 level 36.7-58.3% change 56.7-68.3%  (n seeds=8)
+  HOLD w=0.50 level 0.7-1.3 / 2.5-4.5 / 4.1-8.7   change 3.1-4.9 / 9.8-15.3 / 22.3-43.7   % of latency 0.12-0.29 / 0.63-0.94 / 1.34-2.21   |z|>3 level 23.3-48.3% change 43.3-63.3%  (n seeds=8)
+  HOLD w=0.65 level 0.7-1.2 / 2.2-3.6 / 3.9-8.6   change 2.8-5.9 / 9.3-14.2 / 18.4-43.7   % of latency 0.13-0.26 / 0.66-0.91 / 1.45-2.59   |z|>3 level 18.3-41.7% change 43.3-65.0%  (n seeds=8)
+  HOLD w=0.70 level 0.7-1.1 / 2.1-3.5 / 4.2-8.6   change 2.5-5.7 / 9.5-14.9 / 20.1-43.7   % of latency 0.14-0.25 / 0.66-0.96 / 1.48-2.72   |z|>3 level 20.0-43.3% change 45.0-63.3%  (n seeds=8)
+  HOLD w=0.80 level 0.7-1.1 / 2.3-3.2 / 4.6-8.8   change 3.0-5.6 / 11.0-15.9 / 21.7-43.7   % of latency 0.16-0.29 / 0.70-1.05 / 1.51-2.98   |z|>3 level 21.7-43.3% change 45.0-61.7%  (n seeds=8)
+  HOLD w=1.00 level 0.8-1.2 / 2.7-3.8 / 4.6-9.3   change 3.0-6.7 / 12.7-21.0 / 28.1-43.7   % of latency 0.18-0.31 / 0.76-1.45 / 1.72-3.82   |z|>3 level 31.7-46.7% change 46.7-70.0%  (n seeds=8)
+
+== TestGlueEndToEnd per seed (a: 12 ms then 3 ms of glue with the worker free -> b: 20 ms; 37.5/s; post 0 is the control)
+  301 GLUE post 0 chg@a truth L 102.84 dL 1.82 (se 0.01) | true parameters L 102.12 (-0.7%) dL 1.81 (-0.3%)
+  301 GLUE   spans include the wait false a S 11.81 glue 0.00 cap 1 | L 108.36 (+5.4%) dL 1.71 (-5.8% of dL, -0.10% of L)
+  301 GLUE   spans include the wait true  a S 11.81 glue 0.00 cap 1 | L 108.37 (+5.4%) dL 1.71 (-5.8% of dL, -0.10% of L)
+  301 GLUE post 0 chg@b truth L 100.94 dL 26.52 (se 0.62) | true parameters L 102.12 (+1.2%) dL 27.12 (+2.3%)
+  301 GLUE   spans include the wait false a S 11.99 glue 0.00 cap 1 | L 105.63 (+4.6%) dL 29.59 (+11.6% of dL, +3.05% of L)
+  301 GLUE   spans include the wait true  a S 11.99 glue 0.00 cap 1 | L 105.68 (+4.7%) dL 29.64 (+11.8% of dL, +3.10% of L)
+  301 GLUE post 3 chg@a truth L 105.62 dL 1.82 (se 0.01) | true parameters L 105.12 (-0.5%) dL 1.81 (-0.4%)
+  301 GLUE   spans include the wait false a S 11.82 glue 3.00 cap 1 | L 107.89 (+2.1%) dL 1.75 (-3.9% of dL, -0.07% of L)
+  301 GLUE   spans include the wait true  a S 11.82 glue 3.00 cap 1 | L 107.89 (+2.1%) dL 1.75 (-3.9% of dL, -0.07% of L)
+  301 GLUE post 3 chg@b truth L 105.28 dL 27.36 (se 0.41) | true parameters L 105.12 (-0.2%) dL 27.12 (-0.9%)
+  301 GLUE   spans include the wait false a S 12.00 glue 3.00 cap 1 | L 105.61 (+0.3%) dL 27.51 (+0.5% of dL, +0.14% of L)
+  301 GLUE   spans include the wait true  a S 12.00 glue 3.00 cap 1 | L 105.61 (+0.3%) dL 27.51 (+0.5% of dL, +0.14% of L)
+  302 GLUE post 0 chg@a truth L 102.73 dL 1.83 (se 0.01) | true parameters L 102.12 (-0.6%) dL 1.81 (-0.8%)
+  302 GLUE   spans include the wait false a S 11.97 glue 0.00 cap 1 | L 101.01 (-1.7%) dL 1.80 (-1.8% of dL, -0.03% of L)
+  302 GLUE   spans include the wait true  a S 11.97 glue 0.00 cap 1 | L 101.01 (-1.7%) dL 1.80 (-1.8% of dL, -0.03% of L)
+  302 GLUE post 0 chg@b truth L 102.28 dL 27.43 (se 0.46) | true parameters L 102.12 (-0.2%) dL 27.12 (-1.2%)
+  302 GLUE   spans include the wait false a S 12.06 glue 0.00 cap 1 | L 98.80 (-3.4%) dL 24.38 (-11.1% of dL, -2.98% of L)
+  302 GLUE   spans include the wait true  a S 12.06 glue 0.00 cap 1 | L 98.84 (-3.4%) dL 24.41 (-11.0% of dL, -2.95% of L)
+  302 GLUE post 3 chg@a truth L 105.85 dL 1.82 (se 0.01) | true parameters L 105.12 (-0.7%) dL 1.81 (-0.5%)
+  302 GLUE   spans include the wait false a S 12.09 glue 3.00 cap 1 | L 101.54 (-4.1%) dL 1.88 (+3.1% of dL, +0.05% of L)
+  302 GLUE   spans include the wait true  a S 12.09 glue 3.00 cap 1 | L 101.54 (-4.1%) dL 1.88 (+3.1% of dL, +0.05% of L)
+  302 GLUE post 3 chg@b truth L 105.50 dL 27.27 (se 0.43) | true parameters L 105.12 (-0.4%) dL 27.12 (-0.6%)
+  302 GLUE   spans include the wait false a S 12.25 glue 3.00 cap 1 | L 105.98 (+0.5%) dL 27.39 (+0.4% of dL, +0.11% of L)
+  302 GLUE   spans include the wait true  a S 12.25 glue 3.00 cap 1 | L 105.98 (+0.5%) dL 27.39 (+0.4% of dL, +0.11% of L)
+  303 GLUE post 0 chg@a truth L 102.34 dL 1.81 (se 0.01) | true parameters L 102.12 (-0.2%) dL 1.81 (+0.3%)
+  303 GLUE   spans include the wait false a S 12.08 glue 0.00 cap 1 | L 100.65 (-1.7%) dL 1.81 (+0.2% of dL, +0.00% of L)
+  303 GLUE   spans include the wait true  a S 12.08 glue 0.00 cap 1 | L 100.65 (-1.7%) dL 1.81 (+0.2% of dL, +0.00% of L)
+  303 GLUE post 0 chg@b truth L 102.15 dL 27.63 (se 0.44) | true parameters L 102.12 (-0.0%) dL 27.12 (-1.9%)
+  303 GLUE   spans include the wait false a S 11.75 glue 0.00 cap 1 | L 104.22 (+2.0%) dL 29.52 (+6.8% of dL, +1.85% of L)
+  303 GLUE   spans include the wait true  a S 11.75 glue 0.00 cap 1 | L 104.22 (+2.0%) dL 29.52 (+6.8% of dL, +1.85% of L)
+  303 GLUE post 3 chg@a truth L 104.79 dL 1.82 (se 0.01) | true parameters L 105.12 (+0.3%) dL 1.81 (-0.3%)
+  303 GLUE   spans include the wait false a S 12.01 glue 3.00 cap 1 | L 102.98 (-1.7%) dL 1.81 (-0.7% of dL, -0.01% of L)
+  303 GLUE   spans include the wait true  a S 12.01 glue 3.00 cap 1 | L 102.99 (-1.7%) dL 1.81 (-0.7% of dL, -0.01% of L)
+  303 GLUE post 3 chg@b truth L 103.72 dL 26.23 (se 0.47) | true parameters L 105.12 (+1.3%) dL 27.12 (+3.4%)
+  303 GLUE   spans include the wait false a S 12.03 glue 3.00 cap 1 | L 96.20 (-7.2%) dL 21.25 (-19.0% of dL, -4.79% of L)
+  303 GLUE   spans include the wait true  a S 12.03 glue 3.00 cap 1 | L 96.22 (-7.2%) dL 21.26 (-18.9% of dL, -4.78% of L)
+  304 GLUE post 0 chg@a truth L 101.98 dL 1.82 (se 0.01) | true parameters L 102.12 (+0.1%) dL 1.81 (-0.4%)
+  304 GLUE   spans include the wait false a S 11.88 glue 0.00 cap 1 | L 103.13 (+1.1%) dL 1.74 (-4.4% of dL, -0.08% of L)
+  304 GLUE   spans include the wait true  a S 11.88 glue 0.00 cap 1 | L 103.17 (+1.2%) dL 1.74 (-4.4% of dL, -0.08% of L)
+  304 GLUE post 0 chg@b truth L 101.43 dL 26.19 (se 0.41) | true parameters L 102.12 (+0.7%) dL 27.12 (+3.5%)
+  304 GLUE   spans include the wait false a S 12.17 glue 0.00 cap 1 | L 101.41 (-0.0%) dL 26.63 (+1.7% of dL, +0.43% of L)
+  304 GLUE   spans include the wait true  a S 12.17 glue 0.00 cap 1 | L 101.41 (-0.0%) dL 26.63 (+1.7% of dL, +0.43% of L)
+  304 GLUE post 3 chg@a truth L 105.91 dL 1.83 (se 0.01) | true parameters L 105.12 (-0.7%) dL 1.81 (-1.1%)
+  304 GLUE   spans include the wait false a S 11.88 glue 3.00 cap 1 | L 104.90 (-1.0%) dL 1.75 (-4.6% of dL, -0.08% of L)
+  304 GLUE   spans include the wait true  a S 11.88 glue 3.00 cap 1 | L 104.90 (-1.0%) dL 1.75 (-4.6% of dL, -0.08% of L)
+  304 GLUE post 3 chg@b truth L 105.45 dL 27.25 (se 0.48) | true parameters L 105.12 (-0.3%) dL 27.12 (-0.5%)
+  304 GLUE   spans include the wait false a S 11.96 glue 3.00 cap 1 | L 103.22 (-2.1%) dL 25.69 (-5.7% of dL, -1.48% of L)
+  304 GLUE   spans include the wait true  a S 11.96 glue 3.00 cap 1 | L 103.24 (-2.1%) dL 25.71 (-5.7% of dL, -1.47% of L)
+  305 GLUE post 0 chg@a truth L 101.95 dL 1.82 (se 0.01) | true parameters L 102.12 (+0.2%) dL 1.81 (-0.6%)
+  305 GLUE   spans include the wait false a S 12.05 glue 0.00 cap 1 | L 104.25 (+2.3%) dL 1.83 (+0.3% of dL, +0.01% of L)
+  305 GLUE   spans include the wait true  a S 12.05 glue 0.00 cap 1 | L 104.26 (+2.3%) dL 1.83 (+0.3% of dL, +0.01% of L)
+  305 GLUE post 0 chg@b truth L 102.34 dL 26.94 (se 0.55) | true parameters L 102.12 (-0.2%) dL 27.12 (+0.6%)
+  305 GLUE   spans include the wait false a S 11.87 glue 0.00 cap 1 | L 96.99 (-5.2%) dL 24.65 (-8.5% of dL, -2.24% of L)
+  305 GLUE   spans include the wait true  a S 11.87 glue 0.00 cap 1 | L 96.99 (-5.2%) dL 24.65 (-8.5% of dL, -2.24% of L)
+  305 GLUE post 3 chg@a truth L 104.40 dL 1.83 (se 0.01) | true parameters L 105.12 (+0.7%) dL 1.81 (-1.0%)
+  305 GLUE   spans include the wait false a S 11.97 glue 3.00 cap 1 | L 104.60 (+0.2%) dL 1.82 (-0.8% of dL, -0.01% of L)
+  305 GLUE   spans include the wait true  a S 11.97 glue 3.00 cap 1 | L 104.61 (+0.2%) dL 1.82 (-0.8% of dL, -0.01% of L)
+  305 GLUE post 3 chg@b truth L 105.82 dL 27.74 (se 0.51) | true parameters L 105.12 (-0.7%) dL 27.12 (-2.3%)
+  305 GLUE   spans include the wait false a S 12.08 glue 3.00 cap 1 | L 107.84 (+1.9%) dL 28.83 (+3.9% of dL, +1.02% of L)
+  305 GLUE   spans include the wait true  a S 12.08 glue 3.00 cap 1 | L 107.84 (+1.9%) dL 28.83 (+3.9% of dL, +1.02% of L)
+  306 GLUE post 0 chg@a truth L 102.34 dL 1.84 (se 0.01) | true parameters L 102.12 (-0.2%) dL 1.81 (-1.6%)
+  306 GLUE   spans include the wait false a S 12.00 glue 0.00 cap 1 | L 98.88 (-3.4%) dL 1.83 (-0.6% of dL, -0.01% of L)
+  306 GLUE   spans include the wait true  a S 12.00 glue 0.00 cap 1 | L 98.90 (-3.4%) dL 1.83 (-0.6% of dL, -0.01% of L)
+  306 GLUE post 0 chg@b truth L 102.62 dL 27.15 (se 0.47) | true parameters L 102.12 (-0.5%) dL 27.12 (-0.1%)
+  306 GLUE   spans include the wait false a S 12.22 glue 0.00 cap 1 | L 100.48 (-2.1%) dL 25.15 (-7.4% of dL, -1.95% of L)
+  306 GLUE   spans include the wait true  a S 12.22 glue 0.00 cap 1 | L 100.48 (-2.1%) dL 25.15 (-7.4% of dL, -1.95% of L)
+  306 GLUE post 3 chg@a truth L 104.57 dL 1.84 (se 0.01) | true parameters L 105.12 (+0.5%) dL 1.81 (-1.6%)
+  306 GLUE   spans include the wait false a S 12.03 glue 3.00 cap 1 | L 104.48 (-0.1%) dL 1.83 (-0.8% of dL, -0.01% of L)
+  306 GLUE   spans include the wait true  a S 12.03 glue 3.00 cap 1 | L 104.48 (-0.1%) dL 1.83 (-0.8% of dL, -0.01% of L)
+  306 GLUE post 3 chg@b truth L 104.67 dL 27.08 (se 0.48) | true parameters L 105.12 (+0.4%) dL 27.12 (+0.1%)
+  306 GLUE   spans include the wait false a S 12.05 glue 3.00 cap 1 | L 104.37 (-0.3%) dL 26.23 (-3.1% of dL, -0.81% of L)
+  306 GLUE   spans include the wait true  a S 12.05 glue 3.00 cap 1 | L 104.41 (-0.3%) dL 26.26 (-3.0% of dL, -0.78% of L)
+  307 GLUE post 0 chg@a truth L 103.22 dL 1.85 (se 0.01) | true parameters L 102.12 (-1.1%) dL 1.81 (-1.7%)
+  307 GLUE   spans include the wait false a S 11.94 glue 0.00 cap 1 | L 104.58 (+1.3%) dL 1.78 (-3.5% of dL, -0.06% of L)
+  307 GLUE   spans include the wait true  a S 11.94 glue 0.00 cap 1 | L 104.58 (+1.3%) dL 1.78 (-3.5% of dL, -0.06% of L)
+  307 GLUE post 0 chg@b truth L 102.49 dL 27.93 (se 0.62) | true parameters L 102.12 (-0.4%) dL 27.12 (-2.9%)
+  307 GLUE   spans include the wait false a S 12.07 glue 0.00 cap 1 | L 93.41 (-8.9%) dL 21.09 (-24.5% of dL, -6.67% of L)
+  307 GLUE   spans include the wait true  a S 12.07 glue 0.00 cap 1 | L 93.41 (-8.9%) dL 21.09 (-24.5% of dL, -6.67% of L)
+  307 GLUE post 3 chg@a truth L 106.88 dL 1.83 (se 0.02) | true parameters L 105.12 (-1.7%) dL 1.81 (-1.1%)
+  307 GLUE   spans include the wait false a S 11.90 glue 3.00 cap 1 | L 109.48 (+2.4%) dL 1.73 (-5.6% of dL, -0.10% of L)
+  307 GLUE   spans include the wait true  a S 11.90 glue 3.00 cap 1 | L 109.48 (+2.4%) dL 1.73 (-5.6% of dL, -0.10% of L)
+  307 GLUE post 3 chg@b truth L 104.80 dL 26.86 (se 0.42) | true parameters L 105.12 (+0.3%) dL 27.12 (+0.9%)
+  307 GLUE   spans include the wait false a S 12.17 glue 3.00 cap 1 | L 107.26 (+2.4%) dL 28.40 (+5.7% of dL, +1.47% of L)
+  307 GLUE   spans include the wait true  a S 12.17 glue 3.00 cap 1 | L 107.27 (+2.4%) dL 28.40 (+5.7% of dL, +1.47% of L)
+  308 GLUE post 0 chg@a truth L 102.72 dL 1.83 (se 0.01) | true parameters L 102.12 (-0.6%) dL 1.81 (-0.7%)
+  308 GLUE   spans include the wait false a S 11.91 glue 0.00 cap 1 | L 101.65 (-1.0%) dL 1.80 (-1.7% of dL, -0.03% of L)
+  308 GLUE   spans include the wait true  a S 11.91 glue 0.00 cap 1 | L 101.65 (-1.0%) dL 1.80 (-1.7% of dL, -0.03% of L)
+  308 GLUE post 0 chg@b truth L 101.89 dL 27.55 (se 0.76) | true parameters L 102.12 (+0.2%) dL 27.12 (-1.6%)
+  308 GLUE   spans include the wait false a S 12.12 glue 0.00 cap 1 | L 107.97 (+6.0%) dL 31.20 (+13.3% of dL, +3.58% of L)
+  308 GLUE   spans include the wait true  a S 12.12 glue 0.00 cap 1 | L 107.97 (+6.0%) dL 31.20 (+13.3% of dL, +3.58% of L)
+  308 GLUE post 3 chg@a truth L 104.44 dL 1.84 (se 0.01) | true parameters L 105.12 (+0.7%) dL 1.81 (-1.2%)
+  308 GLUE   spans include the wait false a S 12.18 glue 3.00 cap 1 | L 98.16 (-6.0%) dL 1.91 (+3.9% of dL, +0.07% of L)
+  308 GLUE   spans include the wait true  a S 12.18 glue 3.00 cap 1 | L 98.16 (-6.0%) dL 1.91 (+3.9% of dL, +0.07% of L)
+  308 GLUE post 3 chg@b truth L 105.22 dL 27.22 (se 0.52) | true parameters L 105.12 (-0.1%) dL 27.12 (-0.4%)
+  308 GLUE   spans include the wait false a S 12.15 glue 3.00 cap 1 | L 108.71 (+3.3%) dL 29.58 (+8.7% of dL, +2.24% of L)
+  308 GLUE   spans include the wait true  a S 12.15 glue 3.00 cap 1 | L 108.71 (+3.3%) dL 29.58 (+8.7% of dL, +2.24% of L)
+
+== TestStructureEndToEnd per seed
+  301 STRUCT staged {b c} then d                rho 0.70 truth L 144.35 dL 16.51 (se 0.21) | true parameters L 147.85 (+2.4%) dL 17.08 (+3.5%)
+  301 STRUCT   spans include the wait false inferred     L 152.86 (+5.9%) dL 18.10 (+9.6% of dL, +1.10% of L)  stage:a:1(b || c), d
+  301 STRUCT   spans include the wait false all-parallel L 114.06 (-21.0%) dL 12.62 (-23.5% of dL)
+  301 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.76 dL 13.96 (se 0.20) | true parameters L 101.65 (+1.9%) dL 14.77 (+5.8%)
+  301 STRUCT   spans include the wait false inferred     L 104.74 (+5.0%) dL 16.08 (+15.1% of dL, +2.12% of L)  stage:a:1(b || c), d p0.603
+  301 STRUCT   spans include the wait false all-parallel L 112.89 (+13.2%) dL 13.16 (-5.7% of dL)
+  301 STRUCT staged b then {c d e}              rho 0.66 truth L 133.62 dL 8.85 (se 0.16) | true parameters L 133.35 (-0.2%) dL 9.24 (+4.4%)
+  301 STRUCT   spans include the wait false inferred     L 137.17 (+2.7%) dL 9.34 (+5.5% of dL, +0.36% of L)  b, stage:a:2(c || d || e)
+  301 STRUCT   spans include the wait false all-parallel L 115.57 (-13.5%) dL 9.17 (+3.6% of dL)
+  301 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 144.31 dL 9.28 (se 0.14) | true parameters L 144.86 (+0.4%) dL 9.35 (+0.8%)
+  301 STRUCT   spans include the wait false inferred     L 148.35 (+2.8%) dL 9.42 (+1.5% of dL, +0.10% of L)  d, e p0.297, f p0.049
+  302 STRUCT staged {b c} then d                rho 0.70 truth L 144.33 dL 16.85 (se 0.21) | true parameters L 147.94 (+2.5%) dL 17.08 (+1.4%)
+  302 STRUCT   spans include the wait false inferred     L 144.70 (+0.3%) dL 16.43 (-2.4% of dL, -0.29% of L)  stage:a:1(b || c), d
+  302 STRUCT   spans include the wait false all-parallel L 108.20 (-25.0%) dL 11.58 (-31.3% of dL)
+  302 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.86 dL 14.00 (se 0.19) | true parameters L 101.83 (+2.0%) dL 14.77 (+5.4%)
+  302 STRUCT   spans include the wait false inferred     L 98.11 (-1.8%) dL 13.50 (-3.6% of dL, -0.51% of L)  stage:a:1(b || c), d p0.597
+  302 STRUCT   spans include the wait false all-parallel L 106.10 (+6.2%) dL 10.98 (-21.6% of dL)
+  302 STRUCT staged b then {c d e}              rho 0.66 truth L 133.16 dL 8.34 (se 0.16) | true parameters L 133.45 (+0.2%) dL 9.25 (+10.8%)
+  302 STRUCT   spans include the wait false inferred     L 135.14 (+1.5%) dL 8.54 (+2.4% of dL, +0.15% of L)  b, stage:a:2(c || d || e)
+  302 STRUCT   spans include the wait false all-parallel L 115.18 (-13.5%) dL 8.47 (+1.5% of dL)
+  302 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 145.18 dL 9.35 (se 0.15) | true parameters L 144.86 (-0.2%) dL 9.35 (-0.0%)
+  302 STRUCT   spans include the wait false inferred     L 151.02 (+4.0%) dL 9.62 (+2.8% of dL, +0.18% of L)  d, e p0.302, f p0.053
+  303 STRUCT staged {b c} then d                rho 0.70 truth L 144.91 dL 16.84 (se 0.25) | true parameters L 147.83 (+2.0%) dL 17.08 (+1.5%)
+  303 STRUCT   spans include the wait false inferred     L 143.56 (-0.9%) dL 15.53 (-7.8% of dL, -0.90% of L)  stage:a:1(b || c), d
+  303 STRUCT   spans include the wait false all-parallel L 108.29 (-25.3%) dL 10.70 (-36.4% of dL)
+  303 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.98 dL 14.10 (se 0.22) | true parameters L 101.78 (+1.8%) dL 14.77 (+4.7%)
+  303 STRUCT   spans include the wait false inferred     L 105.42 (+5.4%) dL 16.84 (+19.4% of dL, +2.73% of L)  stage:a:1(b || c), d p0.600
+  303 STRUCT   spans include the wait false all-parallel L 116.56 (+16.6%) dL 13.61 (-3.5% of dL)
+  303 STRUCT staged b then {c d e}              rho 0.66 truth L 133.49 dL 8.80 (se 0.17) | true parameters L 133.27 (-0.2%) dL 9.24 (+5.0%)
+  303 STRUCT   spans include the wait false inferred     L 131.61 (-1.4%) dL 9.51 (+8.1% of dL, +0.54% of L)  b, stage:a:2(c || d || e)
+  303 STRUCT   spans include the wait false all-parallel L 112.87 (-15.4%) dL 9.41 (+7.0% of dL)
+  303 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 144.44 dL 9.46 (se 0.17) | true parameters L 144.86 (+0.3%) dL 9.35 (-1.1%)
+  303 STRUCT   spans include the wait false inferred     L 146.13 (+1.2%) dL 10.66 (+12.8% of dL, +0.84% of L)  d, e p0.311, f p0.048
+  304 STRUCT staged {b c} then d                rho 0.70 truth L 143.42 dL 16.43 (se 0.22) | true parameters L 147.95 (+3.2%) dL 17.08 (+4.0%)
+  304 STRUCT   spans include the wait false inferred     L 147.81 (+3.1%) dL 16.42 (-0.1% of dL, -0.01% of L)  stage:a:1(b || c), d
+  304 STRUCT   spans include the wait false all-parallel L 110.47 (-23.0%) dL 11.39 (-30.7% of dL)
+  304 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.96 dL 13.92 (se 0.23) | true parameters L 101.81 (+1.8%) dL 14.77 (+6.1%)
+  304 STRUCT   spans include the wait false inferred     L 101.25 (+1.3%) dL 14.23 (+2.2% of dL, +0.31% of L)  stage:a:1(b || c), d p0.601
+  304 STRUCT   spans include the wait false all-parallel L 112.45 (+12.5%) dL 11.34 (-18.5% of dL)
+  304 STRUCT staged b then {c d e}              rho 0.66 truth L 133.30 dL 8.90 (se 0.14) | true parameters L 133.52 (+0.2%) dL 9.25 (+3.9%)
+  304 STRUCT   spans include the wait false inferred     L 127.99 (-4.0%) dL 8.19 (-8.0% of dL, -0.54% of L)  b, stage:a:2(c || d || e)
+  304 STRUCT   spans include the wait false all-parallel L 108.39 (-18.7%) dL 8.06 (-9.5% of dL)
+  304 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 144.67 dL 9.32 (se 0.16) | true parameters L 144.86 (+0.1%) dL 9.35 (+0.3%)
+  304 STRUCT   spans include the wait false inferred     L 149.13 (+3.1%) dL 10.12 (+8.5% of dL, +0.55% of L)  d, e p0.302, f p0.054
+  305 STRUCT staged {b c} then d                rho 0.70 truth L 143.83 dL 16.45 (se 0.23) | true parameters L 147.83 (+2.8%) dL 17.08 (+3.9%)
+  305 STRUCT   spans include the wait false inferred     L 151.04 (+5.0%) dL 18.16 (+10.4% of dL, +1.19% of L)  stage:a:1(b || c), d
+  305 STRUCT   spans include the wait false all-parallel L 113.39 (-21.2%) dL 12.82 (-22.1% of dL)
+  305 STRUCT staged {b c} then d p.6            rho 0.70 truth L 100.30 dL 14.09 (se 0.22) | true parameters L 101.80 (+1.5%) dL 14.77 (+4.8%)
+  305 STRUCT   spans include the wait false inferred     L 102.04 (+1.7%) dL 14.66 (+4.1% of dL, +0.57% of L)  stage:a:1(b || c), d p0.600
+  305 STRUCT   spans include the wait false all-parallel L 113.91 (+13.6%) dL 11.70 (-17.0% of dL)
+  305 STRUCT staged b then {c d e}              rho 0.66 truth L 132.98 dL 8.77 (se 0.15) | true parameters L 133.25 (+0.2%) dL 9.24 (+5.3%)
+  305 STRUCT   spans include the wait false inferred     L 133.96 (+0.7%) dL 9.62 (+9.7% of dL, +0.64% of L)  b, stage:a:2(c || d || e)
+  305 STRUCT   spans include the wait false all-parallel L 114.49 (-13.9%) dL 9.52 (+8.6% of dL)
+  305 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 144.28 dL 9.30 (se 0.17) | true parameters L 144.86 (+0.4%) dL 9.35 (+0.5%)
+  305 STRUCT   spans include the wait false inferred     L 146.17 (+1.3%) dL 9.47 (+1.7% of dL, +0.11% of L)  d, e p0.301, f p0.049
+  306 STRUCT staged {b c} then d                rho 0.70 truth L 145.11 dL 16.99 (se 0.23) | true parameters L 147.87 (+1.9%) dL 17.08 (+0.6%)
+  306 STRUCT   spans include the wait false inferred     L 139.20 (-4.1%) dL 15.14 (-10.9% of dL, -1.27% of L)  stage:a:1(b || c), d
+  306 STRUCT   spans include the wait false all-parallel L 104.44 (-28.0%) dL 10.53 (-38.0% of dL)
+  306 STRUCT staged {b c} then d p.6            rho 0.70 truth L 100.40 dL 14.14 (se 0.25) | true parameters L 101.63 (+1.2%) dL 14.77 (+4.5%)
+  306 STRUCT   spans include the wait false inferred     L 100.32 (-0.1%) dL 14.15 (+0.0% of dL, +0.01% of L)  stage:a:1(b || c), d p0.602
+  306 STRUCT   spans include the wait false all-parallel L 108.95 (+8.5%) dL 11.46 (-19.0% of dL)
+  306 STRUCT staged b then {c d e}              rho 0.66 truth L 133.18 dL 8.58 (se 0.15) | true parameters L 133.37 (+0.1%) dL 9.24 (+7.7%)
+  306 STRUCT   spans include the wait false inferred     L 135.80 (+2.0%) dL 9.22 (+7.4% of dL, +0.47% of L)  b, stage:a:2(c || d || e)
+  306 STRUCT   spans include the wait false all-parallel L 115.84 (-13.0%) dL 9.12 (+6.2% of dL)
+  306 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 145.04 dL 9.38 (se 0.17) | true parameters L 144.86 (-0.1%) dL 9.35 (-0.3%)
+  306 STRUCT   spans include the wait false inferred     L 145.86 (+0.6%) dL 10.10 (+7.7% of dL, +0.50% of L)  d, e p0.305, f p0.050
+  307 STRUCT staged {b c} then d                rho 0.70 truth L 144.87 dL 16.75 (se 0.25) | true parameters L 147.77 (+2.0%) dL 17.08 (+2.0%)
+  307 STRUCT   spans include the wait false inferred     L 151.87 (+4.8%) dL 18.76 (+12.0% of dL, +1.39% of L)  stage:a:1(b || c), d
+  307 STRUCT   spans include the wait false all-parallel L 113.66 (-21.5%) dL 13.45 (-19.7% of dL)
+  307 STRUCT staged {b c} then d p.6            rho 0.70 truth L 100.59 dL 14.56 (se 0.23) | true parameters L 101.76 (+1.2%) dL 14.77 (+1.4%)
+  307 STRUCT   spans include the wait false inferred     L 97.02 (-3.6%) dL 12.61 (-13.4% of dL, -1.94% of L)  stage:a:1(b || c), d p0.597
+  307 STRUCT   spans include the wait false all-parallel L 104.55 (+3.9%) dL 10.24 (-29.7% of dL)
+  307 STRUCT staged b then {c d e}              rho 0.66 truth L 133.13 dL 8.67 (se 0.14) | true parameters L 133.32 (+0.1%) dL 9.24 (+6.6%)
+  307 STRUCT   spans include the wait false inferred     L 134.74 (+1.2%) dL 9.46 (+9.0% of dL, +0.59% of L)  b, stage:a:2(c || d || e)
+  307 STRUCT   spans include the wait false all-parallel L 115.29 (-13.4%) dL 9.37 (+8.0% of dL)
+  307 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 145.35 dL 9.36 (se 0.17) | true parameters L 144.86 (-0.3%) dL 9.35 (-0.0%)
+  307 STRUCT   spans include the wait false inferred     L 146.44 (+0.8%) dL 10.28 (+9.9% of dL, +0.64% of L)  d, e p0.303, f p0.050
+  308 STRUCT staged {b c} then d                rho 0.70 truth L 144.38 dL 16.64 (se 0.28) | true parameters L 147.66 (+2.3%) dL 17.08 (+2.7%)
+  308 STRUCT   spans include the wait false inferred     L 146.91 (+1.8%) dL 17.10 (+2.8% of dL, +0.32% of L)  stage:a:1(b || c), d
+  308 STRUCT   spans include the wait false all-parallel L 110.46 (-23.5%) dL 11.98 (-28.0% of dL)
+  308 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.98 dL 14.36 (se 0.26) | true parameters L 101.76 (+1.8%) dL 14.77 (+2.8%)
+  308 STRUCT   spans include the wait false inferred     L 103.72 (+3.7%) dL 15.51 (+8.0% of dL, +1.14% of L)  stage:a:1(b || c), d p0.600
+  308 STRUCT   spans include the wait false all-parallel L 111.26 (+11.3%) dL 12.79 (-10.9% of dL)
+  308 STRUCT staged b then {c d e}              rho 0.66 truth L 133.61 dL 8.79 (se 0.18) | true parameters L 133.12 (-0.4%) dL 9.23 (+5.0%)
+  308 STRUCT   spans include the wait false inferred     L 131.32 (-1.7%) dL 8.56 (-2.7% of dL, -0.18% of L)  b, stage:a:2(c || d || e)
+  308 STRUCT   spans include the wait false all-parallel L 111.94 (-16.2%) dL 8.46 (-3.8% of dL)
+  308 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 145.09 dL 9.52 (se 0.13) | true parameters L 144.86 (-0.2%) dL 9.35 (-1.8%)
+  308 STRUCT   spans include the wait false inferred     L 147.72 (+1.8%) dL 8.64 (-9.2% of dL, -0.61% of L)  d, e p0.293, f p0.054
+
+## seed 301: TestAccuracy
+median / max |error| %, by group and configuration (level at rho .70 and .77 pooled | change)
+  chain             plain  4.6/17.0| 3.5/24.3  +arri  0.7/ 2.3| 9.3/13.0  +maxm  4.6/17.0| 3.5/24.3  both  0.7/ 6.2| 5.2/ 5.4
+  fan-out           plain  9.5/19.3| 9.7/13.9  +arri  9.5/19.3| 9.7/13.9  +maxm  1.8/ 2.6| 3.4/ 8.2  both  1.8/ 2.6| 3.4/ 8.2
+  replicas          plain  0.1/ 0.1| 0.5/ 0.5  +arri  0.1/ 0.1| 0.5/ 0.5  +maxm  0.1/ 0.1| 0.5/ 0.5  both  0.1/ 0.1| 0.5/ 0.5
+  single c=1        plain  0.4/ 1.3| 1.2/ 2.1  +arri  0.4/ 1.3| 1.2/ 2.1  +maxm  0.4/ 1.3| 1.2/ 2.1  both  0.4/ 1.3| 1.2/ 2.1
+  single c=2        plain  0.6/ 4.2| 0.5/ 0.8  +arri  0.6/ 4.2| 0.5/ 0.8  +maxm  0.6/ 4.2| 0.5/ 0.8  both  0.6/ 4.2| 0.5/ 0.8
+  single c=4        plain  0.7/ 7.1| 0.7/ 5.4  +arri  0.7/ 7.1| 0.7/ 5.4  +maxm  0.7/ 7.1| 0.7/ 5.4  both  0.7/ 7.1| 0.7/ 5.4
+  single c=8        plain  0.7/ 5.3| 1.8/ 7.5  +arri  0.7/ 5.3| 1.8/ 7.5  +maxm  0.7/ 5.3| 1.8/ 7.5  both  0.7/ 5.3| 1.8/ 7.5
+  single shifted    plain  0.5/ 0.9| 1.0/ 1.9  +arri  0.5/ 0.9| 1.0/ 1.9  +maxm  0.5/ 0.9| 1.0/ 1.9  both  0.5/ 0.9| 1.0/ 1.9
+  ALL               plain  0.7/19.3| 1.2/24.3  +arri  0.7/19.3| 1.2/13.9  +maxm  0.7/17.0| 1.2/24.3  both  0.6/ 7.1| 1.2/ 8.2
+## seed 301: TestChainDamping
+360 chain scenarios, seed 301, 64 replications of 400 s each
+weight on the propagated arrival variability (0 = plain model, 1 = full QNA): median / p90 / max |error| %
+ group chain-a (the change is in a)
+   w=0.00  level  2.4 /  8.1 / 18.6    change 17.8 / 32.3 / 57.6
+   w=0.25  level  1.8 /  6.2 / 15.1    change 13.3 / 24.1 / 45.8
+   w=0.50  level  1.2 /  4.6 / 11.7    change  9.1 / 17.4 / 34.0
+   w=0.65  level  1.0 /  3.8 /  9.6    change  7.1 / 13.7 / 26.9
+   w=0.80  level  0.9 /  2.9 /  7.6    change  4.8 / 10.8 / 19.8
+   w=1.00  level  0.8 /  2.7 /  4.8    change  4.5 / 10.1 / 14.0
+ group chain-b (the change is in b)
+   w=0.00  level  2.3 /  8.7 / 20.2    change  2.5 / 18.3 / 46.3
+   w=0.25  level  1.6 /  6.6 / 15.5    change  1.6 / 12.5 / 32.4
+   w=0.50  level  1.1 /  4.5 / 10.7    change  1.5 /  6.2 / 19.4
+   w=0.65  level  0.9 /  3.4 /  8.3    change  1.9 /  5.7 / 11.8
+   w=0.80  level  0.9 /  2.8 /  6.8    change  2.6 /  6.8 / 11.3
+   w=1.00  level  0.9 /  2.8 /  7.1    change  5.0 / 10.3 / 17.0
+## seed 301: TestFanOut
+32 fan-out scenarios, seed 301 (64 replications of 400 s)
+median / p90 / max |error| %
+  plain      fanout-b  level  8.3 / 17.1 / 27.3   change  4.8 /  9.9 / 12.5
+  plain      fanout-c  level  9.9 / 19.1 / 29.4   change 63.9 / 119.6 / 158.2
+  matched    fanout-b  level  6.9 / 12.2 / 17.4   change  3.2 /  6.0 /  6.3
+  matched    fanout-c  level  7.9 / 13.8 / 19.8   change 46.9 / 98.8 / 125.1
+  matched+r  fanout-b  level  1.5 /  2.3 /  3.5   change  2.9 /  5.4 /  5.5
+  matched+r  fanout-c  level  1.9 /  3.3 /  4.6   change 27.1 / 47.2 / 54.4
+## seed 301: TestHoldout
+60 holdout scenarios, seed 301 (64 x 400 s; z = base level or change error / the truth's standard error)
+median / p90 / max |error| %
+  w=0.00 level  1.3 /  4.8 /  9.9   change  8.3 / 23.0 / 32.5   change error as % of the latency 0.50 / 1.22 / 1.92  |z|>3: level 46.7% change 66.7% (n=60)
+  w=0.50 level  0.8 /  2.5 /  8.2   change  4.9 / 15.3 / 22.3   change error as % of the latency 0.28 / 0.94 / 1.37  |z|>3: level 35.0% change 55.0% (n=60)
+  w=0.65 level  0.9 /  2.6 /  8.5   change  5.9 / 13.9 / 22.0   change error as % of the latency 0.25 / 0.71 / 1.74  |z|>3: level 28.3% change 56.7% (n=60)
+  w=0.70 level  0.9 /  2.6 /  8.6   change  5.7 / 14.2 / 21.9   change error as % of the latency 0.25 / 0.81 / 1.87  |z|>3: level 28.3% change 58.3% (n=60)
+  w=0.80 level  1.0 /  2.6 /  8.8   change  5.6 / 14.4 / 28.2   change error as % of the latency 0.29 / 0.98 / 2.14  |z|>3: level 31.7% change 58.3% (n=60)
+  w=1.00 level  1.2 /  3.1 /  9.2   change  4.9 / 16.8 / 41.0   change error as % of the latency 0.26 / 1.41 / 2.77  |z|>3: level 46.7% change 63.3% (n=60)
+    holdout-kind0  w=0.00 level  1.4 /  5.3   change  9.8 / 32.5  (n=21)
+    holdout-kind0  w=0.80 level  1.2 /  2.9   change  4.7 / 19.9  (n=21)
+    holdout-kind0  w=1.00 level  1.5 /  4.0   change  3.9 / 30.3  (n=21)
+    holdout-kind1  w=0.00 level  2.1 /  9.9   change  7.4 / 26.2  (n=21)
+    holdout-kind1  w=0.80 level  1.2 /  8.8   change  6.0 / 21.7  (n=21)
+    holdout-kind1  w=1.00 level  1.2 /  9.2   change  6.2 / 21.3  (n=21)
+    holdout-kind2  w=0.00 level  0.7 /  4.8   change  8.5 / 25.5  (n=18)
+    holdout-kind2  w=0.80 level  0.7 /  3.9   change  4.3 / 28.2  (n=18)
+    holdout-kind2  w=1.00 level  0.9 /  4.9   change  4.8 / 41.0  (n=18)
+
+## seed 302: TestAccuracy
+median / max |error| %, by group and configuration (level at rho .70 and .77 pooled | change)
+  chain             plain  4.7/17.7| 3.5/26.7  +arri  0.6/ 2.7| 9.3/ 9.5  +maxm  4.7/17.7| 3.5/26.7  both  0.5/ 6.7| 5.5/ 5.6
+  fan-out           plain  7.9/20.0| 8.6/11.4  +arri  7.9/20.0| 8.6/11.4  +maxm  1.0/ 2.8| 3.2/ 5.0  both  1.0/ 2.8| 3.2/ 5.0
+  replicas          plain  0.5/ 0.8| 1.6/ 1.6  +arri  0.5/ 0.8| 1.6/ 1.6  +maxm  0.5/ 0.8| 1.6/ 1.6  both  0.5/ 0.8| 1.6/ 1.6
+  single c=1        plain  0.9/ 3.1| 1.3/ 5.5  +arri  0.9/ 3.1| 1.3/ 5.5  +maxm  0.9/ 3.1| 1.3/ 5.5  both  0.9/ 3.1| 1.3/ 5.5
+  single c=2        plain  1.0/ 2.7| 1.5/ 2.1  +arri  1.0/ 2.7| 1.5/ 2.1  +maxm  1.0/ 2.7| 1.5/ 2.1  both  1.0/ 2.7| 1.5/ 2.1
+  single c=4        plain  0.9/ 5.7| 1.3/ 2.1  +arri  0.9/ 5.7| 1.3/ 2.1  +maxm  0.9/ 5.7| 1.3/ 2.1  both  0.9/ 5.7| 1.3/ 2.1
+  single c=8        plain  0.7/ 5.2| 1.8/ 7.4  +arri  0.7/ 5.2| 1.8/ 7.4  +maxm  0.7/ 5.2| 1.8/ 7.4  both  0.7/ 5.2| 1.8/ 7.4
+  single shifted    plain  0.4/ 0.6| 0.7/ 1.3  +arri  0.4/ 0.6| 0.7/ 1.3  +maxm  0.4/ 0.6| 0.7/ 1.3  both  0.4/ 0.6| 0.7/ 1.3
+  ALL               plain  0.9/20.0| 1.4/26.7  +arri  0.8/20.0| 1.5/11.4  +maxm  0.8/17.7| 1.4/26.7  both  0.7/ 6.7| 1.4/ 7.4
+## seed 302: TestChainDamping
+360 chain scenarios, seed 302, 64 replications of 400 s each
+weight on the propagated arrival variability (0 = plain model, 1 = full QNA): median / p90 / max |error| %
+ group chain-a (the change is in a)
+   w=0.00  level  2.3 /  7.9 / 16.7    change 18.3 / 31.6 / 57.2
+   w=0.25  level  1.7 /  6.1 / 13.3    change 13.3 / 23.2 / 45.4
+   w=0.50  level  1.3 /  4.4 /  9.8    change  9.5 / 17.1 / 33.6
+   w=0.65  level  1.0 /  3.4 /  7.8    change  6.9 / 14.0 / 26.6
+   w=0.80  level  1.0 /  2.9 /  6.1    change  5.0 / 10.9 / 20.1
+   w=1.00  level  0.8 /  2.4 /  4.8    change  4.9 /  9.9 / 15.3
+ group chain-b (the change is in b)
+   w=0.00  level  2.3 /  8.5 / 20.8    change  2.5 / 18.8 / 46.5
+   w=0.25  level  1.6 /  6.4 / 15.7    change  1.6 / 11.8 / 32.5
+   w=0.50  level  1.1 /  4.4 / 10.6    change  1.6 /  5.6 / 18.6
+   w=0.65  level  0.9 /  3.2 /  8.4    change  2.0 /  5.1 / 12.0
+   w=0.80  level  0.9 /  3.0 /  6.5    change  2.6 /  6.6 / 10.0
+   w=1.00  level  0.8 /  2.7 /  6.4    change  4.5 / 10.5 / 14.8
+## seed 302: TestFanOut
+32 fan-out scenarios, seed 302 (64 replications of 400 s)
+median / p90 / max |error| %
+  plain      fanout-b  level  7.4 / 17.7 / 27.3   change  5.2 /  7.9 /  9.6
+  plain      fanout-c  level  9.8 / 19.5 / 29.9   change 65.4 / 120.1 / 155.1
+  matched    fanout-b  level  6.5 / 12.6 / 18.0   change  3.3 /  4.4 /  5.7
+  matched    fanout-c  level  7.9 / 14.2 / 19.5   change 48.3 / 99.2 / 122.4
+  matched+r  fanout-b  level  1.3 /  2.9 /  3.9   change  3.0 /  4.2 /  5.0
+  matched+r  fanout-c  level  2.0 /  3.5 /  4.5   change 28.6 / 48.7 / 53.1
+## seed 302: TestHoldout
+60 holdout scenarios, seed 302 (64 x 400 s; z = base level or change error / the truth's standard error)
+median / p90 / max |error| %
+  w=0.00 level  1.3 /  6.1 / 14.8   change  7.8 / 25.6 / 41.2   change error as % of the latency 0.25 / 1.13 / 3.67  |z|>3: level 48.3% change 68.3% (n=60)
+  w=0.50 level  1.1 /  3.4 /  6.2   change  4.0 / 14.9 / 37.7   change error as % of the latency 0.12 / 0.75 / 2.14  |z|>3: level 43.3% change 60.0% (n=60)
+  w=0.65 level  1.1 /  3.2 /  5.5   change  3.3 / 14.2 / 38.2   change error as % of the latency 0.15 / 0.66 / 2.17  |z|>3: level 41.7% change 56.7% (n=60)
+  w=0.70 level  1.0 /  3.2 /  5.6   change  3.8 / 14.9 / 38.4   change error as % of the latency 0.14 / 0.69 / 2.18  |z|>3: level 43.3% change 60.0% (n=60)
+  w=0.80 level  0.9 /  3.0 /  5.7   change  5.2 / 13.6 / 38.8   change error as % of the latency 0.16 / 0.70 / 2.35  |z|>3: level 43.3% change 61.7% (n=60)
+  w=1.00 level  0.8 /  3.7 /  6.1   change  6.7 / 15.4 / 40.5   change error as % of the latency 0.21 / 1.26 / 3.07  |z|>3: level 33.3% change 66.7% (n=60)
+    holdout-kind0  w=0.00 level  2.6 / 14.8   change 13.2 / 41.2  (n=28)
+    holdout-kind0  w=0.80 level  1.1 /  3.9   change  5.3 / 16.5  (n=28)
+    holdout-kind0  w=1.00 level  0.8 /  4.6   change  7.2 / 18.8  (n=28)
+    holdout-kind1  w=0.00 level  0.8 /  8.3   change  5.2 / 35.8  (n=17)
+    holdout-kind1  w=0.80 level  1.0 /  5.7   change  5.2 / 38.8  (n=17)
+    holdout-kind1  w=1.00 level  0.9 /  6.1   change  5.3 / 39.5  (n=17)
+    holdout-kind2  w=0.00 level  0.6 /  8.3   change  2.1 / 23.4  (n=15)
+    holdout-kind2  w=0.80 level  0.6 /  3.9   change  2.2 / 28.4  (n=15)
+    holdout-kind2  w=1.00 level  0.8 /  4.8   change  2.8 / 40.5  (n=15)
+
+## seed 303: TestAccuracy
+median / max |error| %, by group and configuration (level at rho .70 and .77 pooled | change)
+  chain             plain  3.9/17.1| 2.0/24.0  +arri  0.9/ 3.0|11.3/13.5  +maxm  3.9/17.1| 2.0/24.0  both  0.8/ 6.5| 4.5/ 7.5
+  fan-out           plain  8.7/19.4| 9.7/12.0  +arri  8.7/19.4| 9.7/12.0  +maxm  1.7/ 2.6| 4.2/ 5.6  both  1.7/ 2.6| 4.2/ 5.6
+  replicas          plain  0.5/ 0.8| 1.8/ 1.8  +arri  0.5/ 0.8| 1.8/ 1.8  +maxm  0.5/ 0.8| 1.8/ 1.8  both  0.5/ 0.8| 1.8/ 1.8
+  single c=1        plain  0.7/ 0.9| 1.3/ 1.7  +arri  0.7/ 0.9| 1.3/ 1.7  +maxm  0.7/ 0.9| 1.3/ 1.7  both  0.7/ 0.9| 1.3/ 1.7
+  single c=2        plain  0.8/ 5.0| 0.7/ 2.0  +arri  0.8/ 5.0| 0.7/ 2.0  +maxm  0.8/ 5.0| 0.7/ 2.0  both  0.8/ 5.0| 0.7/ 2.0
+  single c=4        plain  1.0/ 6.9| 0.8/ 4.5  +arri  1.0/ 6.9| 0.8/ 4.5  +maxm  1.0/ 6.9| 0.8/ 4.5  both  1.0/ 6.9| 0.8/ 4.5
+  single c=8        plain  0.6/ 5.9| 1.6/ 9.1  +arri  0.6/ 5.9| 1.6/ 9.1  +maxm  0.6/ 5.9| 1.6/ 9.1  both  0.6/ 5.9| 1.6/ 9.1
+  single shifted    plain  0.7/ 0.7| 0.8/ 1.7  +arri  0.7/ 0.7| 0.8/ 1.7  +maxm  0.7/ 0.7| 0.8/ 1.7  both  0.7/ 0.7| 0.8/ 1.7
+  ALL               plain  0.8/19.4| 1.4/24.0  +arri  0.7/19.4| 1.5/13.5  +maxm  0.8/17.1| 1.4/24.0  both  0.7/ 6.9| 1.5/ 9.1
+## seed 303: TestChainDamping
+360 chain scenarios, seed 303, 64 replications of 400 s each
+weight on the propagated arrival variability (0 = plain model, 1 = full QNA): median / p90 / max |error| %
+ group chain-a (the change is in a)
+   w=0.00  level  2.3 /  8.2 / 17.5    change 18.2 / 32.6 / 56.8
+   w=0.25  level  1.7 /  6.6 / 14.1    change 13.4 / 24.1 / 45.0
+   w=0.50  level  1.2 /  4.7 / 10.6    change  9.1 / 17.2 / 33.3
+   w=0.65  level  1.0 /  3.8 /  8.6    change  6.7 / 13.8 / 26.2
+   w=0.80  level  0.9 /  3.2 /  6.5    change  4.9 / 10.9 / 19.2
+   w=1.00  level  0.8 /  2.7 /  5.0    change  4.6 / 10.3 / 13.9
+ group chain-b (the change is in b)
+   w=0.00  level  2.3 /  9.1 / 20.4    change  2.5 / 17.9 / 46.9
+   w=0.25  level  1.5 /  6.9 / 15.3    change  1.6 / 12.2 / 33.1
+   w=0.50  level  1.1 /  4.6 / 10.2    change  1.7 /  5.9 / 19.3
+   w=0.65  level  0.9 /  3.4 /  8.1    change  2.1 /  5.0 / 11.4
+   w=0.80  level  0.9 /  2.8 /  6.6    change  2.6 /  6.9 / 10.8
+   w=1.00  level  0.8 /  2.7 /  6.1    change  4.5 / 10.8 / 14.9
+## seed 303: TestFanOut
+32 fan-out scenarios, seed 303 (64 replications of 400 s)
+median / p90 / max |error| %
+  plain      fanout-b  level  8.2 / 17.2 / 26.9   change  4.2 /  8.0 /  8.4
+  plain      fanout-c  level  9.9 / 19.8 / 29.0   change 64.1 / 123.6 / 160.8
+  matched    fanout-b  level  6.4 / 12.3 / 16.9   change  2.6 /  4.2 /  6.3
+  matched    fanout-c  level  7.9 / 14.5 / 19.4   change 48.4 / 102.2 / 127.4
+  matched+r  fanout-b  level  1.5 /  2.4 /  3.0   change  2.6 /  3.6 /  5.8
+  matched+r  fanout-c  level  1.9 /  3.2 /  4.3   change 30.2 / 46.9 / 56.3
+## seed 303: TestHoldout
+60 holdout scenarios, seed 303 (64 x 400 s; z = base level or change error / the truth's standard error)
+median / p90 / max |error| %
+  w=0.00 level  1.4 /  4.6 / 19.0   change  9.1 / 20.7 / 46.2   change error as % of the latency 0.36 / 0.96 / 2.61  |z|>3: level 50.0% change 66.7% (n=60)
+  w=0.50 level  1.3 /  3.4 /  8.7   change  3.1 / 13.7 / 29.7   change error as % of the latency 0.22 / 0.63 / 1.37  |z|>3: level 48.3% change 55.0% (n=60)
+  w=0.65 level  1.0 /  2.9 /  5.6   change  3.5 / 11.6 / 29.3   change error as % of the latency 0.21 / 0.72 / 1.45  |z|>3: level 41.7% change 56.7% (n=60)
+  w=0.70 level  1.1 /  3.0 /  4.9   change  3.3 / 12.8 / 29.2   change error as % of the latency 0.24 / 0.75 / 1.48  |z|>3: level 43.3% change 53.3% (n=60)
+  w=0.80 level  1.0 /  2.8 /  5.5   change  4.1 / 13.3 / 29.0   change error as % of the latency 0.23 / 0.88 / 1.54  |z|>3: level 38.3% change 60.0% (n=60)
+  w=1.00 level  1.1 /  2.9 /  6.6   change  5.5 / 16.9 / 32.8   change error as % of the latency 0.24 / 1.01 / 1.88  |z|>3: level 31.7% change 66.7% (n=60)
+    holdout-kind0  w=0.00 level  2.8 / 19.0   change  9.1 / 32.5  (n=18)
+    holdout-kind0  w=0.80 level  1.0 /  2.6   change  3.6 / 13.3  (n=18)
+    holdout-kind0  w=1.00 level  1.1 /  2.1   change  5.5 / 18.0  (n=18)
+    holdout-kind1  w=0.00 level  1.9 /  8.5   change  9.4 / 46.2  (n=23)
+    holdout-kind1  w=0.80 level  1.7 /  5.5   change  6.5 / 29.0  (n=23)
+    holdout-kind1  w=1.00 level  1.6 /  6.6   change  8.5 / 32.8  (n=23)
+    holdout-kind2  w=0.00 level  0.6 /  3.4   change  6.3 / 25.3  (n=19)
+    holdout-kind2  w=0.80 level  0.6 /  2.3   change  3.3 / 20.1  (n=19)
+    holdout-kind2  w=1.00 level  0.7 /  2.9   change  4.4 / 31.5  (n=19)
+
+## seed 304: TestAccuracy
+median / max |error| %, by group and configuration (level at rho .70 and .77 pooled | change)
+  chain             plain  3.1/17.2| 1.9/25.0  +arri  1.3/ 3.7|11.8/12.1  +maxm  3.1/17.2| 1.9/25.0  both  0.9/ 6.4| 4.7/ 8.0
+  fan-out           plain  8.8/19.7|11.0/11.2  +arri  8.8/19.7|11.0/11.2  +maxm  1.9/ 2.5| 4.7/ 5.6  both  1.9/ 2.5| 4.7/ 5.6
+  replicas          plain  0.1/ 0.1| 0.4/ 0.4  +arri  0.1/ 0.1| 0.4/ 0.4  +maxm  0.1/ 0.1| 0.4/ 0.4  both  0.1/ 0.1| 0.4/ 0.4
+  single c=1        plain  0.3/ 1.0| 0.7/ 1.7  +arri  0.3/ 1.0| 0.7/ 1.7  +maxm  0.3/ 1.0| 0.7/ 1.7  both  0.3/ 1.0| 0.7/ 1.7
+  single c=2        plain  0.8/ 3.9| 0.7/ 1.0  +arri  0.8/ 3.9| 0.7/ 1.0  +maxm  0.8/ 3.9| 0.7/ 1.0  both  0.8/ 3.9| 0.7/ 1.0
+  single c=4        plain  1.1/ 5.4| 1.3/ 2.2  +arri  1.1/ 5.4| 1.3/ 2.2  +maxm  1.1/ 5.4| 1.3/ 2.2  both  1.1/ 5.4| 1.3/ 2.2
+  single c=8        plain  0.8/ 5.0| 2.1/ 6.9  +arri  0.8/ 5.0| 2.1/ 6.9  +maxm  0.8/ 5.0| 2.1/ 6.9  both  0.8/ 5.0| 2.1/ 6.9
+  single shifted    plain  0.3/ 1.1| 0.5/ 2.6  +arri  0.3/ 1.1| 0.5/ 2.6  +maxm  0.3/ 1.1| 0.5/ 2.6  both  0.3/ 1.1| 0.5/ 2.6
+  ALL               plain  0.8/19.7| 1.1/25.0  +arri  0.7/19.7| 1.3/12.1  +maxm  0.7/17.2| 1.0/25.0  both  0.6/ 6.4| 1.0/ 8.0
+## seed 304: TestChainDamping
+360 chain scenarios, seed 304, 64 replications of 400 s each
+weight on the propagated arrival variability (0 = plain model, 1 = full QNA): median / p90 / max |error| %
+ group chain-a (the change is in a)
+   w=0.00  level  2.3 /  7.7 / 17.3    change 17.7 / 32.4 / 56.4
+   w=0.25  level  1.9 /  6.2 / 13.9    change 13.6 / 24.0 / 44.7
+   w=0.50  level  1.3 /  4.7 / 10.5    change  9.5 / 16.9 / 33.0
+   w=0.65  level  1.0 /  3.8 /  8.4    change  7.2 / 13.4 / 25.9
+   w=0.80  level  0.9 /  3.0 /  6.5    change  5.1 / 10.6 / 18.9
+   w=1.00  level  0.8 /  2.5 /  4.9    change  4.6 / 10.0 / 13.5
+ group chain-b (the change is in b)
+   w=0.00  level  2.3 /  8.8 / 20.3    change  2.6 / 16.8 / 46.0
+   w=0.25  level  1.5 /  6.6 / 15.2    change  1.5 / 12.5 / 31.9
+   w=0.50  level  0.9 /  4.5 / 10.1    change  1.5 /  5.7 / 18.2
+   w=0.65  level  0.9 /  3.2 /  8.0    change  2.0 /  5.5 / 10.5
+   w=0.80  level  0.8 /  2.7 /  6.0    change  2.8 /  6.8 / 10.3
+   w=1.00  level  0.8 /  2.7 /  6.3    change  4.6 / 10.9 / 16.2
+## seed 304: TestFanOut
+32 fan-out scenarios, seed 304 (64 replications of 400 s)
+median / p90 / max |error| %
+  plain      fanout-b  level  8.4 / 17.3 / 27.5   change  4.8 /  7.8 /  9.7
+  plain      fanout-c  level  9.0 / 19.4 / 29.7   change 63.5 / 121.3 / 163.0
+  matched    fanout-b  level  6.7 / 12.3 / 17.4   change  2.1 /  5.1 /  6.2
+  matched    fanout-c  level  8.0 / 13.9 / 18.9   change 46.5 / 100.3 / 129.3
+  matched+r  fanout-b  level  1.6 /  2.5 /  3.6   change  2.1 /  4.4 /  5.5
+  matched+r  fanout-c  level  1.7 /  3.5 /  4.2   change 27.7 / 45.7 / 57.7
+## seed 304: TestHoldout
+60 holdout scenarios, seed 304 (64 x 400 s; z = base level or change error / the truth's standard error)
+median / p90 / max |error| %
+  w=0.00 level  0.9 /  3.6 / 13.1   change  9.5 / 26.1 / 40.6   change error as % of the latency 0.36 / 0.81 / 4.16  |z|>3: level 45.0% change 68.3% (n=60)
+  w=0.50 level  0.8 /  3.6 /  8.1   change  4.4 / 12.7 / 22.7   change error as % of the latency 0.17 / 0.74 / 2.20  |z|>3: level 40.0% change 63.3% (n=60)
+  w=0.65 level  0.8 /  3.3 /  8.4   change  3.7 / 11.6 / 22.2   change error as % of the latency 0.13 / 0.81 / 2.59  |z|>3: level 40.0% change 65.0% (n=60)
+  w=0.70 level  0.7 /  3.5 /  8.5   change  4.0 / 12.4 / 22.0   change error as % of the latency 0.15 / 0.86 / 2.72  |z|>3: level 36.7% change 63.3% (n=60)
+  w=0.80 level  0.8 /  3.2 /  8.7   change  4.4 / 15.9 / 21.7   change error as % of the latency 0.17 / 0.87 / 2.98  |z|>3: level 38.3% change 58.3% (n=60)
+  w=1.00 level  0.9 /  3.6 /  9.3   change  6.2 / 21.0 / 28.2   change error as % of the latency 0.25 / 1.05 / 3.82  |z|>3: level 40.0% change 70.0% (n=60)
+    holdout-kind0  w=0.00 level  1.1 / 11.9   change  9.4 / 36.7  (n=19)
+    holdout-kind0  w=0.80 level  0.6 /  4.7   change  3.4 / 15.9  (n=19)
+    holdout-kind0  w=1.00 level  0.7 /  5.1   change  3.9 / 21.0  (n=19)
+    holdout-kind1  w=0.00 level  1.7 / 13.1   change 11.4 / 40.6  (n=26)
+    holdout-kind1  w=0.80 level  1.3 /  8.7   change  7.8 / 21.7  (n=26)
+    holdout-kind1  w=1.00 level  1.4 /  9.3   change 12.1 / 28.2  (n=26)
+    holdout-kind2  w=0.00 level  0.4 /  3.6   change  6.5 / 26.1  (n=15)
+    holdout-kind2  w=0.80 level  0.4 /  2.1   change  1.9 / 17.6  (n=15)
+    holdout-kind2  w=1.00 level  0.5 /  2.6   change  2.7 / 28.0  (n=15)
+
+## seed 305: TestAccuracy
+median / max |error| %, by group and configuration (level at rho .70 and .77 pooled | change)
+  chain             plain  4.1/17.4| 2.6/25.0  +arri  0.9/ 2.8|10.1/12.0  +maxm  4.1/17.4| 2.6/25.0  both  0.7/ 6.6| 4.6/ 6.3
+  fan-out           plain  7.7/19.8| 7.5/11.5  +arri  7.7/19.8| 7.5/11.5  +maxm  0.8/ 2.7| 2.1/ 5.1  both  0.8/ 2.7| 2.1/ 5.1
+  replicas          plain  0.3/ 0.3| 0.6/ 0.6  +arri  0.3/ 0.3| 0.6/ 0.6  +maxm  0.3/ 0.3| 0.6/ 0.6  both  0.3/ 0.3| 0.6/ 0.6
+  single c=1        plain  0.5/ 1.2| 0.6/ 1.4  +arri  0.5/ 1.2| 0.6/ 1.4  +maxm  0.5/ 1.2| 0.6/ 1.4  both  0.5/ 1.2| 0.6/ 1.4
+  single c=2        plain  0.7/ 6.1| 0.6/ 2.9  +arri  0.7/ 6.1| 0.6/ 2.9  +maxm  0.7/ 6.1| 0.6/ 2.9  both  0.7/ 6.1| 0.6/ 2.9
+  single c=4        plain  0.7/ 6.7| 0.8/ 3.7  +arri  0.7/ 6.7| 0.8/ 3.7  +maxm  0.7/ 6.7| 0.8/ 3.7  both  0.7/ 6.7| 0.8/ 3.7
+  single c=8        plain  0.6/ 5.8| 1.6/ 9.1  +arri  0.6/ 5.8| 1.6/ 9.1  +maxm  0.6/ 5.8| 1.6/ 9.1  both  0.6/ 5.8| 1.6/ 9.1
+  single shifted    plain  0.2/ 0.3| 0.5/ 0.7  +arri  0.2/ 0.3| 0.5/ 0.7  +maxm  0.2/ 0.3| 0.5/ 0.7  both  0.2/ 0.3| 0.5/ 0.7
+  ALL               plain  0.6/19.8| 0.9/25.0  +arri  0.6/19.8| 0.9/12.0  +maxm  0.6/17.4| 0.8/25.0  both  0.5/ 6.7| 0.8/ 9.1
+## seed 305: TestChainDamping
+360 chain scenarios, seed 305, 64 replications of 400 s each
+weight on the propagated arrival variability (0 = plain model, 1 = full QNA): median / p90 / max |error| %
+ group chain-a (the change is in a)
+   w=0.00  level  2.3 /  8.3 / 17.3    change 18.2 / 32.2 / 56.6
+   w=0.25  level  1.7 /  6.5 / 13.9    change 13.5 / 23.8 / 44.9
+   w=0.50  level  1.4 /  4.8 / 10.5    change  9.2 / 16.9 / 33.2
+   w=0.65  level  1.2 /  3.7 /  8.4    change  6.5 / 13.3 / 26.1
+   w=0.80  level  0.9 /  3.0 /  6.3    change  4.8 / 10.4 / 19.1
+   w=1.00  level  0.8 /  2.5 /  5.7    change  4.4 /  9.9 / 13.5
+ group chain-b (the change is in b)
+   w=0.00  level  2.4 /  9.2 / 21.6    change  2.5 / 16.7 / 46.8
+   w=0.25  level  1.7 /  6.7 / 16.6    change  1.6 / 11.3 / 32.9
+   w=0.50  level  1.0 /  4.7 / 11.6    change  1.4 /  5.7 / 19.4
+   w=0.65  level  1.0 /  3.4 /  9.1    change  2.0 /  4.8 / 11.7
+   w=0.80  level  0.8 /  2.7 /  7.0    change  2.5 /  6.5 / 10.0
+   w=1.00  level  0.9 /  2.7 /  6.4    change  4.6 / 10.7 / 15.1
+## seed 305: TestFanOut
+32 fan-out scenarios, seed 305 (64 replications of 400 s)
+median / p90 / max |error| %
+  plain      fanout-b  level  7.8 / 17.6 / 27.3   change  5.9 /  9.5 / 11.5
+  plain      fanout-c  level  9.9 / 19.9 / 30.1   change 63.7 / 118.9 / 154.7
+  matched    fanout-b  level  7.0 / 12.5 / 17.6   change  3.2 /  5.2 /  7.9
+  matched    fanout-c  level  8.0 / 14.6 / 20.1   change 46.7 / 98.1 / 122.0
+  matched+r  fanout-b  level  1.6 /  3.1 /  3.8   change  3.3 /  4.8 /  7.2
+  matched+r  fanout-c  level  1.7 /  3.3 /  4.9   change 27.0 / 47.9 / 52.2
+## seed 305: TestHoldout
+60 holdout scenarios, seed 305 (64 x 400 s; z = base level or change error / the truth's standard error)
+median / p90 / max |error| %
+  w=0.00 level  1.2 /  4.7 /  8.7   change  8.8 / 20.7 / 43.7   change error as % of the latency 0.35 / 1.12 / 2.21  |z|>3: level 38.3% change 61.7% (n=60)
+  w=0.50 level  0.9 /  3.0 /  8.6   change  4.6 / 10.2 / 43.7   change error as % of the latency 0.29 / 0.83 / 2.21  |z|>3: level 26.7% change 46.7% (n=60)
+  w=0.65 level  0.7 /  2.9 /  8.6   change  3.8 / 11.1 / 43.7   change error as % of the latency 0.26 / 0.90 / 2.21  |z|>3: level 20.0% change 43.3% (n=60)
+  w=0.70 level  0.7 /  2.8 /  8.6   change  3.8 / 11.2 / 43.7   change error as % of the latency 0.22 / 0.96 / 2.21  |z|>3: level 20.0% change 48.3% (n=60)
+  w=0.80 level  0.7 /  2.6 /  8.6   change  4.1 / 12.8 / 43.7   change error as % of the latency 0.22 / 1.05 / 2.39  |z|>3: level 21.7% change 45.0% (n=60)
+  w=1.00 level  1.1 /  3.2 /  8.6   change  4.1 / 16.5 / 43.7   change error as % of the latency 0.24 / 1.24 / 2.97  |z|>3: level 36.7% change 53.3% (n=60)
+    holdout-kind0  w=0.00 level  1.5 /  5.3   change 12.1 / 35.5  (n=21)
+    holdout-kind0  w=0.80 level  0.6 /  3.7   change  3.7 / 10.7  (n=21)
+    holdout-kind0  w=1.00 level  0.9 /  3.7   change  3.7 / 16.5  (n=21)
+    holdout-kind1  w=0.00 level  4.1 /  8.7   change  8.8 / 43.7  (n=15)
+    holdout-kind1  w=0.80 level  2.1 /  8.6   change  5.2 / 43.7  (n=15)
+    holdout-kind1  w=1.00 level  2.2 /  8.6   change  5.1 / 43.7  (n=15)
+    holdout-kind2  w=0.00 level  0.8 /  4.3   change  4.1 / 24.0  (n=24)
+    holdout-kind2  w=0.80 level  0.6 /  2.7   change  3.9 / 21.6  (n=24)
+    holdout-kind2  w=1.00 level  0.9 /  3.3   change  4.7 / 31.6  (n=24)
+
+## seed 306: TestAccuracy
+median / max |error| %, by group and configuration (level at rho .70 and .77 pooled | change)
+  chain             plain  4.7/17.9| 4.2/26.1  +arri  1.0/ 3.1| 8.6/10.3  +maxm  4.7/17.9| 4.2/26.1  both  1.0/ 7.0| 3.7/ 4.8
+  fan-out           plain  9.0/19.7|10.4/12.4  +arri  9.0/19.7|10.4/12.4  +maxm  2.0/ 2.9| 4.9/ 6.0  both  2.0/ 2.9| 4.9/ 6.0
+  replicas          plain  0.1/ 0.1| 0.2/ 0.2  +arri  0.1/ 0.1| 0.2/ 0.2  +maxm  0.1/ 0.1| 0.2/ 0.2  both  0.1/ 0.1| 0.2/ 0.2
+  single c=1        plain  0.6/ 1.3| 1.5/ 1.8  +arri  0.6/ 1.3| 1.5/ 1.8  +maxm  0.6/ 1.3| 1.5/ 1.8  both  0.6/ 1.3| 1.5/ 1.8
+  single c=2        plain  1.1/ 3.5| 0.7/ 2.1  +arri  1.1/ 3.5| 0.7/ 2.1  +maxm  1.1/ 3.5| 0.7/ 2.1  both  1.1/ 3.5| 0.7/ 2.1
+  single c=4        plain  0.9/ 6.3| 1.1/ 4.0  +arri  0.9/ 6.3| 1.1/ 4.0  +maxm  0.9/ 6.3| 1.1/ 4.0  both  0.9/ 6.3| 1.1/ 4.0
+  single c=8        plain  0.8/ 5.6| 1.9/ 8.4  +arri  0.8/ 5.6| 1.9/ 8.4  +maxm  0.8/ 5.6| 1.9/ 8.4  both  0.8/ 5.6| 1.9/ 8.4
+  single shifted    plain  0.8/ 1.4| 1.1/ 2.6  +arri  0.8/ 1.4| 1.1/ 2.6  +maxm  0.8/ 1.4| 1.1/ 2.6  both  0.8/ 1.4| 1.1/ 2.6
+  ALL               plain  0.9/19.7| 1.5/26.1  +arri  0.8/19.7| 1.5/12.4  +maxm  0.9/17.9| 1.5/26.1  both  0.8/ 7.0| 1.5/ 8.4
+## seed 306: TestChainDamping
+360 chain scenarios, seed 306, 64 replications of 400 s each
+weight on the propagated arrival variability (0 = plain model, 1 = full QNA): median / p90 / max |error| %
+ group chain-a (the change is in a)
+   w=0.00  level  2.3 /  8.3 / 17.6    change 17.3 / 32.1 / 57.0
+   w=0.25  level  1.7 /  6.5 / 13.9    change 13.1 / 23.4 / 45.3
+   w=0.50  level  1.3 /  5.0 / 10.2    change  8.9 / 17.2 / 33.5
+   w=0.65  level  1.1 /  3.9 /  8.0    change  6.5 / 13.6 / 26.5
+   w=0.80  level  1.1 /  3.2 /  6.4    change  4.7 / 10.2 / 19.4
+   w=1.00  level  0.9 /  2.5 /  5.5    change  4.7 /  9.8 / 14.3
+ group chain-b (the change is in b)
+   w=0.00  level  2.3 /  9.1 / 20.6    change  2.5 / 18.6 / 47.0
+   w=0.25  level  1.7 /  6.9 / 15.5    change  1.7 / 12.6 / 33.2
+   w=0.50  level  1.1 /  4.6 / 11.0    change  1.8 /  6.8 / 19.4
+   w=0.65  level  1.0 /  3.4 /  8.9    change  2.3 /  5.6 / 11.1
+   w=0.80  level  1.0 /  2.7 /  6.9    change  2.8 /  6.6 / 12.2
+   w=1.00  level  0.9 /  2.6 /  6.1    change  4.8 / 10.5 / 18.0
+## seed 306: TestFanOut
+32 fan-out scenarios, seed 306 (64 replications of 400 s)
+median / p90 / max |error| %
+  plain      fanout-b  level  8.3 / 18.0 / 27.6   change  4.9 /  8.2 / 12.5
+  plain      fanout-c  level  9.8 / 19.7 / 29.4   change 61.5 / 115.5 / 153.1
+  matched    fanout-b  level  7.0 / 12.4 / 17.5   change  2.8 /  6.5 /  8.1
+  matched    fanout-c  level  7.6 / 14.3 / 19.3   change 44.7 / 95.1 / 120.6
+  matched+r  fanout-b  level  1.6 /  3.0 /  3.7   change  2.3 /  5.9 /  7.1
+  matched+r  fanout-c  level  1.5 /  3.2 /  4.2   change 25.6 / 46.9 / 51.3
+## seed 306: TestHoldout
+60 holdout scenarios, seed 306 (64 x 400 s; z = base level or change error / the truth's standard error)
+median / p90 / max |error| %
+  w=0.00 level  0.9 /  3.8 /  8.3   change  7.9 / 22.3 / 43.3   change error as % of the latency 0.31 / 0.91 / 1.80  |z|>3: level 36.7% change 61.7% (n=60)
+  w=0.50 level  0.7 /  2.6 /  4.1   change  3.5 / 11.8 / 26.1   change error as % of the latency 0.26 / 0.72 / 1.47  |z|>3: level 23.3% change 46.7% (n=60)
+  w=0.65 level  0.8 /  2.2 /  3.9   change  3.4 / 13.1 / 26.4   change error as % of the latency 0.20 / 0.70 / 1.49  |z|>3: level 18.3% change 45.0% (n=60)
+  w=0.70 level  0.7 /  2.1 /  4.2   change  3.6 / 13.7 / 26.5   change error as % of the latency 0.21 / 0.75 / 1.50  |z|>3: level 23.3% change 45.0% (n=60)
+  w=0.80 level  0.8 /  2.3 /  4.6   change  3.8 / 14.8 / 26.7   change error as % of the latency 0.22 / 0.89 / 1.51  |z|>3: level 26.7% change 48.3% (n=60)
+  w=1.00 level  1.2 /  2.7 /  5.5   change  6.2 / 17.7 / 33.7   change error as % of the latency 0.31 / 1.03 / 1.72  |z|>3: level 31.7% change 55.0% (n=60)
+    holdout-kind0  w=0.00 level  0.7 /  5.9   change  4.7 / 19.0  (n=9)
+    holdout-kind0  w=0.80 level  1.7 /  2.3   change  1.9 / 10.3  (n=9)
+    holdout-kind0  w=1.00 level  1.7 /  2.8   change  3.0 / 11.6  (n=9)
+    holdout-kind1  w=0.00 level  1.9 /  5.5   change  9.4 / 43.3  (n=22)
+    holdout-kind1  w=0.80 level  0.8 /  4.6   change  9.0 / 26.7  (n=22)
+    holdout-kind1  w=1.00 level  1.3 /  5.5   change  9.1 / 27.1  (n=22)
+    holdout-kind2  w=0.00 level  0.7 /  8.3   change  6.9 / 26.0  (n=29)
+    holdout-kind2  w=0.80 level  0.6 /  3.5   change  3.7 / 22.7  (n=29)
+    holdout-kind2  w=1.00 level  0.9 /  3.7   change  4.5 / 33.7  (n=29)
+
+## seed 307: TestAccuracy
+median / max |error| %, by group and configuration (level at rho .70 and .77 pooled | change)
+  chain             plain  5.4/18.0| 4.6/26.4  +arri  0.8/ 3.1|10.0/10.4  +maxm  5.4/18.0| 4.6/26.4  both  1.2/ 7.0| 4.5/ 7.7
+  fan-out           plain 10.1/19.2|12.3/15.4  +arri 10.1/19.2|12.3/15.4  +maxm  2.1/ 3.2| 5.9/ 9.7  both  2.1/ 3.2| 5.9/ 9.7
+  replicas          plain  0.2/ 0.2| 0.4/ 0.4  +arri  0.2/ 0.2| 0.4/ 0.4  +maxm  0.2/ 0.2| 0.4/ 0.4  both  0.2/ 0.2| 0.4/ 0.4
+  single c=1        plain  0.8/ 2.8| 1.3/ 3.7  +arri  0.8/ 2.8| 1.3/ 3.7  +maxm  0.8/ 2.8| 1.3/ 3.7  both  0.8/ 2.8| 1.3/ 3.7
+  single c=2        plain  0.6/ 4.9| 0.3/ 2.4  +arri  0.6/ 4.9| 0.3/ 2.4  +maxm  0.6/ 4.9| 0.3/ 2.4  both  0.6/ 4.9| 0.3/ 2.4
+  single c=4        plain  0.8/ 6.4| 1.0/ 4.2  +arri  0.8/ 6.4| 1.0/ 4.2  +maxm  0.8/ 6.4| 1.0/ 4.2  both  0.8/ 6.4| 1.0/ 4.2
+  single c=8        plain  0.7/ 4.6| 1.8/ 6.5  +arri  0.7/ 4.6| 1.8/ 6.5  +maxm  0.7/ 4.6| 1.8/ 6.5  both  0.7/ 4.6| 1.8/ 6.5
+  single shifted    plain  0.5/ 0.7| 1.2/ 1.3  +arri  0.5/ 0.7| 1.2/ 1.3  +maxm  0.5/ 0.7| 1.2/ 1.3  both  0.5/ 0.7| 1.2/ 1.3
+  ALL               plain  0.7/19.2| 1.3/26.4  +arri  0.7/19.2| 1.3/15.4  +maxm  0.7/18.0| 1.3/26.4  both  0.6/ 7.0| 1.2/ 9.7
+## seed 307: TestChainDamping
+360 chain scenarios, seed 307, 64 replications of 400 s each
+weight on the propagated arrival variability (0 = plain model, 1 = full QNA): median / p90 / max |error| %
+ group chain-a (the change is in a)
+   w=0.00  level  2.4 /  8.1 / 17.1    change 18.0 / 32.5 / 59.0
+   w=0.25  level  1.8 /  6.5 / 13.4    change 13.5 / 23.7 / 47.1
+   w=0.50  level  1.3 /  4.9 / 10.3    change  9.4 / 16.8 / 35.1
+   w=0.65  level  1.2 /  3.7 /  8.7    change  6.9 / 13.4 / 28.0
+   w=0.80  level  1.1 /  3.2 /  7.2    change  5.0 / 10.6 / 20.8
+   w=1.00  level  0.9 /  2.7 /  5.5    change  4.6 /  9.7 / 14.9
+ group chain-b (the change is in b)
+   w=0.00  level  2.3 /  9.1 / 20.9    change  2.7 / 18.6 / 45.9
+   w=0.25  level  1.7 /  6.8 / 15.8    change  1.7 / 12.9 / 32.0
+   w=0.50  level  1.1 /  4.9 / 10.9    change  1.6 /  6.7 / 19.2
+   w=0.65  level  0.9 /  3.5 /  8.5    change  2.2 /  4.9 / 11.6
+   w=0.80  level  0.8 /  2.7 /  6.4    change  2.7 /  6.1 / 12.3
+   w=1.00  level  0.9 /  2.7 /  6.8    change  4.7 / 10.5 / 15.6
+## seed 307: TestFanOut
+32 fan-out scenarios, seed 307 (64 replications of 400 s)
+median / p90 / max |error| %
+  plain      fanout-b  level  8.5 / 18.2 / 26.8   change  3.9 /  7.0 / 12.7
+  plain      fanout-c  level  8.9 / 19.1 / 29.4   change 64.1 / 120.5 / 161.5
+  matched    fanout-b  level  7.1 / 13.3 / 17.3   change  2.3 /  6.1 /  8.3
+  matched    fanout-c  level  7.4 / 13.3 / 19.4   change 47.1 / 99.1 / 128.0
+  matched+r  fanout-b  level  1.8 /  2.6 /  4.0   change  2.2 /  5.3 /  7.2
+  matched+r  fanout-c  level  1.6 /  3.2 /  4.3   change 27.2 / 45.1 / 56.4
+## seed 307: TestHoldout
+60 holdout scenarios, seed 307 (64 x 400 s; z = base level or change error / the truth's standard error)
+median / p90 / max |error| %
+  w=0.00 level  1.4 /  4.1 /  9.3   change  5.3 / 21.2 / 69.6   change error as % of the latency 0.30 / 1.01 / 1.75  |z|>3: level 55.0% change 58.3% (n=60)
+  w=0.50 level  0.9 /  3.0 /  6.7   change  3.2 /  9.8 / 30.2   change error as % of the latency 0.20 / 0.67 / 1.76  |z|>3: level 36.7% change 48.3% (n=60)
+  w=0.65 level  0.9 /  3.0 /  5.9   change  2.8 / 10.7 / 18.4   change error as % of the latency 0.16 / 0.71 / 1.77  |z|>3: level 36.7% change 46.7% (n=60)
+  w=0.70 level  0.9 /  3.1 /  5.6   change  2.5 / 10.3 / 20.1   change error as % of the latency 0.14 / 0.66 / 1.78  |z|>3: level 36.7% change 46.7% (n=60)
+  w=0.80 level  1.0 /  3.1 /  5.1   change  3.0 / 11.4 / 25.2   change error as % of the latency 0.18 / 0.72 / 1.98  |z|>3: level 38.3% change 46.7% (n=60)
+  w=1.00 level  1.2 /  3.8 /  4.6   change  3.0 / 12.7 / 35.5   change error as % of the latency 0.18 / 0.76 / 2.79  |z|>3: level 45.0% change 46.7% (n=60)
+    holdout-kind0  w=0.00 level  1.8 /  7.0   change  7.8 / 28.4  (n=21)
+    holdout-kind0  w=0.80 level  1.4 /  4.2   change  3.2 / 12.6  (n=21)
+    holdout-kind0  w=1.00 level  1.4 /  4.5   change  2.1 / 17.3  (n=21)
+    holdout-kind1  w=0.00 level  1.8 /  9.3   change  3.4 / 69.6  (n=19)
+    holdout-kind1  w=0.80 level  1.1 /  5.1   change  2.6 / 11.4  (n=19)
+    holdout-kind1  w=1.00 level  1.8 /  4.6   change  3.0 / 15.9  (n=19)
+    holdout-kind2  w=0.00 level  0.8 /  5.0   change  5.3 / 31.4  (n=20)
+    holdout-kind2  w=0.80 level  0.7 /  2.7   change  3.5 / 25.2  (n=20)
+    holdout-kind2  w=1.00 level  0.8 /  4.6   change  3.8 / 35.5  (n=20)
+
+## seed 308: TestAccuracy
+median / max |error| %, by group and configuration (level at rho .70 and .77 pooled | change)
+  chain             plain  3.3/17.3| 2.9/24.9  +arri  1.0/ 3.5|12.2/12.2  +maxm  3.3/17.3| 2.9/24.9  both  0.9/ 6.5| 3.7/ 8.5
+  fan-out           plain  9.1/18.8| 7.9/11.0  +arri  9.1/18.8| 7.9/11.0  +maxm  1.3/ 2.2| 2.6/ 5.5  both  1.3/ 2.2| 2.6/ 5.5
+  replicas          plain  0.4/ 0.5| 1.0/ 1.0  +arri  0.4/ 0.5| 1.0/ 1.0  +maxm  0.4/ 0.5| 1.0/ 1.0  both  0.4/ 0.5| 1.0/ 1.0
+  single c=1        plain  0.4/ 0.8| 0.7/ 2.1  +arri  0.4/ 0.8| 0.7/ 2.1  +maxm  0.4/ 0.8| 0.7/ 2.1  both  0.4/ 0.8| 0.7/ 2.1
+  single c=2        plain  0.5/ 4.4| 0.4/ 2.0  +arri  0.5/ 4.4| 0.4/ 2.0  +maxm  0.5/ 4.4| 0.4/ 2.0  both  0.5/ 4.4| 0.4/ 2.0
+  single c=4        plain  0.8/ 5.9| 1.2/ 3.9  +arri  0.8/ 5.9| 1.2/ 3.9  +maxm  0.8/ 5.9| 1.2/ 3.9  both  0.8/ 5.9| 1.2/ 3.9
+  single c=8        plain  0.7/ 5.5| 1.6/ 8.1  +arri  0.7/ 5.5| 1.6/ 8.1  +maxm  0.7/ 5.5| 1.6/ 8.1  both  0.7/ 5.5| 1.6/ 8.1
+  single shifted    plain  0.4/ 0.9| 1.0/ 2.1  +arri  0.4/ 0.9| 1.0/ 2.1  +maxm  0.4/ 0.9| 1.0/ 2.1  both  0.4/ 0.9| 1.0/ 2.1
+  ALL               plain  0.5/18.8| 1.2/24.9  +arri  0.5/18.8| 1.3/12.2  +maxm  0.5/17.3| 1.2/24.9  both  0.5/ 6.5| 1.2/ 8.5
+## seed 308: TestChainDamping
+360 chain scenarios, seed 308, 64 replications of 400 s each
+weight on the propagated arrival variability (0 = plain model, 1 = full QNA): median / p90 / max |error| %
+ group chain-a (the change is in a)
+   w=0.00  level  2.4 /  8.3 / 17.2    change 18.2 / 32.2 / 58.0
+   w=0.25  level  1.8 /  6.4 / 13.7    change 13.3 / 23.2 / 46.2
+   w=0.50  level  1.3 /  5.0 / 10.3    change  9.6 / 16.7 / 34.4
+   w=0.65  level  1.0 /  3.8 /  8.7    change  7.2 / 13.6 / 27.3
+   w=0.80  level  0.9 /  2.9 /  7.1    change  5.1 / 10.6 / 20.2
+   w=1.00  level  0.8 /  2.4 /  5.1    change  4.7 / 10.2 / 13.5
+ group chain-b (the change is in b)
+   w=0.00  level  2.4 /  9.1 / 21.1    change  2.6 / 17.9 / 46.7
+   w=0.25  level  1.6 /  6.7 / 16.0    change  1.8 / 13.0 / 32.8
+   w=0.50  level  1.1 /  4.7 / 10.9    change  1.6 /  6.6 / 18.9
+   w=0.65  level  1.1 /  3.5 /  8.1    change  2.2 /  5.0 / 12.3
+   w=0.80  level  0.9 /  2.6 /  6.1    change  2.8 /  6.4 / 11.0
+   w=1.00  level  0.9 /  2.5 /  6.5    change  4.9 / 10.7 / 16.2
+## seed 308: TestFanOut
+32 fan-out scenarios, seed 308 (64 replications of 400 s)
+median / p90 / max |error| %
+  plain      fanout-b  level  8.7 / 17.0 / 27.5   change  3.5 /  7.8 / 13.7
+  plain      fanout-c  level 10.0 / 19.0 / 29.5   change 64.5 / 113.9 / 159.1
+  matched    fanout-b  level  6.8 / 12.1 / 16.8   change  2.1 /  4.6 /  7.4
+  matched    fanout-c  level  7.7 / 13.6 / 19.4   change 47.4 / 93.6 / 125.9
+  matched+r  fanout-b  level  1.6 /  2.4 /  3.3   change  2.5 /  4.1 /  6.6
+  matched+r  fanout-c  level  1.8 /  3.4 /  4.2   change 28.7 / 45.6 / 54.4
+## seed 308: TestHoldout
+60 holdout scenarios, seed 308 (64 x 400 s; z = base level or change error / the truth's standard error)
+median / p90 / max |error| %
+  w=0.00 level  1.9 /  7.7 / 10.9   change  6.0 / 24.1 / 37.0   change error as % of the latency 0.43 / 1.11 / 3.63  |z|>3: level 58.3% change 56.7% (n=60)
+  w=0.50 level  1.2 /  4.5 /  8.4   change  3.1 / 10.3 / 28.1   change error as % of the latency 0.27 / 0.89 / 1.34  |z|>3: level 45.0% change 43.3% (n=60)
+  w=0.65 level  1.2 /  3.6 /  8.4   change  3.6 /  9.3 / 28.1   change error as % of the latency 0.24 / 0.91 / 1.81  |z|>3: level 38.3% change 46.7% (n=60)
+  w=0.70 level  1.1 /  3.5 /  8.4   change  4.2 /  9.5 / 28.1   change error as % of the latency 0.23 / 0.94 / 1.98  |z|>3: level 38.3% change 45.0% (n=60)
+  w=0.80 level  1.1 /  3.1 /  8.4   change  4.2 / 11.0 / 28.1   change error as % of the latency 0.26 / 1.05 / 2.33  |z|>3: level 31.7% change 48.3% (n=60)
+  w=1.00 level  1.0 /  3.1 /  8.5   change  4.3 / 14.3 / 28.1   change error as % of the latency 0.26 / 1.45 / 3.03  |z|>3: level 40.0% change 46.7% (n=60)
+    holdout-kind0  w=0.00 level  3.3 / 10.9   change  8.6 / 37.0  (n=21)
+    holdout-kind0  w=0.80 level  1.5 /  4.4   change  4.7 / 14.7  (n=21)
+    holdout-kind0  w=1.00 level  1.3 /  5.6   change  5.5 / 19.0  (n=21)
+    holdout-kind1  w=0.00 level  3.1 / 10.3   change 10.0 / 28.1  (n=17)
+    holdout-kind1  w=0.80 level  1.3 /  8.4   change  6.3 / 28.1  (n=17)
+    holdout-kind1  w=1.00 level  1.6 /  8.5   change  6.1 / 28.1  (n=17)
+    holdout-kind2  w=0.00 level  0.8 /  5.5   change  2.4 / 22.3  (n=22)
+    holdout-kind2  w=0.80 level  0.7 /  2.6   change  1.9 / 12.1  (n=22)
+    holdout-kind2  w=1.00 level  0.6 /  2.6   change  2.5 / 17.7  (n=22)
+
+== TestStructureEndToEnd per seed, every line (the section above leaves out the 'spans include the wait true' lines; the
+   same runs' per-seed structure logs, kept outside the repository). The two modes differ by at most 0.01 ms
+   (seeds 305, 306 and 308; one rounding of the level's percentage flips from +1.8% to +1.7%).
+  301 STRUCT staged {b c} then d                rho 0.70 truth L 144.35 dL 16.51 (se 0.21) | true parameters L 147.85 (+2.4%) dL 17.08 (+3.5%)
+  301 STRUCT   spans include the wait false inferred     L 152.86 (+5.9%) dL 18.10 (+9.6% of dL, +1.10% of L)  stage:a:1(b || c), d
+  301 STRUCT   spans include the wait false all-parallel L 114.06 (-21.0%) dL 12.62 (-23.5% of dL)
+  301 STRUCT   spans include the wait true  inferred     L 152.86 (+5.9%) dL 18.10 (+9.6% of dL, +1.10% of L)  stage:a:1(b || c), d
+  301 STRUCT   spans include the wait true  all-parallel L 114.06 (-21.0%) dL 12.62 (-23.5% of dL)
+  301 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.76 dL 13.96 (se 0.20) | true parameters L 101.65 (+1.9%) dL 14.77 (+5.8%)
+  301 STRUCT   spans include the wait false inferred     L 104.74 (+5.0%) dL 16.08 (+15.1% of dL, +2.12% of L)  stage:a:1(b || c), d p0.603
+  301 STRUCT   spans include the wait false all-parallel L 112.89 (+13.2%) dL 13.16 (-5.7% of dL)
+  301 STRUCT   spans include the wait true  inferred     L 104.74 (+5.0%) dL 16.08 (+15.1% of dL, +2.12% of L)  stage:a:1(b || c), d p0.603
+  301 STRUCT   spans include the wait true  all-parallel L 112.89 (+13.2%) dL 13.16 (-5.7% of dL)
+  301 STRUCT staged b then {c d e}              rho 0.66 truth L 133.62 dL 8.85 (se 0.16) | true parameters L 133.35 (-0.2%) dL 9.24 (+4.4%)
+  301 STRUCT   spans include the wait false inferred     L 137.17 (+2.7%) dL 9.34 (+5.5% of dL, +0.36% of L)  b, stage:a:2(c || d || e)
+  301 STRUCT   spans include the wait false all-parallel L 115.57 (-13.5%) dL 9.17 (+3.6% of dL)
+  301 STRUCT   spans include the wait true  inferred     L 137.17 (+2.7%) dL 9.34 (+5.5% of dL, +0.36% of L)  b, stage:a:2(c || d || e)
+  301 STRUCT   spans include the wait true  all-parallel L 115.57 (-13.5%) dL 9.17 (+3.6% of dL)
+  301 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 144.31 dL 9.28 (se 0.14) | true parameters L 144.86 (+0.4%) dL 9.35 (+0.8%)
+  301 STRUCT   spans include the wait false inferred     L 148.35 (+2.8%) dL 9.42 (+1.5% of dL, +0.10% of L)  d, e p0.297, f p0.049
+  301 STRUCT   spans include the wait true  inferred     L 148.35 (+2.8%) dL 9.42 (+1.5% of dL, +0.10% of L)  d, e p0.297, f p0.049
+  302 STRUCT staged {b c} then d                rho 0.70 truth L 144.33 dL 16.85 (se 0.21) | true parameters L 147.94 (+2.5%) dL 17.08 (+1.4%)
+  302 STRUCT   spans include the wait false inferred     L 144.70 (+0.3%) dL 16.43 (-2.4% of dL, -0.29% of L)  stage:a:1(b || c), d
+  302 STRUCT   spans include the wait false all-parallel L 108.20 (-25.0%) dL 11.58 (-31.3% of dL)
+  302 STRUCT   spans include the wait true  inferred     L 144.70 (+0.3%) dL 16.43 (-2.4% of dL, -0.29% of L)  stage:a:1(b || c), d
+  302 STRUCT   spans include the wait true  all-parallel L 108.20 (-25.0%) dL 11.58 (-31.3% of dL)
+  302 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.86 dL 14.00 (se 0.19) | true parameters L 101.83 (+2.0%) dL 14.77 (+5.4%)
+  302 STRUCT   spans include the wait false inferred     L 98.11 (-1.8%) dL 13.50 (-3.6% of dL, -0.51% of L)  stage:a:1(b || c), d p0.597
+  302 STRUCT   spans include the wait false all-parallel L 106.10 (+6.2%) dL 10.98 (-21.6% of dL)
+  302 STRUCT   spans include the wait true  inferred     L 98.11 (-1.8%) dL 13.50 (-3.6% of dL, -0.51% of L)  stage:a:1(b || c), d p0.597
+  302 STRUCT   spans include the wait true  all-parallel L 106.10 (+6.2%) dL 10.98 (-21.6% of dL)
+  302 STRUCT staged b then {c d e}              rho 0.66 truth L 133.16 dL 8.34 (se 0.16) | true parameters L 133.45 (+0.2%) dL 9.25 (+10.8%)
+  302 STRUCT   spans include the wait false inferred     L 135.14 (+1.5%) dL 8.54 (+2.4% of dL, +0.15% of L)  b, stage:a:2(c || d || e)
+  302 STRUCT   spans include the wait false all-parallel L 115.18 (-13.5%) dL 8.47 (+1.5% of dL)
+  302 STRUCT   spans include the wait true  inferred     L 135.14 (+1.5%) dL 8.54 (+2.4% of dL, +0.15% of L)  b, stage:a:2(c || d || e)
+  302 STRUCT   spans include the wait true  all-parallel L 115.18 (-13.5%) dL 8.47 (+1.5% of dL)
+  302 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 145.18 dL 9.35 (se 0.15) | true parameters L 144.86 (-0.2%) dL 9.35 (-0.0%)
+  302 STRUCT   spans include the wait false inferred     L 151.02 (+4.0%) dL 9.62 (+2.8% of dL, +0.18% of L)  d, e p0.302, f p0.053
+  302 STRUCT   spans include the wait true  inferred     L 151.02 (+4.0%) dL 9.62 (+2.8% of dL, +0.18% of L)  d, e p0.302, f p0.053
+  303 STRUCT staged {b c} then d                rho 0.70 truth L 144.91 dL 16.84 (se 0.25) | true parameters L 147.83 (+2.0%) dL 17.08 (+1.5%)
+  303 STRUCT   spans include the wait false inferred     L 143.56 (-0.9%) dL 15.53 (-7.8% of dL, -0.90% of L)  stage:a:1(b || c), d
+  303 STRUCT   spans include the wait false all-parallel L 108.29 (-25.3%) dL 10.70 (-36.4% of dL)
+  303 STRUCT   spans include the wait true  inferred     L 143.56 (-0.9%) dL 15.53 (-7.8% of dL, -0.90% of L)  stage:a:1(b || c), d
+  303 STRUCT   spans include the wait true  all-parallel L 108.29 (-25.3%) dL 10.70 (-36.4% of dL)
+  303 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.98 dL 14.10 (se 0.22) | true parameters L 101.78 (+1.8%) dL 14.77 (+4.7%)
+  303 STRUCT   spans include the wait false inferred     L 105.42 (+5.4%) dL 16.84 (+19.4% of dL, +2.73% of L)  stage:a:1(b || c), d p0.600
+  303 STRUCT   spans include the wait false all-parallel L 116.56 (+16.6%) dL 13.61 (-3.5% of dL)
+  303 STRUCT   spans include the wait true  inferred     L 105.42 (+5.4%) dL 16.84 (+19.4% of dL, +2.73% of L)  stage:a:1(b || c), d p0.600
+  303 STRUCT   spans include the wait true  all-parallel L 116.56 (+16.6%) dL 13.61 (-3.5% of dL)
+  303 STRUCT staged b then {c d e}              rho 0.66 truth L 133.49 dL 8.80 (se 0.17) | true parameters L 133.27 (-0.2%) dL 9.24 (+5.0%)
+  303 STRUCT   spans include the wait false inferred     L 131.61 (-1.4%) dL 9.51 (+8.1% of dL, +0.54% of L)  b, stage:a:2(c || d || e)
+  303 STRUCT   spans include the wait false all-parallel L 112.87 (-15.4%) dL 9.41 (+7.0% of dL)
+  303 STRUCT   spans include the wait true  inferred     L 131.61 (-1.4%) dL 9.51 (+8.1% of dL, +0.54% of L)  b, stage:a:2(c || d || e)
+  303 STRUCT   spans include the wait true  all-parallel L 112.87 (-15.4%) dL 9.41 (+7.0% of dL)
+  303 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 144.44 dL 9.46 (se 0.17) | true parameters L 144.86 (+0.3%) dL 9.35 (-1.1%)
+  303 STRUCT   spans include the wait false inferred     L 146.13 (+1.2%) dL 10.66 (+12.8% of dL, +0.84% of L)  d, e p0.311, f p0.048
+  303 STRUCT   spans include the wait true  inferred     L 146.13 (+1.2%) dL 10.66 (+12.8% of dL, +0.84% of L)  d, e p0.311, f p0.048
+  304 STRUCT staged {b c} then d                rho 0.70 truth L 143.42 dL 16.43 (se 0.22) | true parameters L 147.95 (+3.2%) dL 17.08 (+4.0%)
+  304 STRUCT   spans include the wait false inferred     L 147.81 (+3.1%) dL 16.42 (-0.1% of dL, -0.01% of L)  stage:a:1(b || c), d
+  304 STRUCT   spans include the wait false all-parallel L 110.47 (-23.0%) dL 11.39 (-30.7% of dL)
+  304 STRUCT   spans include the wait true  inferred     L 147.81 (+3.1%) dL 16.42 (-0.1% of dL, -0.01% of L)  stage:a:1(b || c), d
+  304 STRUCT   spans include the wait true  all-parallel L 110.47 (-23.0%) dL 11.39 (-30.7% of dL)
+  304 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.96 dL 13.92 (se 0.23) | true parameters L 101.81 (+1.8%) dL 14.77 (+6.1%)
+  304 STRUCT   spans include the wait false inferred     L 101.25 (+1.3%) dL 14.23 (+2.2% of dL, +0.31% of L)  stage:a:1(b || c), d p0.601
+  304 STRUCT   spans include the wait false all-parallel L 112.45 (+12.5%) dL 11.34 (-18.5% of dL)
+  304 STRUCT   spans include the wait true  inferred     L 101.25 (+1.3%) dL 14.23 (+2.2% of dL, +0.31% of L)  stage:a:1(b || c), d p0.601
+  304 STRUCT   spans include the wait true  all-parallel L 112.45 (+12.5%) dL 11.34 (-18.5% of dL)
+  304 STRUCT staged b then {c d e}              rho 0.66 truth L 133.30 dL 8.90 (se 0.14) | true parameters L 133.52 (+0.2%) dL 9.25 (+3.9%)
+  304 STRUCT   spans include the wait false inferred     L 127.99 (-4.0%) dL 8.19 (-8.0% of dL, -0.54% of L)  b, stage:a:2(c || d || e)
+  304 STRUCT   spans include the wait false all-parallel L 108.39 (-18.7%) dL 8.06 (-9.5% of dL)
+  304 STRUCT   spans include the wait true  inferred     L 127.99 (-4.0%) dL 8.19 (-8.0% of dL, -0.54% of L)  b, stage:a:2(c || d || e)
+  304 STRUCT   spans include the wait true  all-parallel L 108.39 (-18.7%) dL 8.06 (-9.5% of dL)
+  304 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 144.67 dL 9.32 (se 0.16) | true parameters L 144.86 (+0.1%) dL 9.35 (+0.3%)
+  304 STRUCT   spans include the wait false inferred     L 149.13 (+3.1%) dL 10.12 (+8.5% of dL, +0.55% of L)  d, e p0.302, f p0.054
+  304 STRUCT   spans include the wait true  inferred     L 149.13 (+3.1%) dL 10.12 (+8.5% of dL, +0.55% of L)  d, e p0.302, f p0.054
+  305 STRUCT staged {b c} then d                rho 0.70 truth L 143.83 dL 16.45 (se 0.23) | true parameters L 147.83 (+2.8%) dL 17.08 (+3.9%)
+  305 STRUCT   spans include the wait false inferred     L 151.04 (+5.0%) dL 18.16 (+10.4% of dL, +1.19% of L)  stage:a:1(b || c), d
+  305 STRUCT   spans include the wait false all-parallel L 113.39 (-21.2%) dL 12.82 (-22.1% of dL)
+  305 STRUCT   spans include the wait true  inferred     L 151.04 (+5.0%) dL 18.16 (+10.4% of dL, +1.19% of L)  stage:a:1(b || c), d
+  305 STRUCT   spans include the wait true  all-parallel L 113.39 (-21.2%) dL 12.82 (-22.1% of dL)
+  305 STRUCT staged {b c} then d p.6            rho 0.70 truth L 100.30 dL 14.09 (se 0.22) | true parameters L 101.80 (+1.5%) dL 14.77 (+4.8%)
+  305 STRUCT   spans include the wait false inferred     L 102.04 (+1.7%) dL 14.66 (+4.1% of dL, +0.57% of L)  stage:a:1(b || c), d p0.600
+  305 STRUCT   spans include the wait false all-parallel L 113.91 (+13.6%) dL 11.70 (-17.0% of dL)
+  305 STRUCT   spans include the wait true  inferred     L 102.03 (+1.7%) dL 14.66 (+4.1% of dL, +0.57% of L)  stage:a:1(b || c), d p0.600
+  305 STRUCT   spans include the wait true  all-parallel L 113.91 (+13.6%) dL 11.70 (-17.0% of dL)
+  305 STRUCT staged b then {c d e}              rho 0.66 truth L 132.98 dL 8.77 (se 0.15) | true parameters L 133.25 (+0.2%) dL 9.24 (+5.3%)
+  305 STRUCT   spans include the wait false inferred     L 133.96 (+0.7%) dL 9.62 (+9.7% of dL, +0.64% of L)  b, stage:a:2(c || d || e)
+  305 STRUCT   spans include the wait false all-parallel L 114.49 (-13.9%) dL 9.52 (+8.6% of dL)
+  305 STRUCT   spans include the wait true  inferred     L 133.96 (+0.7%) dL 9.62 (+9.7% of dL, +0.64% of L)  b, stage:a:2(c || d || e)
+  305 STRUCT   spans include the wait true  all-parallel L 114.49 (-13.9%) dL 9.52 (+8.6% of dL)
+  305 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 144.28 dL 9.30 (se 0.17) | true parameters L 144.86 (+0.4%) dL 9.35 (+0.5%)
+  305 STRUCT   spans include the wait false inferred     L 146.17 (+1.3%) dL 9.47 (+1.7% of dL, +0.11% of L)  d, e p0.301, f p0.049
+  305 STRUCT   spans include the wait true  inferred     L 146.17 (+1.3%) dL 9.47 (+1.7% of dL, +0.11% of L)  d, e p0.301, f p0.049
+  306 STRUCT staged {b c} then d                rho 0.70 truth L 145.11 dL 16.99 (se 0.23) | true parameters L 147.87 (+1.9%) dL 17.08 (+0.6%)
+  306 STRUCT   spans include the wait false inferred     L 139.20 (-4.1%) dL 15.14 (-10.9% of dL, -1.27% of L)  stage:a:1(b || c), d
+  306 STRUCT   spans include the wait false all-parallel L 104.44 (-28.0%) dL 10.53 (-38.0% of dL)
+  306 STRUCT   spans include the wait true  inferred     L 139.20 (-4.1%) dL 15.14 (-10.9% of dL, -1.27% of L)  stage:a:1(b || c), d
+  306 STRUCT   spans include the wait true  all-parallel L 104.44 (-28.0%) dL 10.53 (-38.0% of dL)
+  306 STRUCT staged {b c} then d p.6            rho 0.70 truth L 100.40 dL 14.14 (se 0.25) | true parameters L 101.63 (+1.2%) dL 14.77 (+4.5%)
+  306 STRUCT   spans include the wait false inferred     L 100.32 (-0.1%) dL 14.15 (+0.0% of dL, +0.01% of L)  stage:a:1(b || c), d p0.602
+  306 STRUCT   spans include the wait false all-parallel L 108.95 (+8.5%) dL 11.46 (-19.0% of dL)
+  306 STRUCT   spans include the wait true  inferred     L 100.32 (-0.1%) dL 14.15 (+0.0% of dL, +0.01% of L)  stage:a:1(b || c), d p0.602
+  306 STRUCT   spans include the wait true  all-parallel L 108.95 (+8.5%) dL 11.46 (-19.0% of dL)
+  306 STRUCT staged b then {c d e}              rho 0.66 truth L 133.18 dL 8.58 (se 0.15) | true parameters L 133.37 (+0.1%) dL 9.24 (+7.7%)
+  306 STRUCT   spans include the wait false inferred     L 135.80 (+2.0%) dL 9.22 (+7.4% of dL, +0.47% of L)  b, stage:a:2(c || d || e)
+  306 STRUCT   spans include the wait false all-parallel L 115.84 (-13.0%) dL 9.12 (+6.2% of dL)
+  306 STRUCT   spans include the wait true  inferred     L 135.79 (+2.0%) dL 9.22 (+7.4% of dL, +0.47% of L)  b, stage:a:2(c || d || e)
+  306 STRUCT   spans include the wait true  all-parallel L 115.84 (-13.0%) dL 9.12 (+6.2% of dL)
+  306 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 145.04 dL 9.38 (se 0.17) | true parameters L 144.86 (-0.1%) dL 9.35 (-0.3%)
+  306 STRUCT   spans include the wait false inferred     L 145.86 (+0.6%) dL 10.10 (+7.7% of dL, +0.50% of L)  d, e p0.305, f p0.050
+  306 STRUCT   spans include the wait true  inferred     L 145.86 (+0.6%) dL 10.10 (+7.7% of dL, +0.50% of L)  d, e p0.305, f p0.050
+  307 STRUCT staged {b c} then d                rho 0.70 truth L 144.87 dL 16.75 (se 0.25) | true parameters L 147.77 (+2.0%) dL 17.08 (+2.0%)
+  307 STRUCT   spans include the wait false inferred     L 151.87 (+4.8%) dL 18.76 (+12.0% of dL, +1.39% of L)  stage:a:1(b || c), d
+  307 STRUCT   spans include the wait false all-parallel L 113.66 (-21.5%) dL 13.45 (-19.7% of dL)
+  307 STRUCT   spans include the wait true  inferred     L 151.87 (+4.8%) dL 18.76 (+12.0% of dL, +1.39% of L)  stage:a:1(b || c), d
+  307 STRUCT   spans include the wait true  all-parallel L 113.66 (-21.5%) dL 13.45 (-19.7% of dL)
+  307 STRUCT staged {b c} then d p.6            rho 0.70 truth L 100.59 dL 14.56 (se 0.23) | true parameters L 101.76 (+1.2%) dL 14.77 (+1.4%)
+  307 STRUCT   spans include the wait false inferred     L 97.02 (-3.6%) dL 12.61 (-13.4% of dL, -1.94% of L)  stage:a:1(b || c), d p0.597
+  307 STRUCT   spans include the wait false all-parallel L 104.55 (+3.9%) dL 10.24 (-29.7% of dL)
+  307 STRUCT   spans include the wait true  inferred     L 97.02 (-3.6%) dL 12.61 (-13.4% of dL, -1.94% of L)  stage:a:1(b || c), d p0.597
+  307 STRUCT   spans include the wait true  all-parallel L 104.55 (+3.9%) dL 10.24 (-29.7% of dL)
+  307 STRUCT staged b then {c d e}              rho 0.66 truth L 133.13 dL 8.67 (se 0.14) | true parameters L 133.32 (+0.1%) dL 9.24 (+6.6%)
+  307 STRUCT   spans include the wait false inferred     L 134.74 (+1.2%) dL 9.46 (+9.0% of dL, +0.59% of L)  b, stage:a:2(c || d || e)
+  307 STRUCT   spans include the wait false all-parallel L 115.29 (-13.4%) dL 9.37 (+8.0% of dL)
+  307 STRUCT   spans include the wait true  inferred     L 134.74 (+1.2%) dL 9.46 (+9.0% of dL, +0.59% of L)  b, stage:a:2(c || d || e)
+  307 STRUCT   spans include the wait true  all-parallel L 115.29 (-13.4%) dL 9.37 (+8.0% of dL)
+  307 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 145.35 dL 9.36 (se 0.17) | true parameters L 144.86 (-0.3%) dL 9.35 (-0.0%)
+  307 STRUCT   spans include the wait false inferred     L 146.44 (+0.8%) dL 10.28 (+9.9% of dL, +0.64% of L)  d, e p0.303, f p0.050
+  307 STRUCT   spans include the wait true  inferred     L 146.44 (+0.8%) dL 10.28 (+9.9% of dL, +0.64% of L)  d, e p0.303, f p0.050
+  308 STRUCT staged {b c} then d                rho 0.70 truth L 144.38 dL 16.64 (se 0.28) | true parameters L 147.66 (+2.3%) dL 17.08 (+2.7%)
+  308 STRUCT   spans include the wait false inferred     L 146.91 (+1.8%) dL 17.10 (+2.8% of dL, +0.32% of L)  stage:a:1(b || c), d
+  308 STRUCT   spans include the wait false all-parallel L 110.46 (-23.5%) dL 11.98 (-28.0% of dL)
+  308 STRUCT   spans include the wait true  inferred     L 146.91 (+1.7%) dL 17.10 (+2.8% of dL, +0.32% of L)  stage:a:1(b || c), d
+  308 STRUCT   spans include the wait true  all-parallel L 110.46 (-23.5%) dL 11.98 (-28.0% of dL)
+  308 STRUCT staged {b c} then d p.6            rho 0.70 truth L 99.98 dL 14.36 (se 0.26) | true parameters L 101.76 (+1.8%) dL 14.77 (+2.8%)
+  308 STRUCT   spans include the wait false inferred     L 103.72 (+3.7%) dL 15.51 (+8.0% of dL, +1.14% of L)  stage:a:1(b || c), d p0.600
+  308 STRUCT   spans include the wait false all-parallel L 111.26 (+11.3%) dL 12.79 (-10.9% of dL)
+  308 STRUCT   spans include the wait true  inferred     L 103.72 (+3.7%) dL 15.51 (+8.0% of dL, +1.14% of L)  stage:a:1(b || c), d p0.600
+  308 STRUCT   spans include the wait true  all-parallel L 111.26 (+11.3%) dL 12.79 (-10.9% of dL)
+  308 STRUCT staged b then {c d e}              rho 0.66 truth L 133.61 dL 8.79 (se 0.18) | true parameters L 133.12 (-0.4%) dL 9.23 (+5.0%)
+  308 STRUCT   spans include the wait false inferred     L 131.32 (-1.7%) dL 8.56 (-2.7% of dL, -0.18% of L)  b, stage:a:2(c || d || e)
+  308 STRUCT   spans include the wait false all-parallel L 111.94 (-16.2%) dL 8.46 (-3.8% of dL)
+  308 STRUCT   spans include the wait true  inferred     L 131.32 (-1.7%) dL 8.56 (-2.7% of dL, -0.18% of L)  b, stage:a:2(c || d || e)
+  308 STRUCT   spans include the wait true  all-parallel L 111.94 (-16.2%) dL 8.46 (-3.8% of dL)
+  308 STRUCT conditional d, e p.3, f p.05       rho 0.67 truth L 145.09 dL 9.52 (se 0.13) | true parameters L 144.86 (-0.2%) dL 9.35 (-1.8%)
+  308 STRUCT   spans include the wait false inferred     L 147.72 (+1.8%) dL 8.64 (-9.2% of dL, -0.61% of L)  d, e p0.293, f p0.054
+  308 STRUCT   spans include the wait true  inferred     L 147.72 (+1.8%) dL 8.64 (-9.2% of dL, -0.61% of L)  d, e p0.293, f p0.054

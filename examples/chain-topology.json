@@ -1,0 +1,9 @@
+{
+  "name": "chain",
+  "services": [
+    {"name": "a", "s": 8, "children": ["b"], "servers": 1, "cs2": 1},
+    {"name": "b", "s": 20, "children": ["c"], "servers": 2, "cs2": 1, "hop": 0.3},
+    {"name": "c", "s": 10, "servers": 1, "cs2": 1, "hop": 0.3}
+  ],
+  "entry": {"a": 1}
+}

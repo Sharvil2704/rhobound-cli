@@ -1,0 +1,10 @@
+{
+  "name": "fanout",
+  "services": [
+    {"name": "frontend", "s": 3, "children": ["api", "cache"], "parallel": true, "servers": 4, "cs2": 1},
+    {"name": "api", "s": 20, "children": ["db"], "servers": 2, "workers": 1, "routing": "random", "cs2": 1, "hop": 0.5},
+    {"name": "db", "s": 8, "servers": 1, "cs2": 1, "hop": 0.5},
+    {"name": "cache", "s": 5, "servers": 2, "cs2": 1, "hop": 0.5}
+  ],
+  "entry": {"frontend": 1}
+}

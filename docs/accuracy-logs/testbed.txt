@@ -1,0 +1,139 @@
+# Measured at rhobound-cli 2349b17, Go 1.27.2 linux/arm64, 2026-10-19 UTC. The five 'before' captures of the test bed
+# (a 10-service Python demo shop on a single-node Kubernetes cluster, not published; captured 2026-10-16), read by
+# 'rhobound predict --json' (and --plain) at GOMAXPROCS 2 under a 2500M cap; the after captures read the same way.
+# The comparison with the reference implementation's own inference and verification output (not published) is by a
+# comparison script kept outside the repository. In this copy the test bed's deployment settings (configured
+# replicas, worker counts and service times) are removed from the per-service lines, and the runs are named A/A and
+# run 1 to run 4 as in ACCURACY.md section 8.
+
+rhobound predict --json at 2349b17 on each run's before capture (GOMAXPROCS 2, memory-capped); --plain for the basic model
+level: model entry latency vs the entry span mean in the same capture (the 'seen ms' column)
+LEVEL A/A window 300 s 30191 requests 100.64/s busiest pricing 56.5% | storefront seen 67.74 refined 67.88 (+0.21%) basic 69.14 (+2.07%) | checkout seen 89.65 refined 89.81 (+0.18%) basic 89.82 (+0.19%)
+LEVEL run 1 window 300 s 30191 requests 100.64/s busiest pricing 56.2% | storefront seen 68.29 refined 67.74 (-0.81%) basic 69.19 (+1.32%) | checkout seen 89.90 refined 89.83 (-0.08%) basic 89.84 (-0.07%)
+LEVEL run 2 window 600 s 60066 requests 100.11/s busiest pricing 54.8% | storefront seen 67.49 refined 67.46 (-0.04%) basic 68.80 (+1.93%) | checkout seen 88.81 refined 88.65 (-0.17%) basic 88.66 (-0.16%)
+LEVEL run 3 window 600 s 60665 requests 101.11/s busiest pricing 55.3% | storefront seen 66.85 refined 67.27 (+0.62%) basic 68.60 (+2.61%) | checkout seen 87.57 refined 88.76 (+1.36%) basic 88.77 (+1.36%)
+LEVEL run 4 window 600 s 60066 requests 100.11/s busiest pricing 55.7% | storefront seen 67.79 refined 67.64 (-0.21%) basic 68.93 (+1.69%) | checkout seen 89.14 refined 89.14 (+0.00%) basic 89.15 (+0.01%)
+change: --patch auth=+dS ms, dS = auth's service time read by 2349b17 from the two after captures minus the before capture;
+observed = the entry span mean in the two after captures (weighted by requests) minus the before capture; se from the reference's own verification output
+CHANGE A/A dS +0.001 ms (reference's own-time change -0.00 ± 0.14) | storefront observed -0.19 ± 0.65 refined +0.00 (z +0.3) basic +0.00 (z +0.3) | checkout observed -1.16 ± 1.15 refined +0.00 (z +1.0) basic +0.00 (z +1.0)
+CHANGE run 1 dS +0.351 ms (reference's own-time change 0.36 ± 0.15) | storefront observed -0.27 ± 0.59 refined +0.59 (z +1.5) basic +0.59 (z +1.5) | checkout observed +0.04 ± 1.01 refined +0.59 (z +0.6) basic +0.59 (z +0.6)
+CHANGE run 2 dS +3.052 ms (reference's own-time change 3.06 ± 0.14) | storefront observed +6.00 ± 0.36 refined +6.22 (z +0.6) basic +6.22 (z +0.6) | checkout observed +5.27 ± 0.87 refined +6.22 (z +1.1) basic +6.22 (z +1.1)
+CHANGE run 3 dS +3.087 ms (reference's own-time change 3.09 ± 0.13) | storefront observed +6.74 ± 0.40 refined +6.48 (z -0.7) basic +6.48 (z -0.7) | checkout observed +6.63 ± 0.54 refined +6.48 (z -0.3) basic +6.48 (z -0.3)
+CHANGE run 4 dS +3.837 ms (reference's own-time change 3.83 ± 0.16) | storefront observed +9.16 ± 0.58 refined +8.49 (z -1.2) basic +8.49 (z -1.2) | checkout observed +8.56 ± 0.89 refined +8.49 (z -0.1) basic +8.49 (z -0.1)
+
+## per-service comparison with the reference (the comparison script)
+=== A/A: Go window 300.0 s, 30191 requests, 100.642 rps, broken traces 0; Python window 287.974 s, load 100.558 rps, broken 0
+  storefront rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 1.6160 py 1.6166 (d -0.0006, -0.1 se)  cs2 go 0.375 py 0.376  glue go 0.0415 py 0.0415  rate go 70.091 py 70.013  par go False py False  
+             calls go [('auth', 1.0), ('product', 1.0), ('recommend', 0.3489)] py [('auth', 1.0), ('product', 1.0), ('recommend', 0.3508)] | hops auth py 0.181 go 0.154; product py 0.171 go 0.147; recommend py 0.189 go 0.162
+  checkout   rep go/py 1/1 pooled/pooled  workers go 2+ py 2+  S go 2.5575 py 2.5621 (d -0.0046, -0.3 se)  cs2 go 0.319 py 0.319  glue go 0.0917 py 0.0916  rate go 30.552 py 30.544  par go False py False  
+             calls go [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] py [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] | hops auth py 0.185 go 0.154; cart py 0.188 go 0.157; pricing py 0.178 go 0.155; inventory py 0.179 go 0.157; payments py 0.193 go 0.163
+  auth       rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 9.5699 py 9.5714 (d -0.0015, -0.0 se)  cs2 go 0.442 py 0.442  glue go 0.0000 py 0.0000  rate go 100.642 py 100.561  par go False py False  
+             calls go [] py [] | hops 
+  product    rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 2.0821 py 2.0773 (d +0.0048, +0.5 se)  cs2 go 0.518 py 0.517  glue go 0.0207 py 0.0207  rate go 70.091 py 70.013  par go True py True  
+             calls go [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] py [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] | hops inventory py 0.191 go 0.157; catalog py 0.636 go 0.547; pricing py 0.189 go 0.155
+  recommend  rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 30.4241 py 30.4133 (d +0.0108, +0.0 se)  cs2 go 1.000 py 1.000  glue go 0.0000 py 0.0000  rate go 24.451 py 24.558  par go False py False  
+             calls go [] py [] | hops 
+  cart       rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 9.5990 py 9.5999 (d -0.0009, -0.0 se)  cs2 go 0.866 py 0.861  glue go 0.0000 py 0.0000  rate go 30.552 py 30.544  par go False py False  
+             calls go [] py [] | hops 
+  pricing    rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 16.8371 py 16.8313 (d +0.0058, +0.0 se)  cs2 go 1.861 py 1.860  glue go 0.0000 py 0.0000  rate go 100.642 py 100.547  par go False py False  
+             calls go [] py [] | hops 
+  inventory  rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 14.5036 py 14.5100 (d -0.0064, -0.2 se)  cs2 go 0.231 py 0.231  glue go 0.0000 py 0.0000  rate go 100.642 py 100.551  par go False py False  
+             calls go [] py [] | hops 
+  payments   rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 14.5348 py 14.5187 (d +0.0161, +0.2 se)  cs2 go 0.466 py 0.467  glue go 0.0000 py 0.0000  rate go 30.552 py 30.537  par go False py False  
+             calls go [] py [] | hops 
+  catalog    rep go/py 2/2 random/random  workers go 2 py 2  S go 22.5126 py 22.5060 (d +0.0066, +0.0 se)  cs2 go 1.000 py 1.000  glue go 0.0000 py 0.0000  rate go 70.091 py 70.013  par go False py False  
+             calls go [] py [] | hops 
+  entry checkout   go rate 30.552 py 30.544 | observed mean go 89.652 py 89.6306 ± 0.9249 | model go refined 89.813 (+0.18%) py 89.8814 (+0.28%)
+  entry storefront go rate 70.091 py 70.013 | observed mean go 67.737 py 67.8101 ± 0.5013 | model go refined 67.882 (+0.21%) py 68.3128 (+0.74%)
+=== run 1: Go window 300.0 s, 30191 requests, 100.643 rps, broken traces 0; Python window 287.973 s, load 100.558 rps, broken 0
+  storefront rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 1.6127 py 1.6114 (d +0.0013, +0.2 se)  cs2 go 0.379 py 0.379  glue go 0.0413 py 0.0413  rate go 70.091 py 70.013  par go False py False  
+             calls go [('auth', 1.0), ('product', 1.0), ('recommend', 0.3513)] py [('auth', 1.0), ('product', 1.0), ('recommend', 0.3535)] | hops auth py 0.181 go 0.153; product py 0.172 go 0.147; recommend py 0.192 go 0.164
+  checkout   rep go/py 1/1 pooled/pooled  workers go 2+ py 2+  S go 2.5506 py 2.5539 (d -0.0033, -0.2 se)  cs2 go 0.328 py 0.326  glue go 0.0908 py 0.0909  rate go 30.552 py 30.544  par go False py False  
+             calls go [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] py [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] | hops auth py 0.183 go 0.153; cart py 0.187 go 0.155; pricing py 0.178 go 0.154; inventory py 0.179 go 0.157; payments py 0.190 go 0.161
+  auth       rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 9.6072 py 9.5983 (d +0.0089, +0.2 se)  cs2 go 0.437 py 0.437  glue go 0.0000 py 0.0000  rate go 100.643 py 100.561  par go False py False  
+             calls go [] py [] | hops 
+  product    rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 2.0726 py 2.0789 (d -0.0063, -0.6 se)  cs2 go 0.516 py 0.516  glue go 0.0207 py 0.0207  rate go 70.091 py 70.010  par go True py True  
+             calls go [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] py [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] | hops inventory py 0.192 go 0.157; catalog py 0.638 go 0.547; pricing py 0.188 go 0.154
+  recommend  rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 30.8531 py 30.8758 (d -0.0227, -0.1 se)  cs2 go 1.000 py 1.000  glue go 0.0000 py 0.0000  rate go 24.625 py 24.752  par go False py False  
+             calls go [] py [] | hops 
+  cart       rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 9.4625 py 9.4695 (d -0.0070, -0.1 se)  cs2 go 0.862 py 0.863  glue go 0.0000 py 0.0000  rate go 30.552 py 30.541  par go False py False  
+             calls go [] py [] | hops 
+  pricing    rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 16.7546 py 16.7534 (d +0.0012, +0.0 se)  cs2 go 1.860 py 1.863  glue go 0.0000 py 0.0000  rate go 100.643 py 100.547  par go False py False  
+             calls go [] py [] | hops 
+  inventory  rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 14.6038 py 14.5945 (d +0.0093, +0.2 se)  cs2 go 0.231 py 0.231  glue go 0.0000 py 0.0000  rate go 100.643 py 100.547  par go False py False  
+             calls go [] py [] | hops 
+  payments   rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 14.6803 py 14.6848 (d -0.0045, -0.0 se)  cs2 go 0.455 py 0.455  glue go 0.0000 py 0.0000  rate go 30.552 py 30.538  par go False py False  
+             calls go [] py [] | hops 
+  catalog    rep go/py 2/2 random/random  workers go 2 py 2  S go 22.3642 py 22.3598 (d +0.0044, +0.0 se)  cs2 go 0.931 py 0.936  glue go 0.0000 py 0.0000  rate go 70.091 py 70.010  par go False py False  
+             calls go [] py [] | hops 
+  entry checkout   go rate 30.552 py 30.544 | observed mean go 89.902 py 90.1596 ± 0.7932 | model go refined 89.835 (-0.08%) py 89.9583 (-0.22%)
+  entry storefront go rate 70.091 py 70.013 | observed mean go 68.290 py 68.3692 ± 0.4072 | model go refined 67.739 (-0.81%) py 68.2298 (-0.20%)
+=== run 2: Go window 600.0 s, 60066 requests, 100.113 rps, broken traces 0; Python window 579.97 s, load 100.076 rps, broken 0
+  storefront rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 1.6113 py 1.6109 (d +0.0004, +0.1 se)  cs2 go 0.376 py 0.376  glue go 0.0416 py 0.0416  rate go 70.007 py 70.000  par go False py False  
+             calls go [('auth', 1.0), ('product', 1.0), ('recommend', 0.3492)] py [('auth', 1.0), ('product', 1.0), ('recommend', 0.3488)] | hops auth py 0.182 go 0.155; product py 0.171 go 0.147; recommend py 0.189 go 0.162
+  checkout   rep go/py 1/1 pooled/pooled  workers go 2+ py 2+  S go 2.5578 py 2.5577 (d +0.0001, +0.0 se)  cs2 go 0.321 py 0.321  glue go 0.0917 py 0.0917  rate go 30.106 py 30.076  par go False py False  
+             calls go [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] py [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] | hops auth py 0.186 go 0.155; cart py 0.187 go 0.155; pricing py 0.177 go 0.155; inventory py 0.179 go 0.157; payments py 0.193 go 0.163
+  auth       rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 9.5366 py 9.5298 (d +0.0068, +0.3 se)  cs2 go 0.440 py 0.441  glue go 0.0000 py 0.0000  rate go 100.113 py 100.076  par go False py False  
+             calls go [] py [] | hops 
+  product    rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 2.0729 py 2.0735 (d -0.0006, -0.1 se)  cs2 go 0.521 py 0.520  glue go 0.0204 py 0.0204  rate go 70.007 py 69.993  par go True py True  
+             calls go [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] py [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] | hops inventory py 0.192 go 0.157; catalog py 0.636 go 0.549; pricing py 0.189 go 0.155
+  recommend  rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 30.8199 py 30.8370 (d -0.0171, -0.1 se)  cs2 go 1.000 py 1.000  glue go 0.0000 py 0.0000  rate go 24.444 py 24.422  par go False py False  
+             calls go [] py [] | hops 
+  cart       rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 9.4712 py 9.4776 (d -0.0064, -0.1 se)  cs2 go 0.884 py 0.882  glue go 0.0000 py 0.0000  rate go 30.106 py 30.074  par go False py False  
+             calls go [] py [] | hops 
+  pricing    rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 16.4227 py 16.4243 (d -0.0016, -0.0 se)  cs2 go 1.864 py 1.860  glue go 0.0000 py 0.0000  rate go 100.113 py 100.066  par go False py False  
+             calls go [] py [] | hops 
+  inventory  rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 14.5719 py 14.5742 (d -0.0023, -0.1 se)  cs2 go 0.229 py 0.229  glue go 0.0000 py 0.0000  rate go 100.113 py 100.067  par go False py False  
+             calls go [] py [] | hops 
+  payments   rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 14.7341 py 14.7258 (d +0.0083, +0.1 se)  cs2 go 0.458 py 0.459  glue go 0.0000 py 0.0000  rate go 30.106 py 30.074  par go False py False  
+             calls go [] py [] | hops 
+  catalog    rep go/py 2/2 random/random  workers go 2 py 2  S go 22.7483 py 22.7613 (d -0.0130, -0.1 se)  cs2 go 0.948 py 0.944  glue go 0.0000 py 0.0000  rate go 70.007 py 69.992  par go False py False  
+             calls go [] py [] | hops 
+  entry checkout   go rate 30.106 py 30.076 | observed mean go 88.805 py 88.8582 ± 0.7379 | model go refined 88.653 (-0.17%) py 88.7443 (-0.13%)
+  entry storefront go rate 70.007 py 70.0 | observed mean go 67.491 py 67.4797 ± 0.2942 | model go refined 67.463 (-0.04%) py 67.7489 (+0.40%)
+=== run 3: Go window 600.0 s, 60665 requests, 101.109 rps, broken traces 0; Python window 579.988 s, load 101.161 rps, broken 0
+  storefront rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 1.6121 py 1.6110 (d +0.0011, +0.2 se)  cs2 go 0.380 py 0.381  glue go 0.0405 py 0.0405  rate go 70.755 py 70.753  par go False py False  
+             calls go [('auth', 1.0), ('product', 1.0), ('recommend', 0.349)] py [('auth', 1.0), ('product', 1.0), ('recommend', 0.3496)] | hops auth py 0.177 go 0.151; product py 0.168 go 0.144; recommend py 0.186 go 0.159
+  checkout   rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 2.5618 py 2.5612 (d +0.0006, +0.1 se)  cs2 go 0.325 py 0.326  glue go 0.0899 py 0.0899  rate go 30.353 py 30.408  par go False py False  
+             calls go [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] py [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] | hops auth py 0.182 go 0.151; cart py 0.184 go 0.154; pricing py 0.174 go 0.153; inventory py 0.176 go 0.156; payments py 0.187 go 0.159
+  auth       rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 9.5709 py 9.5695 (d +0.0014, +0.1 se)  cs2 go 0.442 py 0.442  glue go 0.0000 py 0.0000  rate go 101.109 py 101.159  par go False py False  
+             calls go [] py [] | hops 
+  product    rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 2.0672 py 2.0674 (d -0.0002, -0.0 se)  cs2 go 0.520 py 0.519  glue go 0.0205 py 0.0205  rate go 70.755 py 70.752  par go True py True  
+             calls go [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] py [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] | hops inventory py 0.190 go 0.156; catalog py 0.629 go 0.541; pricing py 0.187 go 0.153
+  recommend  rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 30.2708 py 30.3098 (d -0.0390, -0.2 se)  cs2 go 1.000 py 1.000  glue go 0.0000 py 0.0000  rate go 24.695 py 24.733  par go False py False  
+             calls go [] py [] | hops 
+  cart       rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 9.5797 py 9.5907 (d -0.0110, -0.2 se)  cs2 go 0.884 py 0.884  glue go 0.0000 py 0.0000  rate go 30.353 py 30.411  par go False py False  
+             calls go [] py [] | hops 
+  pricing    rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 16.4198 py 16.4247 (d -0.0049, -0.1 se)  cs2 go 1.877 py 1.877  glue go 0.0000 py 0.0000  rate go 101.109 py 101.161  par go False py False  
+             calls go [] py [] | hops 
+  inventory  rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 14.5454 py 14.5443 (d +0.0011, +0.0 se)  cs2 go 0.232 py 0.232  glue go 0.0000 py 0.0000  rate go 101.109 py 101.154  par go False py False  
+             calls go [] py [] | hops 
+  payments   rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 14.5196 py 14.5256 (d -0.0060, -0.1 se)  cs2 go 0.457 py 0.456  glue go 0.0000 py 0.0000  rate go 30.353 py 30.404  par go False py False  
+             calls go [] py [] | hops 
+  catalog    rep go/py 2/2 random/random  workers go 2 py 2  S go 22.5409 py 22.5765 (d -0.0356, -0.3 se)  cs2 go 0.957 py 0.956  glue go 0.0000 py 0.0000  rate go 70.755 py 70.752  par go False py False  
+             calls go [] py [] | hops 
+  entry checkout   go rate 30.353 py 30.408 | observed mean go 87.572 py 87.59 ± 0.4095 | model go refined 88.763 (+1.36%) py 88.9896 (+1.60%)
+  entry storefront go rate 70.755 py 70.753 | observed mean go 66.852 py 66.9757 ± 0.347 | model go refined 67.266 (+0.62%) py 67.7214 (+1.11%)
+=== run 4: Go window 600.0 s, 60066 requests, 100.113 rps, broken traces 0; Python window 579.971 s, load 100.076 rps, broken 0
+  storefront rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 1.6005 py 1.6015 (d -0.0010, -0.2 se)  cs2 go 0.372 py 0.373  glue go 0.0410 py 0.0411  rate go 70.007 py 70.000  par go False py False  
+             calls go [('auth', 1.0), ('product', 1.0), ('recommend', 0.3476)] py [('auth', 1.0), ('product', 1.0), ('recommend', 0.3478)] | hops auth py 0.178 go 0.152; product py 0.170 go 0.146; recommend py 0.188 go 0.162
+  checkout   rep go/py 1/1 pooled/pooled  workers go 2+ py 2+  S go 2.5362 py 2.5390 (d -0.0028, -0.3 se)  cs2 go 0.322 py 0.322  glue go 0.0903 py 0.0903  rate go 30.106 py 30.076  par go False py False  
+             calls go [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] py [('auth', 1.0), ('cart', 1.0), ('pricing', 1.0), ('inventory', 1.0), ('payments', 1.0)] | hops auth py 0.182 go 0.152; cart py 0.186 go 0.156; pricing py 0.175 go 0.154; inventory py 0.179 go 0.157; payments py 0.189 go 0.160
+  auth       rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 9.5583 py 9.5674 (d -0.0091, -0.3 se)  cs2 go 0.441 py 0.441  glue go 0.0000 py 0.0000  rate go 100.113 py 100.076  par go False py False  
+             calls go [] py [] | hops 
+  product    rep go/py 1/1 pooled/pooled  workers go 3+ py 3+  S go 2.0894 py 2.0905 (d -0.0011, -0.1 se)  cs2 go 0.524 py 0.524  glue go 0.0208 py 0.0207  rate go 70.007 py 69.997  par go True py True  
+             calls go [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] py [('inventory', 1.0), ('catalog', 1.0), ('pricing', 1.0)] | hops inventory py 0.191 go 0.157; catalog py 0.633 go 0.545; pricing py 0.188 go 0.154
+  recommend  rep go/py 1/1 pooled/pooled  workers go 2 py 2  S go 30.9140 py 30.9797 (d -0.0657, -0.3 se)  cs2 go 1.000 py 1.000  glue go 0.0000 py 0.0000  rate go 24.337 py 24.344  par go False py False  
+             calls go [] py [] | hops 
+  cart       rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 9.5571 py 9.5588 (d -0.0017, -0.0 se)  cs2 go 0.855 py 0.859  glue go 0.0000 py 0.0000  rate go 30.106 py 30.076  par go False py False  
+             calls go [] py [] | hops 
+  pricing    rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 16.6767 py 16.6759 (d +0.0008, +0.0 se)  cs2 go 1.875 py 1.880  glue go 0.0000 py 0.0000  rate go 100.113 py 100.067  par go False py False  
+             calls go [] py [] | hops 
+  inventory  rep go/py 1/1 pooled/pooled  workers go 3 py 3  S go 14.5914 py 14.5939 (d -0.0025, -0.1 se)  cs2 go 0.229 py 0.229  glue go 0.0000 py 0.0000  rate go 100.113 py 100.069  par go False py False  
+             calls go [] py [] | hops 
+  payments   rep go/py 1/1 pooled/pooled  workers go 1 py 1  S go 14.6170 py 14.6117 (d +0.0053, +0.1 se)  cs2 go 0.461 py 0.461  glue go 0.0000 py 0.0000  rate go 30.106 py 30.077  par go False py False  
+             calls go [] py [] | hops 
+  catalog    rep go/py 2/2 random/random  workers go 2 py 2  S go 22.5174 py 22.5597 (d -0.0423, -0.4 se)  cs2 go 0.943 py 0.941  glue go 0.0000 py 0.0000  rate go 70.007 py 69.991  par go False py False  
+             calls go [] py [] | hops 
+  entry checkout   go rate 30.106 py 30.076 | observed mean go 89.139 py 89.2293 ± 0.6239 | model go refined 89.140 (+0.00%) py 89.2761 (+0.05%)
+  entry storefront go rate 70.007 py 70.0 | observed mean go 67.787 py 67.9454 ± 0.4214 | model go refined 67.644 (-0.21%) py 68.0368 (+0.13%)

@@ -1,0 +1,5 @@
+rhobound-cli
+Copyright 2026 The rhobound-cli authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+It contains no third-party code: the Go standard library is its only dependency.

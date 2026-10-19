@@ -1,0 +1,674 @@
+{
+ "generator": "the reference implementation (an unpublished Python prototype): stage template",
+ "cases": [
+  {
+   "name": "sock-shop",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "address",
+       "card",
+       "customer",
+       "items"
+      ],
+      [
+       "payment"
+      ],
+      [
+       "shipping"
+      ]
+     ],
+     "visits": 890
+    },
+    {
+     "stages": [
+      [
+       "address",
+       "card",
+       "customer",
+       "items"
+      ],
+      [
+       "payment"
+      ]
+     ],
+     "visits": 110
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "address",
+      "card",
+      "customer",
+      "items"
+     ],
+     [
+      "payment"
+     ],
+     [
+      "shipping"
+     ]
+    ],
+    "ran": [
+     1.0,
+     1.0,
+     0.89
+    ],
+    "fit": 1.0
+   }
+  },
+  {
+   "name": "split-first-stage",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b",
+       "c"
+      ],
+      [
+       "d"
+      ]
+     ],
+     "visits": 800
+    },
+    {
+     "stages": [
+      [
+       "b"
+      ],
+      [
+       "c"
+      ],
+      [
+       "d"
+      ]
+     ],
+     "visits": 150
+    },
+    {
+     "stages": [
+      [
+       "c"
+      ],
+      [
+       "b"
+      ],
+      [
+       "d"
+      ]
+     ],
+     "visits": 50
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b",
+      "c"
+     ],
+     [
+      "d"
+     ]
+    ],
+    "ran": [
+     1.0,
+     1.0
+    ],
+    "fit": 1.0
+   }
+  },
+  {
+   "name": "parallel",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b",
+       "c"
+      ]
+     ],
+     "visits": 900
+    },
+    {
+     "stages": [
+      [
+       "b"
+      ],
+      [
+       "c"
+      ]
+     ],
+     "visits": 100
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b",
+      "c"
+     ]
+    ],
+    "ran": [
+     1.0
+    ],
+    "fit": 1.0
+   }
+  },
+  {
+   "name": "sequential",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b"
+      ],
+      [
+       "c"
+      ]
+     ],
+     "visits": 1000
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b"
+     ],
+     [
+      "c"
+     ]
+    ],
+    "ran": [
+     1.0,
+     1.0
+    ],
+    "fit": 1.0
+   }
+  },
+  {
+   "name": "half-overlap",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b",
+       "c"
+      ]
+     ],
+     "visits": 500
+    },
+    {
+     "stages": [
+      [
+       "b"
+      ],
+      [
+       "c"
+      ]
+     ],
+     "visits": 500
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b",
+      "c"
+     ]
+    ],
+    "ran": [
+     1.0
+    ],
+    "fit": 1.0
+   }
+  },
+  {
+   "name": "conditional-parallel",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b",
+       "c",
+       "d"
+      ]
+     ],
+     "visits": 600
+    },
+    {
+     "stages": [
+      [
+       "b",
+       "c"
+      ]
+     ],
+     "visits": 400
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b",
+      "c",
+      "d"
+     ]
+    ],
+    "ran": [
+     1.0
+    ],
+    "fit": 0.6
+   }
+  },
+  {
+   "name": "no-call-visits",
+   "shapes": [
+    {
+     "stages": [],
+     "visits": 300
+    },
+    {
+     "stages": [
+      [
+       "b",
+       "c"
+      ],
+      [
+       "d"
+      ]
+     ],
+     "visits": 700
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b",
+      "c"
+     ],
+     [
+      "d"
+     ]
+    ],
+    "ran": [
+     0.7,
+     0.7
+    ],
+    "fit": 1.0
+   }
+  },
+  {
+   "name": "repeated",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "carts",
+       "user",
+       "user",
+       "user"
+      ],
+      [
+       "payment"
+      ]
+     ],
+     "visits": 1000
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "carts",
+      "user",
+      "user",
+      "user"
+     ],
+     [
+      "payment"
+     ]
+    ],
+    "ran": [
+     1.0,
+     1.0
+    ],
+    "fit": 1.0
+   }
+  },
+  {
+   "name": "stage-left-out",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b",
+       "c"
+      ],
+      [
+       "d"
+      ],
+      [
+       "e",
+       "f"
+      ]
+     ],
+     "visits": 500
+    },
+    {
+     "stages": [
+      [
+       "b",
+       "c"
+      ],
+      [
+       "e",
+       "f"
+      ]
+     ],
+     "visits": 300
+    },
+    {
+     "stages": [
+      [
+       "d"
+      ],
+      [
+       "e",
+       "f"
+      ]
+     ],
+     "visits": 200
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b",
+      "c"
+     ],
+     [
+      "d"
+     ],
+     [
+      "e",
+      "f"
+     ]
+    ],
+    "ran": [
+     0.8,
+     0.7,
+     1.0
+    ],
+    "fit": 1.0
+   }
+  },
+  {
+   "name": "below-fit",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b",
+       "c"
+      ],
+      [
+       "d"
+      ]
+     ],
+     "visits": 940
+    },
+    {
+     "stages": [
+      [
+       "d"
+      ],
+      [
+       "b",
+       "c"
+      ]
+     ],
+     "visits": 60
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b",
+      "c"
+     ],
+     [
+      "d"
+     ]
+    ],
+    "ran": [
+     1.0,
+     1.0
+    ],
+    "fit": 0.94
+   }
+  },
+  {
+   "name": "many-shapes",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b",
+       "c"
+      ],
+      [
+       "d"
+      ]
+     ],
+     "visits": 300
+    },
+    {
+     "stages": [
+      [
+       "x0"
+      ]
+     ],
+     "visits": 100
+    },
+    {
+     "stages": [
+      [
+       "x1"
+      ]
+     ],
+     "visits": 99
+    },
+    {
+     "stages": [
+      [
+       "x2"
+      ]
+     ],
+     "visits": 98
+    },
+    {
+     "stages": [
+      [
+       "x3"
+      ]
+     ],
+     "visits": 97
+    },
+    {
+     "stages": [
+      [
+       "x4"
+      ]
+     ],
+     "visits": 96
+    },
+    {
+     "stages": [
+      [
+       "x5"
+      ]
+     ],
+     "visits": 95
+    },
+    {
+     "stages": [
+      [
+       "x6"
+      ]
+     ],
+     "visits": 94
+    },
+    {
+     "stages": [
+      [
+       "x7"
+      ]
+     ],
+     "visits": 93
+    },
+    {
+     "stages": [
+      [
+       "x8"
+      ]
+     ],
+     "visits": 92
+    },
+    {
+     "stages": [
+      [
+       "x9"
+      ]
+     ],
+     "visits": 91
+    }
+   ],
+   "nsp": 1255,
+   "expected": {
+    "stages": [
+     [
+      "b",
+      "c"
+     ],
+     [
+      "d"
+     ]
+    ],
+    "ran": [
+     1.0,
+     1.0
+    ],
+    "fit": 0.23904382470119523
+   }
+  },
+  {
+   "name": "repeat-split",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b"
+      ],
+      [
+       "b",
+       "c"
+      ]
+     ],
+     "visits": 600
+    },
+    {
+     "stages": [
+      [
+       "b"
+      ],
+      [
+       "b"
+      ],
+      [
+       "c"
+      ]
+     ],
+     "visits": 400
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b"
+     ],
+     [
+      "b",
+      "c"
+     ]
+    ],
+    "ran": [
+     1.0,
+     1.0
+    ],
+    "fit": 1.0
+   }
+  },
+  {
+   "name": "skip-then-fit",
+   "shapes": [
+    {
+     "stages": [
+      [
+       "b"
+      ],
+      [
+       "b"
+      ],
+      [
+       "c"
+      ]
+     ],
+     "visits": 700
+    },
+    {
+     "stages": [
+      [
+       "b"
+      ],
+      [
+       "c"
+      ]
+     ],
+     "visits": 300
+    }
+   ],
+   "nsp": 1000,
+   "expected": {
+    "stages": [
+     [
+      "b"
+     ],
+     [
+      "b"
+     ],
+     [
+      "c"
+     ]
+    ],
+    "ran": [
+     1.0,
+     0.7,
+     1.0
+    ],
+    "fit": 1.0
+   }
+  }
+ ]
+}

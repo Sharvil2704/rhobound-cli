@@ -1,0 +1,228 @@
+# Measured at rhobound-cli 2349b17 (the commit before the docs commit), Go 1.27.2 linux/arm64, 8-core box,
+# GOMAXPROCS=3 under a 2500M memory cap, ACC_TRUTH_REPS 64 (the default), 2026-10-19 UTC.
+# Pooled over seeds 301-308 from the TestEndToEndAB ROW / ROWTRUE / PAR lines and the TestEndToEndAccuracy
+# summary lines (a pooling script, kept outside the repository). median = y[n/2], p90 = y[int(0.9 (n - 1))] (the harness's order statistics).
+# z in ROW lines is printed to 0.01, so a row at |z| = 3.00 can fall either side of the harness's |z| > 3.
+ROW lines 3072, ROWTRUE lines 768, PAR lines 4600, SKIP/UNSCORED lines 0
+
+== 1. TestEndToEndAccuracy ALL (30 holdout + 6 fan-out rows), per seed
+  301 default refined level  1.9 /  6.3 /  9.4   change  6.6 / 18.3 / 34.0   change error as % of latency 0.64 / 2.03 / 4.73  |z|>3: level  2.8% change 25.0% (n=36)
+  302 default refined level  1.8 /  5.6 /  9.4   change  4.7 / 14.0 / 35.5   change error as % of latency 0.49 / 2.00 / 3.37  |z|>3: level  0.0% change 25.0% (n=36)
+  303 default refined level  2.6 /  4.8 /  9.1   change  6.1 / 12.7 / 33.0   change error as % of latency 0.37 / 2.34 / 3.09  |z|>3: level  2.8% change 13.9% (n=36)
+  304 default refined level  1.7 /  3.6 / 10.7   change  4.9 / 15.2 / 20.7   change error as % of latency 0.15 / 0.96 / 3.55  |z|>3: level  2.8% change 19.4% (n=36)
+  305 default refined level  2.1 /  5.1 / 12.5   change  4.9 / 12.5 / 16.8   change error as % of latency 0.31 / 2.00 / 2.59  |z|>3: level  2.8% change 25.0% (n=36)
+  306 default refined level  2.4 /  4.9 /  9.8   change  7.6 / 17.6 / 27.4   change error as % of latency 0.58 / 2.40 / 7.52  |z|>3: level  2.8% change 19.4% (n=36)
+  307 default refined level  2.7 /  8.7 / 12.2   change  6.2 / 16.8 / 21.6   change error as % of latency 0.67 / 2.10 / 6.38  |z|>3: level 11.1% change 19.4% (n=36)
+  308 default refined level  2.1 /  4.2 /  8.1   change  5.3 / 12.0 / 18.7   change error as % of latency 0.45 / 2.30 / 3.56  |z|>3: level  0.0% change  8.3% (n=36)
+  301 default basic   level  2.9 /  7.8 / 19.6   change 13.7 / 23.9 / 41.2   change error as % of latency 0.91 / 2.17 / 5.26  |z|>3: level 11.1% change 38.9% (n=36)
+  302 default basic   level  3.0 /  8.3 / 22.7   change  9.4 / 23.2 / 32.4   change error as % of latency 0.66 / 2.60 / 3.04  |z|>3: level 16.7% change 38.9% (n=36)
+  303 default basic   level  3.3 / 10.1 / 18.0   change  9.1 / 18.6 / 49.7   change error as % of latency 1.05 / 2.05 / 2.99  |z|>3: level 22.2% change 36.1% (n=36)
+  304 default basic   level  2.3 /  9.5 / 26.6   change 11.9 / 25.9 / 39.3   change error as % of latency 0.39 / 1.50 / 3.79  |z|>3: level 13.9% change 58.3% (n=36)
+  305 default basic   level  3.9 / 10.5 / 27.1   change  7.8 / 21.0 / 24.9   change error as % of latency 0.37 / 1.96 / 3.32  |z|>3: level 13.9% change 41.7% (n=36)
+  306 default basic   level  3.2 / 11.0 / 19.3   change  9.4 / 25.2 / 43.6   change error as % of latency 0.79 / 2.50 / 7.08  |z|>3: level 11.1% change 33.3% (n=36)
+  307 default basic   level  3.3 / 10.4 / 29.7   change  8.4 / 23.1 / 30.2   change error as % of latency 0.67 / 2.76 / 5.25  |z|>3: level 13.9% change 30.6% (n=36)
+  308 default basic   level  3.3 / 10.6 / 27.1   change  6.0 / 20.9 / 27.0   change error as % of latency 0.59 / 1.85 / 4.09  |z|>3: level 22.2% change 25.0% (n=36)
+  301 spanq   refined level  1.9 /  6.3 /  9.4   change  6.6 / 18.3 / 34.0   change error as % of latency 0.64 / 2.03 / 4.73  |z|>3: level  2.8% change 25.0% (n=36)
+  302 spanq   refined level  1.8 /  5.6 /  9.4   change  4.7 / 14.0 / 35.5   change error as % of latency 0.49 / 2.00 / 3.37  |z|>3: level  0.0% change 25.0% (n=36)
+  303 spanq   refined level  2.6 /  4.8 /  9.1   change  6.1 / 12.7 / 33.0   change error as % of latency 0.37 / 2.32 / 3.09  |z|>3: level  2.8% change 13.9% (n=36)
+  304 spanq   refined level  1.7 /  3.6 / 10.7   change  4.9 / 15.2 / 20.7   change error as % of latency 0.15 / 0.96 / 3.54  |z|>3: level  2.8% change 19.4% (n=36)
+  305 spanq   refined level  2.1 /  5.1 / 12.5   change  4.9 / 12.5 / 16.8   change error as % of latency 0.31 / 2.00 / 2.59  |z|>3: level  2.8% change 25.0% (n=36)
+  306 spanq   refined level  2.4 /  4.9 /  9.8   change  7.7 / 17.6 / 27.4   change error as % of latency 0.58 / 2.41 / 7.52  |z|>3: level  2.8% change 19.4% (n=36)
+  307 spanq   refined level  2.7 /  8.7 / 12.2   change  6.2 / 16.8 / 21.6   change error as % of latency 0.67 / 2.10 / 6.38  |z|>3: level 11.1% change 19.4% (n=36)
+  308 spanq   refined level  2.1 /  4.2 /  8.1   change  5.3 / 12.0 / 18.7   change error as % of latency 0.45 / 2.29 / 3.56  |z|>3: level  0.0% change  8.3% (n=36)
+  301 spanq   basic   level  2.9 /  7.7 / 19.6   change 13.7 / 23.9 / 41.2   change error as % of latency 0.91 / 2.17 / 5.26  |z|>3: level 11.1% change 38.9% (n=36)
+  302 spanq   basic   level  3.1 /  8.3 / 22.7   change  9.4 / 23.2 / 32.4   change error as % of latency 0.66 / 2.60 / 3.04  |z|>3: level 16.7% change 38.9% (n=36)
+  303 spanq   basic   level  3.4 / 10.1 / 18.0   change  9.1 / 18.6 / 49.8   change error as % of latency 1.05 / 2.03 / 2.99  |z|>3: level 22.2% change 36.1% (n=36)
+  304 spanq   basic   level  2.3 /  9.5 / 26.6   change 11.9 / 26.0 / 39.3   change error as % of latency 0.39 / 1.50 / 3.79  |z|>3: level 13.9% change 58.3% (n=36)
+  305 spanq   basic   level  3.9 / 10.5 / 27.1   change  7.8 / 21.0 / 25.0   change error as % of latency 0.37 / 1.95 / 3.32  |z|>3: level 13.9% change 41.7% (n=36)
+  306 spanq   basic   level  3.2 / 11.0 / 19.3   change  9.4 / 25.2 / 43.6   change error as % of latency 0.79 / 2.54 / 7.08  |z|>3: level 11.1% change 33.3% (n=36)
+  307 spanq   basic   level  3.3 / 10.4 / 29.7   change  8.4 / 23.1 / 30.2   change error as % of latency 0.67 / 2.76 / 5.25  |z|>3: level 13.9% change 30.6% (n=36)
+  308 spanq   basic   level  3.3 / 10.6 / 27.1   change  6.0 / 21.0 / 27.0   change error as % of latency 0.59 / 1.85 / 4.09  |z|>3: level 22.2% change 25.0% (n=36)
+
+  ranges over the 8 seeds (min-max of each statistic): level med / p90 / max | change % of change med / p90 / max | change % of latency med / p90 / max | |z|>3 level / change %
+  RANGE default basic   level 2.3-3.9 / 7.8-11.0 / 18.0-29.7 | change 6.0-13.7 / 18.6-25.9 / 24.9-49.7 | % lat 0.37-1.05 / 1.50-2.76 / 2.99-7.08 | z>3 11.1-22.2 / 25.0-58.3
+  RANGE default refined level 1.7-2.7 / 3.6-8.7 / 8.1-12.5 | change 4.7-7.6 / 12.0-18.3 / 16.8-35.5 | % lat 0.15-0.67 / 0.96-2.40 / 2.59-7.52 | z>3 0.0-11.1 / 8.3-25.0
+  RANGE spanq   basic   level 2.3-3.9 / 7.7-11.0 / 18.0-29.7 | change 6.0-13.7 / 18.6-26.0 / 25.0-49.8 | % lat 0.37-1.05 / 1.50-2.76 / 2.99-7.08 | z>3 11.1-22.2 / 25.0-58.3
+  RANGE spanq   refined level 1.7-2.7 / 3.6-8.7 / 8.1-12.5 | change 4.7-7.7 / 12.0-18.3 / 16.8-35.5 | % lat 0.15-0.67 / 0.96-2.41 / 2.59-7.52 | z>3 0.0-11.1 / 8.3-25.0
+
+== 1b. TestEndToEndAccuracy ALL struct (12 rows: glue, staged, conditional, uneven; each kind in both span modes), per seed (default-mode run)
+  301 refined level  1.1 /  1.9 /  5.6   change  4.3 /  9.3 / 16.1   change error as % of latency 0.26 / 0.55 / 1.13  |z|>3: level  0.0% change 16.7% (n=12)
+  302 refined level  1.4 /  4.0 /  4.7   change  3.0 /  8.7 / 15.8   change error as % of latency 0.07 / 0.27 / 0.37  |z|>3: level  8.3% change 16.7% (n=12)
+  303 refined level  2.5 /  4.0 /  8.9   change  7.6 / 16.6 / 39.1   change error as % of latency 0.53 / 0.78 / 4.61  |z|>3: level  0.0% change 16.7% (n=12)
+  304 refined level  1.8 /  2.8 /  5.7   change  3.7 /  8.6 / 16.3   change error as % of latency 0.16 / 0.87 / 1.94  |z|>3: level  0.0% change  8.3% (n=12)
+  305 refined level  2.6 /  4.3 / 10.4   change  3.6 / 10.1 / 71.1   change error as % of latency 0.28 / 0.43 / 1.05  |z|>3: level  8.3% change 25.0% (n=12)
+  306 refined level  2.8 /  7.2 /  8.0   change  8.2 / 20.9 / 79.9   change error as % of latency 0.13 / 0.81 / 2.70  |z|>3: level  8.3% change 41.7% (n=12)
+  307 refined level  4.3 /  9.0 /  9.4   change  7.5 / 11.0 / 15.8   change error as % of latency 0.27 / 1.16 / 2.05  |z|>3: level  8.3% change 16.7% (n=12)
+  308 refined level  2.6 /  3.8 /  5.5   change  6.9 / 17.9 / 57.6   change error as % of latency 0.16 / 0.72 / 2.71  |z|>3: level  0.0% change 33.3% (n=12)
+  301 basic   level  2.2 /  4.2 /  5.7   change  6.8 / 15.0 / 17.1   change error as % of latency 0.33 / 0.89 / 1.58  |z|>3: level 16.7% change 33.3% (n=12)
+  302 basic   level  2.5 /  3.7 /  6.8   change  7.9 / 28.9 / 31.8   change error as % of latency 0.15 / 0.88 / 1.26  |z|>3: level  0.0% change 41.7% (n=12)
+  303 basic   level  2.6 /  4.0 /  9.0   change 14.8 / 17.3 / 76.8   change error as % of latency 0.54 / 1.07 / 4.71  |z|>3: level  0.0% change 25.0% (n=12)
+  304 basic   level  1.4 /  3.6 /  6.1   change  9.0 / 14.6 / 33.8   change error as % of latency 0.31 / 0.67 / 2.11  |z|>3: level  0.0% change 33.3% (n=12)
+  305 basic   level  2.3 /  5.1 / 10.5   change 12.8 / 18.0 / 92.6   change error as % of latency 0.37 / 0.49 / 1.20  |z|>3: level  0.0% change 33.3% (n=12)
+  306 basic   level  2.4 /  5.7 /  9.2   change 20.8 / 31.0 / 80.5   change error as % of latency 0.77 / 2.20 / 2.90  |z|>3: level  8.3% change 58.3% (n=12)
+  307 basic   level  2.5 /  9.4 / 12.8   change  9.3 / 17.1 / 23.5   change error as % of latency 0.25 / 1.59 / 3.62  |z|>3: level 16.7% change 41.7% (n=12)
+  308 basic   level  2.6 /  4.6 /  5.7   change 20.4 / 24.3 / 77.3   change error as % of latency 0.54 / 0.99 / 2.84  |z|>3: level  0.0% change 58.3% (n=12)
+
+== 2. cross-check: TestEndToEndAB fifo ROW lines (rows 0-35) recomputed vs TestEndToEndAccuracy's ALL line
+  DIFF spanq 302 basic: max |stat diff| 0.000, z share diff 2.80
+    mine level  3.1 /  8.3 / 22.7   change  9.4 / 23.2 / 32.4   change % of latency 0.66 / 2.60 / 3.04  |z|>3: level 13.9% change 38.9% (n=36)
+    ref  level  3.1 /  8.3 / 22.7   change  9.4 / 23.2 / 32.4   change error as % of latency 0.66 / 2.60 / 3.04  |z|>3: level 16.7% change 38.9% (n=36)
+  1 mismatches over 32 seed/mode/model lines (tolerance: 0.05 in the printed precision; z share exact)
+  DIFF struct 306 basic: 0.100
+    mine level  2.4 /  5.7 /  9.2   change 20.8 / 31.1 / 80.5   change % of latency 0.77 / 2.20 / 2.90  |z|>3: level  8.3% change 58.3% (n=12)
+    ref  level  2.4 /  5.7 /  9.2   change 20.8 / 31.0 / 80.5   change error as % of latency 0.77 / 2.20 / 2.90  |z|>3: level  8.3% change 58.3% (n=12)
+  structure rows in their own span mode: 1 mismatches over 16 lines
+
+== 3. pooled over seeds 301-308, the default estimator (queue rebuild); structure rows in their own span mode
+  POOL default basic   ALL                level  3.0 / 10.5 / 29.7   change  9.1 / 24.2 / 49.7   change % of latency 0.60 / 2.55 / 7.08  |z|>3: level 15.6% change 37.8% (n=288)
+  POOL default basic   fanout             level 10.4 / 22.7 / 29.7   change  5.7 / 17.8 / 41.2   change % of latency 1.18 / 2.99 / 7.08  |z|>3: level 60.4% change  4.2% (n=48)
+  POOL default basic   holdout            level  2.6 /  7.3 / 12.5   change  9.8 / 24.4 / 49.7   change % of latency 0.52 / 2.05 / 6.81  |z|>3: level  6.7% change 44.6% (n=240)
+  POOL default refined ALL                level  2.0 /  5.9 / 12.5   change  5.6 / 16.3 / 35.5   change % of latency 0.42 / 2.27 / 7.52  |z|>3: level  3.1% change 19.4% (n=288)
+  POOL default refined fanout             level  2.4 /  6.0 /  9.4   change  5.4 / 18.7 / 34.0   change % of latency 0.96 / 2.87 / 7.52  |z|>3: level  8.3% change  8.3% (n=48)
+  POOL default refined holdout            level  1.9 /  5.6 / 12.5   change  5.9 / 16.2 / 35.5   change % of latency 0.29 / 2.01 / 5.96  |z|>3: level  2.1% change 21.7% (n=240)
+  POOL own     basic   ALL struct         level  2.3 /  6.1 / 12.8   change 10.5 / 29.0 / 92.6   change % of latency 0.37 / 1.42 / 4.71  |z|>3: level  5.2% change 40.6% (n=96)
+  POOL own     basic   struct-conditional level  2.4 /  4.7 / 10.5   change  7.8 / 20.8 / 31.8   change % of latency 0.21 / 0.89 / 2.11  |z|>3: level  0.0% change 37.5% (n=24)
+  POOL own     basic   struct-glue        level  2.6 /  5.1 /  9.4   change  9.3 / 24.3 / 43.3   change % of latency 0.33 / 0.57 / 1.58  |z|>3: level  4.2% change 45.8% (n=24)
+  POOL own     basic   struct-staged      level  2.3 /  5.7 /  9.6   change 18.7 / 76.8 / 92.6   change % of latency 0.37 / 1.21 / 2.42  |z|>3: level 12.5% change 62.5% (n=24)
+  POOL own     basic   struct-uneven      level  1.1 /  6.8 / 12.8   change  7.3 / 18.7 / 28.9   change % of latency 0.67 / 2.83 / 4.71  |z|>3: level  4.2% change 16.7% (n=24)
+  POOL own     refined ALL struct         level  2.0 /  6.5 / 10.4   change  4.7 / 16.6 / 79.9   change % of latency 0.17 / 1.05 / 4.61  |z|>3: level  4.2% change 21.9% (n=96)
+  POOL own     refined struct-conditional level  2.5 /  5.6 / 10.4   change  6.9 / 14.0 / 17.1   change % of latency 0.15 / 0.78 / 1.94  |z|>3: level  0.0% change 16.7% (n=24)
+  POOL own     refined struct-glue        level  1.9 /  4.3 /  9.3   change  3.6 /  8.7 / 16.3   change % of latency 0.13 / 0.31 / 0.71  |z|>3: level  8.3% change 25.0% (n=24)
+  POOL own     refined struct-staged      level  2.8 /  7.2 /  9.0   change 10.4 / 39.1 / 79.9   change % of latency 0.27 / 0.87 / 2.24  |z|>3: level  8.3% change 45.8% (n=24)
+  POOL own     refined struct-uneven      level  1.4 /  5.8 /  8.8   change  4.2 / 10.9 / 17.9   change % of latency 0.43 / 2.05 / 4.61  |z|>3: level  0.0% change  0.0% (n=24)
+  POOL spanq   basic   ALL                level  3.1 / 10.5 / 29.7   change  9.1 / 24.2 / 49.8   change % of latency 0.60 / 2.55 / 7.08  |z|>3: level 15.3% change 37.8% (n=288)
+  POOL spanq   basic   fanout             level 10.4 / 22.7 / 29.7   change  5.7 / 17.8 / 41.2   change % of latency 1.18 / 2.99 / 7.08  |z|>3: level 60.4% change  4.2% (n=48)
+  POOL spanq   basic   holdout            level  2.6 /  7.3 / 12.5   change  9.8 / 24.4 / 49.8   change % of latency 0.52 / 2.03 / 6.81  |z|>3: level  6.2% change 44.6% (n=240)
+  POOL spanq   refined ALL                level  2.0 /  5.9 / 12.5   change  5.6 / 16.3 / 35.5   change % of latency 0.42 / 2.26 / 7.52  |z|>3: level  3.1% change 19.4% (n=288)
+  POOL spanq   refined fanout             level  2.4 /  6.0 /  9.4   change  5.4 / 18.7 / 34.0   change % of latency 0.96 / 2.87 / 7.52  |z|>3: level  8.3% change  8.3% (n=48)
+  POOL spanq   refined holdout            level  1.9 /  5.6 / 12.5   change  5.9 / 16.2 / 35.5   change % of latency 0.29 / 2.01 / 5.96  |z|>3: level  2.1% change 21.7% (n=240)
+
+  structure rows in each span mode (AB runs both modes on every structure row)
+  POOLSTRUCT default basic   ALL struct         level  2.3 /  6.1 / 12.8   change 10.5 / 29.0 / 92.6   change % of latency 0.37 / 1.42 / 4.71  |z|>3: level  5.2% change 40.6% (n=96)
+  POOLSTRUCT default basic   struct-conditional level  2.4 /  4.7 / 10.5   change  7.8 / 20.8 / 31.8   change % of latency 0.21 / 0.89 / 2.11  |z|>3: level  0.0% change 37.5% (n=24)
+  POOLSTRUCT default basic   struct-glue        level  2.6 /  5.1 /  9.4   change  9.3 / 24.3 / 43.3   change % of latency 0.33 / 0.57 / 1.58  |z|>3: level  4.2% change 45.8% (n=24)
+  POOLSTRUCT default basic   struct-staged      level  2.3 /  5.7 /  9.6   change 18.7 / 76.8 / 92.6   change % of latency 0.37 / 1.21 / 2.42  |z|>3: level 12.5% change 62.5% (n=24)
+  POOLSTRUCT default basic   struct-uneven      level  1.1 /  6.8 / 12.8   change  7.3 / 18.7 / 28.9   change % of latency 0.67 / 2.83 / 4.71  |z|>3: level  4.2% change 16.7% (n=24)
+  POOLSTRUCT default refined ALL struct         level  2.0 /  6.5 / 10.4   change  4.7 / 16.6 / 79.9   change % of latency 0.17 / 1.05 / 4.61  |z|>3: level  4.2% change 21.9% (n=96)
+  POOLSTRUCT default refined struct-conditional level  2.5 /  5.6 / 10.4   change  6.9 / 14.0 / 17.1   change % of latency 0.15 / 0.78 / 1.94  |z|>3: level  0.0% change 16.7% (n=24)
+  POOLSTRUCT default refined struct-glue        level  1.9 /  4.3 /  9.4   change  3.6 /  8.7 / 16.3   change % of latency 0.13 / 0.31 / 0.71  |z|>3: level  8.3% change 25.0% (n=24)
+  POOLSTRUCT default refined struct-staged      level  2.8 /  7.2 /  9.0   change 10.4 / 39.1 / 79.9   change % of latency 0.26 / 0.87 / 2.24  |z|>3: level  8.3% change 45.8% (n=24)
+  POOLSTRUCT default refined struct-uneven      level  1.4 /  5.8 /  8.8   change  4.2 / 10.9 / 17.9   change % of latency 0.43 / 2.05 / 4.61  |z|>3: level  0.0% change  0.0% (n=24)
+  POOLSTRUCT spanq   basic   ALL struct         level  2.3 /  6.0 / 12.6   change 10.5 / 29.0 / 92.6   change % of latency 0.37 / 1.40 / 4.71  |z|>3: level  5.2% change 40.6% (n=96)
+  POOLSTRUCT spanq   basic   struct-conditional level  2.4 /  4.7 / 10.5   change  7.8 / 20.8 / 31.8   change % of latency 0.21 / 0.89 / 2.11  |z|>3: level  0.0% change 37.5% (n=24)
+  POOLSTRUCT spanq   basic   struct-glue        level  2.6 /  5.0 /  9.4   change  9.3 / 24.3 / 43.3   change % of latency 0.33 / 0.57 / 1.58  |z|>3: level  4.2% change 45.8% (n=24)
+  POOLSTRUCT spanq   basic   struct-staged      level  2.3 /  5.7 /  9.7   change 18.7 / 76.8 / 92.6   change % of latency 0.37 / 1.21 / 2.42  |z|>3: level 12.5% change 62.5% (n=24)
+  POOLSTRUCT spanq   basic   struct-uneven      level  1.1 /  6.8 / 12.6   change  7.3 / 18.7 / 28.9   change % of latency 0.67 / 2.83 / 4.71  |z|>3: level  4.2% change 16.7% (n=24)
+  POOLSTRUCT spanq   refined ALL struct         level  2.0 /  6.5 / 10.4   change  4.7 / 16.6 / 79.9   change % of latency 0.18 / 1.05 / 4.61  |z|>3: level  4.2% change 21.9% (n=96)
+  POOLSTRUCT spanq   refined struct-conditional level  2.5 /  5.6 / 10.4   change  6.9 / 14.0 / 17.2   change % of latency 0.15 / 0.78 / 1.94  |z|>3: level  0.0% change 16.7% (n=24)
+  POOLSTRUCT spanq   refined struct-glue        level  1.9 /  4.3 /  9.3   change  3.6 /  8.7 / 16.3   change % of latency 0.13 / 0.31 / 0.70  |z|>3: level  8.3% change 25.0% (n=24)
+  POOLSTRUCT spanq   refined struct-staged      level  2.8 /  7.2 /  9.0   change 10.4 / 39.1 / 79.9   change % of latency 0.27 / 0.87 / 2.24  |z|>3: level  8.3% change 45.8% (n=24)
+  POOLSTRUCT spanq   refined struct-uneven      level  1.4 /  5.8 /  8.8   change  4.2 / 10.9 / 17.9   change % of latency 0.43 / 2.05 / 4.61  |z|>3: level  0.0% change  0.0% (n=24)
+
+== 4. the model with the TRUE parameters on the same rows (ROWTRUE; z against the truth's standard error only)
+  TRUE basic   ALL                level  1.7 /  9.2 / 27.6   change  6.5 / 22.3 / 46.2   change % of latency 0.37 / 1.27 / 4.16  |z|>3: level 52.8% change 60.1% (n=288)
+  TRUE basic   ALL struct         level  1.1 /  4.0 / 10.0   change  7.1 / 25.1 / 85.9   change % of latency 0.30 / 0.76 / 2.60  |z|>3: level 42.7% change 64.6% (n=96)
+  TRUE basic   fanout             level 10.0 / 26.1 / 27.6   change  3.3 /  9.5 / 14.6   change % of latency 0.72 / 1.38 / 1.89  |z|>3: level 89.6% change 41.7% (n=48)
+  TRUE basic   holdout            level  1.2 /  5.1 / 11.5   change  7.4 / 24.0 / 46.2   change % of latency 0.34 / 1.14 / 4.16  |z|>3: level 45.4% change 63.8% (n=240)
+  TRUE basic   struct-conditional level  1.0 /  2.3 /  3.2   change  6.1 / 21.8 / 24.5   change % of latency 0.16 / 0.45 / 0.56  |z|>3: level 25.0% change 58.3% (n=24)
+  TRUE basic   struct-glue        level  1.9 /  4.0 /  5.2   change 11.3 / 24.5 / 45.1   change % of latency 0.40 / 0.74 / 1.83  |z|>3: level 66.7% change 87.5% (n=24)
+  TRUE basic   struct-staged      level  2.0 /  4.5 /  5.1   change 14.6 / 75.7 / 85.9   change % of latency 0.39 / 0.77 / 2.09  |z|>3: level 54.2% change 79.2% (n=24)
+  TRUE basic   struct-uneven      level  0.6 /  1.9 / 10.0   change  5.5 / 16.5 / 25.1   change % of latency 0.35 / 0.80 / 2.60  |z|>3: level 25.0% change 33.3% (n=24)
+  TRUE refined ALL                level  1.0 /  3.0 /  7.1   change  3.3 / 11.1 / 38.4   change % of latency 0.26 / 0.86 / 2.40  |z|>3: level 38.9% change 45.5% (n=288)
+  TRUE refined ALL struct         level  0.9 /  2.7 /  6.6   change  3.3 / 13.9 / 85.5   change % of latency 0.14 / 0.52 / 1.95  |z|>3: level 38.5% change 52.1% (n=96)
+  TRUE refined fanout             level  1.6 /  2.8 /  3.5   change  2.5 /  5.7 /  7.4   change % of latency 0.46 / 0.79 / 1.33  |z|>3: level 60.4% change 20.8% (n=48)
+  TRUE refined holdout            level  0.8 /  3.1 /  7.1   change  3.5 / 12.4 / 38.4   change % of latency 0.20 / 0.86 / 2.40  |z|>3: level 34.6% change 50.4% (n=240)
+  TRUE refined struct-conditional level  0.6 /  2.4 /  3.6   change  3.3 /  6.9 / 15.8   change % of latency 0.10 / 0.27 / 0.45  |z|>3: level 33.3% change 62.5% (n=24)
+  TRUE refined struct-glue        level  1.1 /  2.2 /  3.2   change  4.8 /  9.7 / 18.6   change % of latency 0.14 / 0.52 / 0.70  |z|>3: level 58.3% change 70.8% (n=24)
+  TRUE refined struct-staged      level  1.2 /  3.1 /  6.6   change  7.5 / 38.0 / 85.5   change % of latency 0.30 / 0.58 / 1.95  |z|>3: level 41.7% change 62.5% (n=24)
+  TRUE refined struct-uneven      level  0.8 /  2.1 /  4.2   change  1.6 /  5.2 /  6.0   change % of latency 0.15 / 0.33 / 0.91  |z|>3: level 20.8% change 12.5% (n=24)
+
+== 5. paired comparisons (same row, capture and truth)
+  refined vs basic, default, rows 0-35, |eL|: refined better on 174, worse on 87, within 0.05 on 27
+  refined vs basic, default, rows 0-35, |eCL|: refined better on 181, worse on 86, within 0.01 on 21
+  refined vs basic, default, rows 0-35, |eC|: refined better on 186, worse on 87, within 0.1 on 15
+  refined vs basic, spanq, rows 0-35, |eL|: refined better on 173, worse on 87, within 0.05 on 28
+  refined vs basic, spanq, rows 0-35, |eCL|: refined better on 181, worse on 86, within 0.01 on 21
+  refined vs basic, spanq, rows 0-35, |eC|: refined better on 186, worse on 87, within 0.1 on 15
+  span modes, queue rebuild, rows 0-35 (576 row-model pairs): largest |spanq - default| level 0.147 pt, change 0.402 pt, change % of latency 0.077 pt
+  spans include the wait, refined, rows 0-35: rise level  3.0 /  8.6 / 16.6   change  7.0 / 20.7 / 61.7   change % of latency 0.49 / 3.17 / 14.72  |z|>3: level  8.0% change 22.2% (n=288)
+  spans include the wait, refined, rows 0-35: fifo level  2.0 /  5.9 / 12.5   change  5.6 / 16.3 / 35.5   change % of latency 0.42 / 2.26 / 7.52  |z|>3: level  3.1% change 19.4% (n=288)
+  spans include the wait, basic, rows 0-35: rise level  4.0 / 12.5 / 30.4   change 10.5 / 26.3 / 63.8   change % of latency 0.60 / 3.48 / 15.22  |z|>3: level 21.9% change 41.3% (n=288)
+  spans include the wait, basic, rows 0-35: fifo level  3.1 / 10.5 / 29.7   change  9.1 / 24.2 / 49.8   change % of latency 0.60 / 2.55 / 7.08  |z|>3: level 15.3% change 37.8% (n=288)
+
+== 6. inferred (default spans, fifo) vs true parameters, refined, rows 0-35
+  inferred rows with change |z|>3: 56; the true-parameter model makes a same-sign error at least half as large on 50
+  of those, 6 have a change error of 1% of the latency or more:
+    306 33 a->2 branches gamma0.5 rho0.78 chg@b [fanout-b] inferred change +27.4% (+7.52% of L, z +3.8); true parameters +2.4% (+0.65% of L, z +1.7)
+    307 33 a->2 branches gamma0.25 rho0.78 chg@b [fanout-b] inferred change +21.6% (+6.38% of L, z +3.4); true parameters +1.1% (+0.32% of L, z +0.8)
+    301 35 a->3 branches h22 rho0.70 chg@b [fanout-b] inferred change +34.0% (+3.59% of L, z +3.2); true parameters +5.7% (+0.60% of L, z +2.5)
+    307 34 a->3 branches gamma0.25 rho0.70 chg@b [fanout-b] inferred change +16.3% (+2.47% of L, z +3.1); true parameters +5.9% (+0.89% of L, z +5.4)
+    302 14 kind1 chg@c               [holdout-kind1] inferred change -35.2% (-2.00% of L, z -16.0); true parameters -38.4% (-2.18% of L, z -33.2)
+    306 08 kind1 chg@c               [holdout-kind1] inferred change -26.6% (-1.50% of L, z -6.7); true parameters -26.5% (-1.50% of L, z -18.2)
+  inferred rows with level |z|>3: 9
+    301 35 a->3 branches h22 rho0.70 chg@b [fanout-b] inferred level +9.4% (z +3.1); true parameters -1.3% (z -2.2)
+    303 13 kind1 chg@c               [holdout-kind1] inferred level +9.1% (z +4.0); true parameters +4.3% (z +9.9)
+    304 20 kind0 chg@a               [holdout-kind0] inferred level +10.7% (z +3.1); true parameters +4.4% (z +9.0)
+    305 11 kind1 chg@c               [holdout-kind1] inferred level +6.8% (z +5.0); true parameters +4.7% (z +21.6)
+    306 33 a->2 branches gamma0.5 rho0.78 chg@b [fanout-b] inferred level +8.8% (z +3.7); true parameters +1.8% (z +3.9)
+    307 06 kind0 chg@b               [holdout-kind0] inferred level +12.2% (z +3.0); true parameters +2.1% (z +2.8)
+    307 15 kind1 chg@c               [holdout-kind1] inferred level +5.1% (z +3.1); true parameters +3.1% (z +11.9)
+    307 33 a->2 branches gamma0.25 rho0.78 chg@b [fanout-b] inferred level +8.9% (z +4.4); true parameters +2.1% (z +4.8)
+    307 34 a->3 branches gamma0.25 rho0.70 chg@b [fanout-b] inferred level +6.0% (z +4.2); true parameters +3.5% (z +12.6)
+
+== 7. holdout kind1 chg@c (a calls b, then c; the change at c), refined, by the true cs2 of b
+  b cs2 < 1 n=21: change error, true parameters median +11.1% (min +2.4, max +34.1); inferred median +14.0%
+  b cs2 = 1 n= 3: change error, true parameters median +0.6% (min +0.5, max +4.6); inferred median +0.7%
+  b cs2 > 1 n= 7: change error, true parameters median -12.6% (min -38.4, max +4.3); inferred median -8.6%
+
+== 8. worker counts (PAR, fifo): per service reading, capacity read vs true
+  default: 1150 service readings; capacity equal to the truth 1102, below 48, above 0; read from queueing (identified) 0
+  spanq: 1150 service readings; capacity equal to the truth 1102, below 48, above 0; read from queueing (identified) 1078
+
+== 9. added by the docs fix (a table script, the same ROW / ROWTRUE / PAR lines, rows 0-35, default spans, queue rebuild, refined)
+  true parameters, change: 131 of 288 rows beyond 3 truth standard errors (45.5%); median |change error| 6.6% of the change on those rows, 3.3% over all rows
+  true parameters, level:  112 of 288 rows beyond 3 truth standard errors (38.9%); median |level error| 2.2% on those rows, 1.0% over all rows
+  inferred level error of 5% or more: 39 rows; on 30 of them the true-parameter error is under half as large
+  the largest inferred level errors (inferred level %, z against truth and input SE | true parameters level %, z against the truth SE):
+    305 10 kind1 chg@b                       inferred -12.52% (z -2.37) | true parameters  -7.09% (z -7.67)
+    307 06 kind0 chg@b                       inferred +12.25% (z +3.05) | true parameters  +2.06% (z +2.79)
+    304 00 kind2 chg@a                       inferred -10.67% (z -1.68) | true parameters  -1.29% (z -1.26)
+    304 20 kind0 chg@a                       inferred +10.67% (z +3.12) | true parameters  +4.45% (z +9.01)
+    307 00 kind0 chg@b                       inferred +10.36% (z +1.83) | true parameters  +4.05% (z +4.56)
+    306 23 kind2 chg@b                       inferred  -9.77% (z -2.19) | true parameters  +2.01% (z +3.08)
+  seed 305 row 10: truth 297.10 ms, standard errors truth 2.748 and input 15.474 ms, combined 15.72 ms = 5.3% of the truth
+  PAR of the three largest: service, inferred S cs2 workers x pods | true S cs2 workers x pods
+    305 10 kind1 chg@b
+      a   inferred S  10.9017 cs2 0.5669 c 1 x 1 | true S  11.0114 cs2 0.6000 c 1 x 1  (S -1.0%, cs2 -5.5%)
+      b   inferred S  21.7935 cs2 2.8026 c 1 x 1 | true S  22.0488 cs2 3.0000 c 1 x 1  (S -1.2%, cs2 -6.6%)
+      c   inferred S  73.7016 cs2 0.6022 c 4 x 1 | true S  73.1917 cs2 0.6000 c 4 x 1  (S +0.7%, cs2 +0.4%)
+    307 06 kind0 chg@b
+      a   inferred S  49.0510 cs2 0.3438 c 4 x 1 | true S  48.9099 cs2 0.3500 c 4 x 1  (S +0.3%, cs2 -1.8%)
+      b   inferred S  29.6610 cs2 3.1023 c 4 x 1 | true S  29.3846 cs2 3.0000 c 4 x 1  (S +0.9%, cs2 +3.4%)
+      c   inferred S  31.4733 cs2 3.1184 c 2 x 1 | true S  30.8186 cs2 3.0000 c 2 x 1  (S +2.1%, cs2 +3.9%)
+    304 00 kind2 chg@a
+      a   inferred S  64.2094 cs2 0.6919 c 4 x 1 | true S  63.8304 cs2 0.7000 c 4 x 1  (S +0.6%, cs2 -1.2%)
+      b   inferred S  36.2041 cs2 2.9638 c 2 x 1 | true S  36.9330 cs2 3.0000 c 2 x 1  (S -2.0%, cs2 -1.2%)
+  change error of 2.5% of the latency or more: 21 rows (inferred change error % of latency, z | true parameters % of latency)
+    301 23 kind2 chg@b                             holdout-kind2  inferred -4.00 (z -1.26) | true -0.59
+    301 34 a->2 branches h22 rho0.78 chg@b         fanout-b       inferred +4.73 (z +1.63) | true +0.97
+    301 35 a->3 branches h22 rho0.70 chg@b         fanout-b       inferred +3.59 (z +3.19) | true +0.60
+    302 12 kind2 chg@b                             holdout-kind2  inferred -2.73 (z -1.11) | true -0.06
+    302 20 kind2 chg@b                             holdout-kind2  inferred -3.37 (z -0.71) | true +0.75
+    303 00 kind2 chg@b                             holdout-kind2  inferred -2.52 (z -1.40) | true -0.15
+    303 25 kind2 chg@b                             holdout-kind2  inferred -2.71 (z -1.13) | true +1.20
+    303 35 a->2 branches h22 rho0.78 chg@b         fanout-b       inferred -3.09 (z -1.05) | true +0.73
+    304 11 kind1 chg@b                             holdout-kind1  inferred -3.55 (z -1.41) | true -2.40
+    305 00 kind2 chg@b                             holdout-kind2  inferred -2.60 (z -0.80) | true -0.44
+    305 32 a->3 branches exp1 rho0.78 chg@b        fanout-b       inferred +2.52 (z +1.36) | true -0.12
+    306 01 kind1 chg@b                             holdout-kind1  inferred -3.61 (z -1.55) | true -0.68
+    306 23 kind2 chg@b                             holdout-kind2  inferred -5.96 (z -2.11) | true +0.75
+    306 26 kind2 chg@b                             holdout-kind2  inferred +4.48 (z +0.83) | true +0.87
+    306 33 a->2 branches gamma0.5 rho0.78 chg@b    fanout-b       inferred +7.52 (z +3.76) | true +0.65
+    307 01 kind2 chg@b                             holdout-kind2  inferred -3.90 (z -1.12) | true +0.56
+    307 33 a->2 branches gamma0.25 rho0.78 chg@b   fanout-b       inferred +6.38 (z +3.41) | true +0.32
+    308 04 kind2 chg@b                             holdout-kind2  inferred +3.56 (z +1.57) | true +1.49
+    308 10 kind2 chg@b                             holdout-kind2  inferred +3.48 (z +1.12) | true -0.54
+    308 16 kind2 chg@b                             holdout-kind2  inferred +2.60 (z +1.60) | true +0.10
+    308 35 a->2 branches h22 rho0.70 chg@b         fanout-b       inferred +2.87 (z +1.98) | true +0.86
+    max |true| without 304/11: 1.49; within 3 combined standard errors: 18; beyond: 301/35, 306/33, 307/33

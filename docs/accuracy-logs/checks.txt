@@ -1,0 +1,140 @@
+# Measured at rhobound-cli 2349b17 (the commit before the docs commit), Go 1.27.2 linux/arm64, 8-core box,
+# GOMAXPROCS=3 under a 2500M memory cap, ACC_TRUTH_REPS 64 (the default), 2026-10-19 UTC.
+# Each block below states its own conditions where they differ from this header (speed: GOMAXPROCS 8, 3, 1;
+# nouneven-301-308.log: TestNoUnevenSplitInScenarios run on a copy of 2349b17 with its seed list replaced by 301-308;
+# cap-inf.txt, readme-example.txt and async-skew-probe.txt, added by the docs fix, at d13cde7).
+
+## plumbing.log
+--- PASS: TestHarnessPlumbing (0.47s)
+PASS
+
+## nouneven.log
+152 multi-pod services tested, 0 flagged, smallest p 0.00454
+--- PASS: TestNoUnevenSplitInScenarios (108.59s)
+PASS
+
+## nouneven-301-308.log
+170 multi-pod services tested, 0 flagged, smallest p 0.00652
+--- PASS: TestNoUnevenSplitInScenarios (106.33s)
+PASS
+ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	106.336s
+
+## speed.txt
+# rhobound predict --json on the before capture of test-bed run 3 (ACCURACY.md section 8; 579,251,255 bytes = 552 MiB of OTLP/JSON lines in one file; 696,949 spans, 10 services)
+# bin built from 2349b17 (go build, Go 1.27.2 linux/arm64), 8-core arm64 machine, otherwise idle; each run in a memory-capped scope (2500M cap, nice 10); page cache warm
+GOMAXPROCS 8 wall 1.02 s user 5.04 s sys 0.30 s maxrss 214 MiB rc 0
+GOMAXPROCS 8 wall 1.01 s user 5.10 s sys 0.26 s maxrss 213 MiB rc 0
+GOMAXPROCS 8 wall 1.02 s user 5.10 s sys 0.25 s maxrss 223 MiB rc 0
+GOMAXPROCS 8 wall 1.01 s user 5.09 s sys 0.24 s maxrss 228 MiB rc 0
+GOMAXPROCS 8 wall 1.02 s user 5.05 s sys 0.26 s maxrss 226 MiB rc 0
+GOMAXPROCS 3 wall 1.94 s user 4.93 s sys 0.28 s maxrss 204 MiB rc 0
+GOMAXPROCS 3 wall 1.95 s user 4.89 s sys 0.26 s maxrss 200 MiB rc 0
+GOMAXPROCS 3 wall 1.95 s user 4.94 s sys 0.23 s maxrss 203 MiB rc 0
+GOMAXPROCS 1 wall 5.06 s user 4.80 s sys 0.24 s maxrss 210 MiB rc 0
+GOMAXPROCS 1 wall 5.09 s user 4.84 s sys 0.22 s maxrss 208 MiB rc 0
+
+## loopback.txt
+## loopback smoke test at 2349b17 (go test -tags e2e -run 'TestLoopbackSmoke|TestHelpers' -v ./e2e)
+=== RUN   TestHelpers
+--- PASS: TestHelpers (0.00s)
+=== RUN   TestLoopbackSmoke
+=== RUN   TestLoopbackSmoke/keepalive=false
+    smoke_test.go:119: load generator: sent 467, 314 measured, 0 errors, mean 48.37 ms, lag 1.1 ms, 5 windows; traces: entry 48.19 ms over 467 spans; api api-a 51.2% wait 9.95 ms, api-b 48.8% wait 12.18 ms
+    smoke_test.go:150: rhobound: own ms frontend 3.32 (3), api 21.60 (20), db 8.51 (8), cache 5.47 (5); entry model 48.43 ms, load generator 48.37 ms; change api +8ms: +16.19 ms
+    smoke_test.go:160: db down: sent 53, errors 53, measured 0; {"errors":53,"max_lag_ms":1.055392,"mean_ms":null,"requests":0,"rps":30,"sent":53,"windows":[{"mean_ms":0,"n":0,"start_s":0}]}
+=== RUN   TestLoopbackSmoke/keepalive=true
+    smoke_test.go:119: load generator: sent 470, 312 measured, 0 errors, mean 47.93 ms, lag 1.1 ms, 5 windows; traces: entry 47.28 ms over 470 spans; api api-a 35.3% wait 3.36 ms, api-b 64.7% wait 13.61 ms
+--- PASS: TestLoopbackSmoke (33.75s)
+    --- PASS: TestLoopbackSmoke/keepalive=false (17.52s)
+    --- PASS: TestLoopbackSmoke/keepalive=true (15.42s)
+PASS
+ok  	github.com/Sharvil2704/rhobound-cli/e2e	33.756s
+
+## suite.txt
+## gofmt and vet at 2349b17 + this docs change
+gofmt -l: []
+vet ok
+vet e2e ok
+vet accuracy ok
+
+## go test -count=1 ./...
+ok  	github.com/Sharvil2704/rhobound-cli/cmd/rhobound	0.342s
+?   	github.com/Sharvil2704/rhobound-cli/e2e/demoapp	[no test files]
+?   	github.com/Sharvil2704/rhobound-cli/e2e/loadgen	[no test files]
+ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	10.116s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/mathx	5.939s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/model	0.059s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/otlp	0.004s
+?   	github.com/Sharvil2704/rhobound-cli/internal/report	[no test files]
+
+## go test -race -count=1 ./...
+ok  	github.com/Sharvil2704/rhobound-cli/cmd/rhobound	5.271s
+?   	github.com/Sharvil2704/rhobound-cli/e2e/demoapp	[no test files]
+?   	github.com/Sharvil2704/rhobound-cli/e2e/loadgen	[no test files]
+ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	108.607s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/mathx	15.479s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/model	1.329s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/otlp	1.016s
+?   	github.com/Sharvil2704/rhobound-cli/internal/report	[no test files]
+
+## golden parity (go test -v -run TestGolden ./internal/model)
+    golden_test.go:101: 201 golden cases; worst relative difference in L: 4.68e-16
+ok  	github.com/Sharvil2704/rhobound-cli/internal/model	0.012s
+
+## cap-inf.txt: the code review's unbounded pool (its capture cap-inf, kept outside the repository; 150 s, 300000 requests),
+## rhobound built at d13cde7 (the refusal text is ed44f6a's), GOMAXPROCS=3 under a 2500M memory cap, 2026-10-19 UTC (docs fix).
+## predict --json gives max_utilization 0.8475302801946788 at the observed load. Report lines: the busiest line and fe's row.
+$ rhobound predict cap-inf 
+busiest   fe at 85% utilization
+     fe *  2001.2  1 x 236+   99.95  1.00   85%     0.02       0.02     99.97    99.97   +0.0
+exit 0
+$ rhobound predict cap-inf --patch fe=+1ms
+rhobound: refusing the change: after it fe would run at 85.6% utilization, above the limit of 85.0% (--max-rho; the model covers steady load below it only). The worker count of fe (1 x 236+) is only a lower bound: too few of its requests waited for a worker, or too briefly, to tell its pool from a larger one or from one with no limit, so that utilization is an upper bound. If the pool is larger, or has no limit, set its size with --workers (for example --workers fe=N with N its workers per pod)
+exit 1
+$ rhobound predict cap-inf --patch fe=+5ms
+rhobound: refusing the change: after it fe would run at 89.0% utilization, above the limit of 85.0% (--max-rho; the model covers steady load below it only). The worker count of fe (1 x 236+) is only a lower bound: too few of its requests waited for a worker, or too briefly, to tell its pool from a larger one or from one with no limit, so that utilization is an upper bound. If the pool is larger, or has no limit, set its size with --workers (for example --workers fe=N with N its workers per pod)
+exit 1
+$ rhobound predict cap-inf --patch fe=+10ms
+rhobound: refusing the change: after it fe would run at 93.2% utilization, above the limit of 85.0% (--max-rho; the model covers steady load below it only). The worker count of fe (1 x 236+) is only a lower bound: too few of its requests waited for a worker, or too briefly, to tell its pool from a larger one or from one with no limit, so that utilization is an upper bound. If the pool is larger, or has no limit, set its size with --workers (for example --workers fe=N with N its workers per pod)
+exit 1
+$ rhobound predict cap-inf --patch fe=+20ms
+rhobound: refusing the change: after it fe would pass 100% utilization (101.7%: no steady state, the model is unstable), above the limit of 85.0% (--max-rho; the model covers steady load below it only). The worker count of fe (1 x 236+) is only a lower bound: too few of its requests waited for a worker, or too briefly, to tell its pool from a larger one or from one with no limit, so that utilization is an upper bound. If the pool is larger, or has no limit, set its size with --workers (for example --workers fe=N with N its workers per pod)
+exit 1
+$ rhobound predict cap-inf --patch fe=+20ms --workers fe=400
+busiest   fe at 50% utilization
+     fe *  2001.2   1 x 400   99.96  1.00   50%     0.00       0.00     99.96    99.97   -0.0    119.96     +20.00     +20.0
+
+## readme-example.txt: bin/rhobound predict testdata/capture-chain --patch b=+6ms at d13cde7 (the README's example)
+rhobound-cli: mean latency from traces
+capture   testdata/capture-chain
+window    120 s, 3099 entry requests (25.8 /s), 15495 spans
+busiest   c at 26% utilization
+model     refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas
+scope     Mean latency only, for steady load below the utilization limit, assuming Poisson arrivals. No tail (p95/p99), burst, retry or timeout modelling. Worker counts marked + are lower bounds.
+
+  service   rps  pods x w  own ms   cs2  util  wait ms  seen wait  model ms  seen ms  err %  after ms  change ms  change %
+      a *  25.8    1 x 1+    7.83  1.00   20%     1.99       0.00     45.22    43.74   +3.4     52.37      +7.15     +15.8
+        b  25.8    1 x 2+   19.94  1.00   26%     1.42       1.61     35.40    35.91   -1.4     42.56      +7.15     +20.2
+        c  25.8    1 x 1+    9.98  1.00   26%     3.47       3.78     13.75    14.06   -2.2     13.71      -0.04      -0.3
+
+* entry service   || parallel fan-out   w+ = workers per pod, a lower bound (too few requests waited, or too briefly, to read it from)
+own ms: service time per visit (up to its first call out), without the wait for a worker inside the span. seen wait: queueing the traces show (in-span plus between client and server span).
+seen ms: the mean the callers' client spans measured (entries: the server span).
+
+change applied: b +6 ms (+6ms);
+
+warnings:
+  - no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: a 1+ (0 waited; up to 1 in a pod at once), b 2+ (0 waited; up to 2 in a pod at once), c 1+ (0 waited; up to 1 in a pod at once)
+
+## async-skew-probe.txt: the async rule against a callee clock that runs ahead (docs fix, at d13cde7)
+## A scratch test on a copy of the tree (not committed): skewSpans(-s, 1) of internal/infer/release_test.go, 3000 visits of fe
+## (exponential work before its call, 1 ms mean, and 1 ms after it) calling be (exponential, 4 ms mean) with no CLIENT
+## span, be's clock s ms ahead; infer.Run, then the fe -> be edge's async share and its warning (cut at 200 characters).
+be clock 2 ms ahead: async p 0.000
+   warning: fe -> be: 21.7% of the calls start after fe's span has ended (sent after the response) and the rest within it; all are modelled as on its latency path (calls are taken as async when at least 95% of th
+be clock 5 ms ahead: async p 0.000
+   warning: fe -> be: 63.3% of the calls start after fe's span has ended (sent after the response) and the rest within it; all are modelled as on its latency path (calls are taken as async when at least 95% of th
+be clock 10 ms ahead: async p 0.000
+   warning: fe -> be: 89.4% of the calls start after fe's span has ended (sent after the response) and the rest within it; all are modelled as on its latency path (calls are taken as async when at least 95% of th
+be clock 30 ms ahead: async p 1.000
+   warning: calls sent after the caller's response (at least 95% of them start once the caller's span has ended) are modelled as async: they load the callee, but the caller does not wait for them, so neither the 

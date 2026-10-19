@@ -1,0 +1,91 @@
+# Kind end-to-end test, run 5 (the hardened design), 2026-10-19 13:58-14:10 UTC, at rhobound-cli 29a7ed9:
+#   RHOBOUND_E2E=1 go test -tags e2e -v -count=1 -timeout 40m ./e2e   (2 rounds, keep-alive off, the default)
+# The test's log lines, then the per-window numbers from its result.json ($HOME/.cache/rb-e2e-work/<run>).
+
+=== RUN   TestClusterEndToEnd
+    e2e_test.go:895: work folder $HOME/.cache/rb-e2e-work/<run>
+    e2e_test.go:957: kubelet containerLogMaxSize 100Mi; the frontend writes about 4.9 MiB per window
+    e2e_test.go:989: before1  extra 0ms: load generator 45.24 ms (4215 req, 0 err, lag 1 ms, worst 10-s x1.19); traces: entry 45.02 ms over 4365 spans, api 775qh 50.3% wait 9.22 ms, cpv6t 49.7% wait 8.89 ms
+    e2e_test.go:989: before1  node: 0.23 cores, 797 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.35% mem 0.00%; largest log 4.3 MiB; restarts 0
+    e2e_test.go:993: before1 model: entry 45.59 ms, change +14.38 ms; api wait: model 8.77 ms, traces 8.52 ms
+    e2e_test.go:997: after1   extra 8ms: load generator 60.39 ms (4416 req, 0 err, lag 1 ms, worst 10-s x1.15); traces: entry 60.17 ms over 4574 spans, api 2kdj2 49.1% wait 16.54 ms, wprxj 50.9% wait 17.14 ms
+    e2e_test.go:997: after1   node: 0.21 cores, 830 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.36% mem 0.00%; largest log 4.5 MiB; restarts 0
+    e2e_test.go:989: before2  extra 0ms: load generator 46.09 ms (4383 req, 0 err, lag 1 ms, worst 10-s x1.20); traces: entry 45.84 ms over 4538 spans, api 8h4tz 49.5% wait 10.49 ms, bh4h4 50.5% wait 8.59 ms
+    e2e_test.go:989: before2  node: 0.21 cores, 854 MiB, stall cpu 0.24% mem 0.00%, oom kills 0; host stall cpu 0.36% mem 0.00%; largest log 4.5 MiB; restarts 0
+    e2e_test.go:993: before2 model: entry 46.19 ms, change +14.80 ms; api wait: model 9.02 ms, traces 8.99 ms
+    e2e_test.go:997: after2   extra 8ms: load generator 57.71 ms (4330 req, 0 err, lag 2 ms, worst 10-s x1.15); traces: entry 57.47 ms over 4486 spans, api 44pgb 48.7% wait 14.31 ms, 7xs8x 51.3% wait 15.32 ms
+    e2e_test.go:997: after2   node: 0.22 cores, 897 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.36% mem 0.00%; largest log 4.5 MiB; restarts 0
+    e2e_test.go:1037: before: measured 45.66 ms (2 windows), model 45.89 ms; change in api of +8 ms: predicted +14.59 ms, measured +13.39 ms
+    e2e_test.go:906: passed: removed the captures and the image from $HOME/.cache/rb-e2e-work/<run>; result.json and the load generator outputs are kept
+--- PASS: TestClusterEndToEnd (705.11s)
+PASS
+ok  	github.com/Sharvil2704/rhobound-cli/e2e	705.113s
+
+## result.json, per window
+before_measured_ms 45.664 model_before_ms 45.889 observed_change_ms 13.387 predicted_change_ms 14.590 keepalive False rounds 2 unstable None model_wrong None
+gates {"change_abs_ms": 1.5, "change_rel": 0.15, "level_tol": 0.1, "max_gap_ms": 2, "max_lag_ms": 100, "max_mem_stall": 0.01, "max_share": 0.55, "max_worst_10s": 1.75, "min_kept": 0.98, "repeat_tol": 0.1}
+before1 extra 0 measured 45.242 traces 45.017 requests 4215 sent 4365 errors 0 lag 1.31 worst10s 1.191 | api 775qh 0.5031 wait 9.22 cpv6t 0.4969 wait 8.89 | node cpu 0.230 mem 797 MiB stall cpu 0.0023 mem 0.000000 oom 0 host stall cpu 0.0035 | lost 0/0 restarts 0 model entry 45.585 change +14.384
+before2 extra 0 measured 46.086 traces 45.840 requests 4383 sent 4538 errors 0 lag 1.07 worst10s 1.204 | api 8h4tz 0.4949 wait 10.49 bh4h4 0.5051 wait 8.59 | node cpu 0.210 mem 854 MiB stall cpu 0.0024 mem 0.000000 oom 0 host stall cpu 0.0036 | lost 0/0 restarts 0 model entry 46.193 change +14.796
+after1 extra 8 measured 60.389 traces 60.172 requests 4416 sent 4574 errors 0 lag 1.10 worst10s 1.147 | api 2kdj2 0.4910 wait 16.54 wprxj 0.5090 wait 17.14 | node cpu 0.213 mem 830 MiB stall cpu 0.0023 mem 0.000000 oom 0 host stall cpu 0.0036 | lost 0/0 restarts 0
+after2 extra 8 measured 57.712 traces 57.469 requests 4330 sent 4486 errors 0 lag 1.67 worst10s 1.154 | api 44pgb 0.4873 wait 14.31 7xs8x 0.5127 wait 15.32 | node cpu 0.222 mem 897 MiB stall cpu 0.0023 mem 0.000000 oom 0 host stall cpu 0.0036 | lost 0/0 restarts 0
+
+## runs 1-4 (old design, before the 2026-10-19 fixes): copied from the README as it stood at 29a7ed9; their logs are not kept
+run 1 basic model: level 46.15 vs 43.34 ms (+6.5%); change +15.29 vs +13.15 ms (+16%)
+run 2 refined model: level 44.11 vs 43.49 ms (+1.4%); change +14.25 vs +14.59 ms (-2.3%)
+run 3 refined, rise estimator: level 44.42 vs 52.15 ms FAILED; change +14.79 vs +3.45 ms FAILED
+run 4 the same as 3: level 44.53 vs 42.75 ms (+4.2%), traces' entry span 42.42 ms; change +14.78 vs +13.54 ms (+9.1%)
+
+## noise floor (a simulator of this demo's gates, its output kept outside the repository; per-request routing, 150 s windows)
+mode=random rounds=2 offset=1 share>0.55 repeat>10%: model 43.42 / +13.75, 4000 simulated runs
+mode=random rounds=2 offset=1 share>0.55 repeat>10%: model 44.40 / +14.80, 4000 simulated runs
+mode=fixed=0.50 extra=0 phases=1000: phase mean latency mean 42.34  p5 40.83 p50 42.35 p95 43.88 p99 44.49 max 45.22
+mode=fixed=0.50 extra=8 phases=1000: phase mean latency mean 56.18  p5 54.17 p50 56.19 p95 58.23 p99 59.14 max 60.55
+
+## the same simulator's gate outcomes behind section 7's "about 2% / 0.1%" (the hardened gates, 2 rounds):
+## "-model 0" scores the simulator's own truth plus the 1 ms offset (no bias); "-model 44.4 -pred 14.8" a model whose
+## change is +14.80 ms, about +1.0 ms above the simulated truth. The simulator draws exponential service times and adds
+## a fixed 1 ms for the hops and HTTP overhead it leaves out.
+mode=random rounds=2 offset=1 share>0.55 repeat>10%: model 43.42 / +13.75, 4000 simulated runs
+  unstable 0.0083 (share 0.0000, worst 10-s window 0.0060, repeat before 0.0003, after 0.0020)
+  FAIL when not unstable 0.0008 (level 0.0000, change 0.0008); would fail with no gates 0.0008
+mode=random rounds=2 offset=1 share>0.55 repeat>10%: model 44.40 / +14.80, 4000 simulated runs
+  unstable 0.0055 (share 0.0000, worst 10-s window 0.0043, repeat before 0.0000, after 0.0013)
+  FAIL when not unstable 0.0215 (level 0.0000, change 0.0215); would fail with no gates 0.0217
+## derived: per-window standard deviation from the fixed=0.50 lines, (p95 - p5) / 3.29: 0.93 ms before, 1.23 ms after;
+## two-round change sqrt((0.93^2 + 1.23^2) / 2) = 1.09 ms; simulated true change 56.18 - 42.34 = +13.84 ms; run 5's
+## predicted change +14.59 ms is +0.75 above it, the simulation's model value +14.80 is +0.96 above it.
+
+## run 6, 2026-10-19 19:05-19:17 UTC, code 53b5068 (the test's own log, unchanged)
+    e2e_test.go:895: work folder $HOME/.cache/rb-e2e-work/<run>
+    e2e_test.go:957: kubelet containerLogMaxSize 100Mi; the frontend writes about 4.9 MiB per window
+    e2e_test.go:989: before1  extra 0ms: load generator 46.06 ms (4367 req, 0 err, lag 1 ms, worst 10-s x1.06); traces: entry 45.84 ms over 4512 spans, api 8zxd4 49.5% wait 9.54 ms, rm2xz 50.5% wait 9.35 ms
+    e2e_test.go:989: before1  node: 0.21 cores, 760 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.36% mem 0.00%; largest log 4.5 MiB; restarts 0
+    e2e_test.go:993: before1 model: entry 46.30 ms, change +14.88 ms; api wait: model 9.24 ms, traces 8.90 ms
+    e2e_test.go:997: after1   extra 8ms: load generator 58.43 ms (4235 req, 0 err, lag 1 ms, worst 10-s x1.06); traces: entry 58.22 ms over 4393 spans, api 9mwtn 50.1% wait 14.63 ms, w4p6g 49.9% wait 16.13 ms
+    e2e_test.go:997: after1   node: 0.21 cores, 787 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.36% mem 0.00%; largest log 4.4 MiB; restarts 0
+    e2e_test.go:989: before2  extra 0ms: load generator 46.14 ms (4369 req, 0 err, lag 2 ms, worst 10-s x1.20); traces: entry 45.92 ms over 4524 spans, api b2zwg 50.9% wait 10.14 ms, qtxbv 49.1% wait 9.15 ms
+    e2e_test.go:989: before2  node: 0.21 cores, 800 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.35% mem 0.00%; largest log 4.5 MiB; restarts 0
+    e2e_test.go:993: before2 model: entry 46.00 ms, change +14.97 ms; api wait: model 9.35 ms, traces 9.12 ms
+    e2e_test.go:997: after2   extra 8ms: load generator 60.89 ms (4315 req, 0 err, lag 1 ms, worst 10-s x1.16); traces: entry 60.67 ms over 4476 spans, api 8wwqn 49.8% wait 16.15 ms, dm27p 50.2% wait 17.43 ms
+    e2e_test.go:997: after2   node: 0.23 cores, 807 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.35% mem 0.00%; largest log 4.4 MiB; restarts 0
+    e2e_test.go:1037: before: measured 46.10 ms (2 windows), model 46.15 ms; change in api of +8 ms: predicted +14.93 ms, measured +13.56 ms
+    e2e_test.go:906: passed: removed the captures and the image from $HOME/.cache/rb-e2e-work/<run>; result.json and the load generator outputs are kept
+
+## the doc check's skew probe (validation round 3, the review of ed44f6a..d13cde7; its output kept outside the repository; a scratch test on a copy of 31e164c; unchanged by 53b5068, whose rules only touch calls timed on the caller's own clock)
+    probe: be  -0 ms ahead: fe S 1.007 glue 1.000 | model 6.05 ms, observed server 6.05 ms (-0.0%)
+    probe: be   2 ms ahead: fe S 2.892 glue 0.000 | model 6.94 ms, observed server 6.05 ms (+14.7%)
+    probe: be   5 ms ahead: fe S 4.556 glue 0.000 | model 8.60 ms, observed server 6.05 ms (+42.1%)
+    probe: be  10 ms ahead: fe S 5.591 glue 0.000 | model 9.63 ms, observed server 6.05 ms (+59.3%)
+    probe: be  30 ms ahead: fe S 6.042 glue 0.000 | model 6.05 ms, observed server 6.05 ms (-0.1%)
+
+## 53b5068 on the captures of validation round 3's code review (captures and their truths kept outside the repository), fe row of predict --patch fe=+3ms, old = 31e164c
+ff-pre-0.05 old:  fe * 60.7 1 x 1 10.05 1.00 61% 15.70 16.43 83.37 26.49 +214.7 110.19 +26.82 +32.2
+ff-pre-0.05 new:  fe * 60.7 1 x 1 10.05 1.00 61% 15.73 16.44 25.78 26.49 -2.7 52.68 +26.90 +104.3
+ff-pre-3 old:  fe * 60.7 1 x 2 15.74 0.77 48% 4.13 9.93 77.50 26.49 +192.6 83.30 +5.80 +7.5
+ff-pre-3 new:  fe * 60.7 1 x 1 10.05 1.00 61% 15.71 16.44 26.23 26.49 -1.0 53.08 +26.85 +102.4
+ff-jit-0.5 old:  fe * 60.7 1 x 1 10.04 1.00 61% 15.65 16.42 86.25 26.49 +225.6 112.98 +26.72 +31.0
+ff-jit-0.5 new:  fe * 60.7 1 x 1 10.05 1.00 61% 15.73 16.44 25.85 26.49 -2.4 52.75 +26.90 +104.1
+mixedb-0.96-s23 old:  fe * 40.3 1 x 2 7.83 1.00 16% 0.20 0.61 8.03 8.44 -4.9 11.25 +3.21 +40.0
+mixedb-0.96-s23 new:  fe * 40.3 1 x 1 6.06 1.00 24% 1.96 2.13 8.27 8.44 -2.1 13.08 +4.81 +58.2
+mixedb-0.95-s32 old:  fe * 40.0 1 x 2 7.61 1.00 15% 0.18 0.50 7.80 8.11 -3.9 10.99 +3.20 +41.0
+mixedb-0.95-s32 new:  fe * 40.0 1 x 1 5.92 1.00 24% 1.84 1.96 8.04 8.11 -0.9 12.77 +4.73 +58.8
