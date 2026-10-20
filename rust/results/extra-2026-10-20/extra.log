@@ -1,0 +1,46 @@
+2026-10-20T16:16:10+00:00 START load=0.98 1.40 1.73 rbfast sha=546fdb7f22f5bcf2 mmap-variant sha=73cdf40df3c14f6b
+TIMES RUN3 t=1 rbfast: times: read 0.6820 s, infer 0.1737 s, model 0.0030 s, report 0.0001 s
+TIMES RUN3 t=1 rbfast: times: read 0.6860 s, infer 0.1713 s, model 0.0030 s, report 0.0001 s
+TIMES RUN3 t=1 rbfast: times: read 0.6823 s, infer 0.1695 s, model 0.0030 s, report 0.0001 s
+SORT RUN3 t=1 default sort=0.0585
+SORT RUN3 t=1 default sort=0.0585
+SORT RUN3 t=1 default sort=0.0585
+SORT RUN3 t=1 stable sort=0.0255
+SORT RUN3 t=1 stable sort=0.0259
+SORT RUN3 t=1 stable sort=0.0258
+TIMES RUN3 t=8 rbfast: times: read 0.1023 s, infer 0.0365 s, model 0.0007 s, report 0.0001 s
+TIMES RUN3 t=8 rbfast: times: read 0.1088 s, infer 0.0364 s, model 0.0007 s, report 0.0001 s
+TIMES RUN3 t=8 rbfast: times: read 0.1039 s, infer 0.0364 s, model 0.0007 s, report 0.0001 s
+SORT RUN3 t=8 default sort=0.0140
+SORT RUN3 t=8 default sort=0.0139
+SORT RUN3 t=8 default sort=0.0139
+SORT RUN3 t=8 stable sort=0.0055
+SORT RUN3 t=8 stable sort=0.0064
+SORT RUN3 t=8 stable sort=0.0052
+TIMES BIG t=1 rbfast: times: read 5.2796 s, infer 1.4053 s, model 0.0030 s, report 0.0001 s
+TIMES BIG t=1 rbfast: times: read 5.2674 s, infer 1.4028 s, model 0.0030 s, report 0.0001 s
+TIMES BIG t=1 rbfast: times: read 5.2680 s, infer 1.4079 s, model 0.0030 s, report 0.0001 s
+SORT BIG t=1 default sort=0.5270
+SORT BIG t=1 default sort=0.5272
+SORT BIG t=1 default sort=0.5275
+SORT BIG t=1 stable sort=0.2394
+SORT BIG t=1 stable sort=0.2430
+SORT BIG t=1 stable sort=0.2394
+TIMES BIG t=8 rbfast: times: read 0.7206 s, infer 0.3013 s, model 0.0060 s, report 0.0001 s
+TIMES BIG t=8 rbfast: times: read 0.7256 s, infer 0.2726 s, model 0.0073 s, report 0.0002 s
+TIMES BIG t=8 rbfast: times: read 0.7180 s, infer 0.2706 s, model 0.0023 s, report 0.0001 s
+SORT BIG t=8 default sort=0.1045
+SORT BIG t=8 default sort=0.1067
+SORT BIG t=8 default sort=0.1046
+SORT BIG t=8 stable sort=0.0416
+SORT BIG t=8 stable sort=0.0419
+SORT BIG t=8 stable sort=0.0417
+READ RUN3 t=1 target-mmap read            0.6273 s (median of 9: 0.6484 0.6397 0.6341 0.6365 0.6228 0.6273 0.6228 0.6233 0.6220)
+READ RUN3 t=1 target read            0.6709 s (median of 9: 0.6829 0.6709 0.6694 0.6722 0.6719 0.6692 0.6726 0.6704 0.6585)
+READ RUN3 t=1 target-mmap read            0.6273 s (median of 9: 0.6453 0.6408 0.6339 0.6373 0.6237 0.6273 0.6235 0.6221 0.6237)
+READ RUN3 t=1 target read            0.6742 s (median of 9: 0.6836 0.6755 0.6715 0.6742 0.6735 0.6677 0.6762 0.6654 0.6756)
+READ RUN3 t=8 target-mmap read            0.0939 s (median of 9: 0.1015 0.0941 0.0929 0.0934 0.0950 0.0926 0.0942 0.0934 0.0939)
+READ RUN3 t=8 target read            0.0971 s (median of 9: 0.1035 0.1063 0.0971 0.0967 0.0959 0.1023 0.0961 0.0965 0.0972)
+READ RUN3 t=8 target-mmap read            0.0941 s (median of 9: 0.1032 0.0922 0.0934 0.0971 0.0949 0.0931 0.0949 0.0937 0.0941)
+READ RUN3 t=8 target read            0.0979 s (median of 9: 0.1039 0.0979 0.0984 0.1000 0.0968 0.0968 0.0964 0.0991 0.0961)
+2026-10-20T16:17:57+00:00 END load=1.71 1.49 1.72

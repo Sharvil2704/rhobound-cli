@@ -1,0 +1,32 @@
+2026-10-20T16:23:00+00:00 1. Go source: <repo>
+2026-10-20T16:23:00+00:00    cmd/, internal/, go.mod and testdata/ are byte-identical to the oracle's Go tree
+2026-10-20T16:23:00+00:00 2. building the Go CLI and recording the cmd/rhobound tests' command lines
+rhobound 0.1.0-dev
+ok  	github.com/Sharvil2704/rhobound-cli/cmd/rhobound	0.511s
+2026-10-20T16:23:01+00:00    recorded 57 command lines
+2026-10-20T16:23:01+00:00 2b. recording the tie captures (scripts/go/zz_tie_captures_test.go) and writing the edge inputs
+ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	0.367s
+edge inputs written to <scratch>/edge
+2026-10-20T16:23:05+00:00 3. building rbfast
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.04s
+2026-10-20T16:23:05+00:00 4. comparing
+group oracle: done in 90 s
+group cli: done in 1 s
+group fail: done in 1 s
+group model: done in 2 s
+group sweep: done in 2 s
+group edge: done in 9 s
+group big: done in 54 s
+
+
+group     identical    equal  known   DIFF
+oracle          855        0      0      0
+cli             116        0      0      0
+fail            102        0      0      0
+model           736        0      0      0
+sweep           512        0      0      0
+edge            349        0      0      0
+big               7        0      0      0
+largest relative difference of any number compared: 0 
+total 2677 comparisons in 159 s
+exit 0

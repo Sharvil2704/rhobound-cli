@@ -1,0 +1,27 @@
+[package]
+name = "rbfast"
+description = "Parallel accelerator CLI for rhobound-cli: read, infer, model, sweep"
+version.workspace = true
+edition.workspace = true
+# Apache-2.0, except the parts derived from Go's text/tabwriter, flag and os.MkdirAll (src/tabwriter.rs,
+# src/flags.rs, src/main.rs): BSD-3-Clause, ../../LICENSE-GO
+license = "Apache-2.0 AND BSD-3-Clause"
+rust-version.workspace = true
+
+[[bin]]
+name = "rbfast"
+path = "src/main.rs"
+
+[dependencies]
+rbfast-gostr = { path = "../gostr" }
+rbfast-otlp = { path = "../otlp", default-features = false }
+rbfast-math = { path = "../math" }
+rbfast-infer = { path = "../infer", default-features = false }
+
+[features]
+# The inflate backend for .gz captures: zlib-rs (licence Zlib, the faster one) by default; `miniz` (miniz_oxide,
+# MIT OR Zlib OR Apache-2.0) for an MIT/Apache-2.0-only build:
+#   cargo build --release -p rbfast --no-default-features --features miniz
+default = ["zlib-rs"]
+zlib-rs = ["rbfast-otlp/zlib-rs"]
+miniz = ["rbfast-otlp/miniz"]

@@ -1,0 +1,3 @@
+STAGES RUN3 rbfast: times: read 0.1182 s, infer 0.0300 s, model 0.0008 s, report 0.0002 s
+STAGES RUN3 rbfast: times: read 0.1155 s, infer 0.0297 s, model 0.0008 s, report 0.0002 s
+STAGES RUN3 rbfast: times: read 0.1171 s, infer 0.0287 s, model 0.0007 s, report 0.0002 s

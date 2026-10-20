@@ -1,0 +1,8 @@
+OTHERS go RUN3 1 wall=15.49 busy_total=1.15 own=1.00 others_cores=0.15
+OTHERS rb RUN3 1 wall=2.73 busy_total=1.19 own=0.98 others_cores=0.21
+OTHERS go RUN3 2 wall=8.37 busy_total=2.02 own=1.89 others_cores=0.13
+OTHERS rb RUN3 2 wall=1.43 busy_total=1.99 own=1.92 others_cores=0.07
+OTHERS go RUN3 4 wall=4.67 busy_total=3.55 own=3.41 others_cores=0.14
+OTHERS rb RUN3 4 wall=0.80 busy_total=3.63 own=3.50 others_cores=0.14
+OTHERS go RUN3 8 wall=3.02 busy_total=5.58 own=5.48 others_cores=0.10
+OTHERS rb RUN3 8 wall=0.48 busy_total=6.15 own=5.97 others_cores=0.17

@@ -134,6 +134,18 @@ Measured, with failures stated first, in [ACCURACY.md](docs/ACCURACY.md):
 
 Example topologies for `rhobound model` are in [examples/](examples/).
 
+## rbfast: an optional Rust build
+
+[rust/](rust/) holds rbfast, a parallel Rust port of the reader, the inference, the model and the report. It takes
+the same `predict`, `infer` and `model` commands and flags and prints the same output: byte-identical to the Go
+binary on linux/arm64 on every input compared (2,677 comparisons), and about 6-7x faster on large captures (a
+579 MB capture in 0.15 s instead of 1.0 s at 8 threads; less on a single gzipped file). It adds a `sweep` command
+for many what-ifs at once. The Go binary stays the reference: where the two disagree, the Go binary is right.
+Other architectures than linux/arm64 were not tested. [rust/README.md](rust/README.md) has the build, the tests,
+the parity runs and the benchmarks.
+
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The Rust port in [rust/](rust/) also contains
+code derived from the Go standard library under the BSD-3-Clause licence ([rust/LICENSE-GO](rust/LICENSE-GO));
+see NOTICE.

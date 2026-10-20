@@ -11,3 +11,16 @@ jobs:
       - run: gofmt -l . | tee /dev/stderr | (! read)
       - run: go vet ./... && go vet -tags e2e ./...
       - run: go test -race -count=1 ./...
+  rust:
+    # rbfast (rust/). Without RBFAST_ORACLE and the other Go-made data the parity tests skip, and on this amd64
+    # runner the comparisons with Go's linux/arm64 values use the tolerance stated in rust/README.md.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustup default stable
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --release --workspace --locked

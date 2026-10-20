@@ -1,0 +1,36 @@
+[package]
+name = "rbfast-math"
+description = "Queueing math and the mean-latency model of rhobound-cli (internal/mathx and internal/model), with parallel batch evaluation"
+version.workspace = true
+edition.workspace = true
+# Apache-2.0, except src/gomath.rs and src/simd.rs, ports of Go's math package, the parts of src/gofmt.rs derived
+# from Go's strconv and encoding/json, and parse_go_float in src/model.rs (Go's strconv/atof.go and atoi.go):
+# BSD-3-Clause, ../../LICENSE-GO (with the SunPro notices in src/gomath.rs for the FreeBSD-derived functions).
+license = "Apache-2.0 AND BSD-3-Clause"
+# const f64::from_bits needs 1.83, the workspace's rust-version
+rust-version.workspace = true
+
+# Dependencies (all MIT OR Apache-2.0):
+#   rayon       data parallelism for the batch (many what-ifs) API and the optional parallel quadrature
+#   serde_json  only with the `oracle` feature (the oracle driver's JSON, and the words of a topology file's JSON
+#               syntax error; without it that error reads "invalid JSON", and the CLI checks a topology's syntax
+#               with Go's texts first anyway) and in the tests; `float_roundtrip` makes its number parsing
+#               correctly rounded, as Go's strconv is
+[dependencies]
+rbfast-gostr = { path = "../gostr" }
+rayon = "1.10"
+serde_json = { version = "1.0", features = ["float_roundtrip"], optional = true }
+
+[features]
+# the parity and timing driver below
+oracle = ["dep:serde_json"]
+
+[dev-dependencies]
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
+
+[[bin]]
+# Parity and timing driver: evaluates the oracle's manifests and writes the oracle's JSON schema, times kernels
+# and sweeps. Not part of the library API (cargo run --release -p rbfast-math --features oracle --bin ...).
+name = "rbfast-math-oracle"
+path = "src/bin/oracle.rs"
+required-features = ["oracle"]

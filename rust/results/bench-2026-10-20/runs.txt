@@ -1,0 +1,224 @@
+RUN go RUN3 1 rep=0 wall=5.141 user=4.881 sys=0.268 maxrss_mib=227.2 exit=0
+RUN go RUN3 1 rep=1 wall=5.138 user=4.928 sys=0.220 maxrss_mib=225.3 exit=0
+RUN go RUN3 1 rep=2 wall=5.122 user=4.909 sys=0.220 maxrss_mib=209.3 exit=0
+MEDIAN go RUN3 1 n=3 wall=5.138 min=5.122 max=5.141
+RUN rb RUN3 1 rep=0 wall=0.862 user=0.734 sys=0.128 maxrss_mib=98.5 exit=0
+RUN rb RUN3 1 rep=1 wall=0.863 user=0.699 sys=0.165 maxrss_mib=98.6 exit=0
+RUN rb RUN3 1 rep=2 wall=0.862 user=0.735 sys=0.128 maxrss_mib=98.6 exit=0
+MEDIAN rb RUN3 1 n=3 wall=0.862 min=0.862 max=0.863
+RUN go RUN3 2 rep=0 wall=2.756 user=4.988 sys=0.249 maxrss_mib=210.6 exit=0
+RUN go RUN3 2 rep=1 wall=2.764 user=5.049 sys=0.212 maxrss_mib=206.7 exit=0
+RUN go RUN3 2 rep=2 wall=2.765 user=5.022 sys=0.236 maxrss_mib=208.9 exit=0
+MEDIAN go RUN3 2 n=3 wall=2.764 min=2.756 max=2.765
+RUN rb RUN3 2 rep=0 wall=0.461 user=0.745 sys=0.136 maxrss_mib=112.9 exit=0
+RUN rb RUN3 2 rep=1 wall=0.462 user=0.732 sys=0.151 maxrss_mib=113.0 exit=0
+RUN rb RUN3 2 rep=2 wall=0.457 user=0.740 sys=0.139 maxrss_mib=112.9 exit=0
+MEDIAN rb RUN3 2 n=3 wall=0.461 min=0.457 max=0.462
+RUN go RUN3 4 rep=0 wall=1.531 user=4.991 sys=0.270 maxrss_mib=211.4 exit=0
+RUN go RUN3 4 rep=1 wall=1.535 user=5.017 sys=0.266 maxrss_mib=212.4 exit=0
+RUN go RUN3 4 rep=2 wall=1.538 user=5.019 sys=0.265 maxrss_mib=210.2 exit=0
+MEDIAN go RUN3 4 n=3 wall=1.535 min=1.531 max=1.538
+RUN rb RUN3 4 rep=0 wall=0.250 user=0.784 sys=0.117 maxrss_mib=110.8 exit=0
+RUN rb RUN3 4 rep=1 wall=0.255 user=0.710 sys=0.195 maxrss_mib=110.9 exit=0
+RUN rb RUN3 4 rep=2 wall=0.255 user=0.742 sys=0.158 maxrss_mib=110.7 exit=0
+MEDIAN rb RUN3 4 n=3 wall=0.255 min=0.250 max=0.255
+RUN go RUN3 8 rep=0 wall=1.059 user=5.258 sys=0.258 maxrss_mib=214.1 exit=0
+RUN go RUN3 8 rep=1 wall=0.999 user=5.164 sys=0.302 maxrss_mib=252.9 exit=0
+RUN go RUN3 8 rep=2 wall=0.994 user=5.220 sys=0.268 maxrss_mib=231.8 exit=0
+MEDIAN go RUN3 8 n=3 wall=0.999 min=0.994 max=1.059
+RUN rb RUN3 8 rep=0 wall=0.148 user=0.736 sys=0.192 maxrss_mib=112.3 exit=0
+RUN rb RUN3 8 rep=1 wall=0.147 user=0.734 sys=0.192 maxrss_mib=111.9 exit=0
+RUN rb RUN3 8 rep=2 wall=0.147 user=0.774 sys=0.155 maxrss_mib=112.3 exit=0
+MEDIAN rb RUN3 8 n=3 wall=0.147 min=0.147 max=0.148
+RUN go BIG 1 rep=0 wall=40.229 user=38.857 sys=1.432 maxrss_mib=1699.8 exit=0
+RUN go BIG 1 rep=1 wall=40.339 user=38.830 sys=1.521 maxrss_mib=1534.8 exit=0
+RUN go BIG 1 rep=2 wall=40.279 user=38.910 sys=1.436 maxrss_mib=1470.8 exit=0
+MEDIAN go BIG 1 n=3 wall=40.279 min=40.229 max=40.339
+RUN rb BIG 1 rep=0 wall=6.708 user=5.836 sys=0.872 maxrss_mib=736.1 exit=0
+RUN rb BIG 1 rep=1 wall=6.720 user=5.923 sys=0.796 maxrss_mib=736.2 exit=0
+RUN rb BIG 1 rep=2 wall=6.733 user=5.841 sys=0.892 maxrss_mib=736.2 exit=0
+MEDIAN rb BIG 1 n=3 wall=6.720 min=6.708 max=6.733
+RUN go BIG 2 rep=0 wall=21.632 user=39.898 sys=1.179 maxrss_mib=1574.2 exit=0
+RUN go BIG 2 rep=1 wall=21.626 user=39.927 sys=1.169 maxrss_mib=1552.8 exit=0
+RUN go BIG 2 rep=2 wall=21.607 user=39.894 sys=1.145 maxrss_mib=1550.5 exit=0
+MEDIAN go BIG 2 n=3 wall=21.626 min=21.607 max=21.632
+RUN rb BIG 2 rep=0 wall=3.524 user=5.956 sys=0.979 maxrss_mib=895.0 exit=0
+RUN rb BIG 2 rep=1 wall=3.549 user=6.031 sys=0.921 maxrss_mib=857.3 exit=0
+RUN rb BIG 2 rep=2 wall=3.554 user=5.994 sys=0.963 maxrss_mib=857.7 exit=0
+MEDIAN rb BIG 2 n=3 wall=3.549 min=3.524 max=3.554
+RUN go BIG 4 rep=0 wall=12.109 user=39.972 sys=1.381 maxrss_mib=1505.8 exit=0
+RUN go BIG 4 rep=1 wall=12.079 user=39.962 sys=1.316 maxrss_mib=1534.5 exit=0
+RUN go BIG 4 rep=2 wall=12.079 user=40.163 sys=1.144 maxrss_mib=1528.8 exit=0
+MEDIAN go BIG 4 n=3 wall=12.079 min=12.079 max=12.109
+RUN rb BIG 4 rep=0 wall=1.817 user=6.117 sys=0.855 maxrss_mib=872.8 exit=0
+RUN rb BIG 4 rep=1 wall=1.839 user=6.035 sys=0.922 maxrss_mib=896.3 exit=0
+RUN rb BIG 4 rep=2 wall=1.840 user=6.012 sys=0.983 maxrss_mib=860.7 exit=0
+MEDIAN rb BIG 4 n=3 wall=1.839 min=1.817 max=1.840
+RUN go BIG 8 rep=0 wall=7.674 user=40.919 sys=1.642 maxrss_mib=1639.6 exit=0
+RUN go BIG 8 rep=1 wall=7.616 user=40.899 sys=1.613 maxrss_mib=1554.1 exit=0
+RUN go BIG 8 rep=2 wall=7.674 user=40.713 sys=1.610 maxrss_mib=1554.8 exit=0
+MEDIAN go BIG 8 n=3 wall=7.674 min=7.616 max=7.674
+RUN rb BIG 8 rep=0 wall=1.041 user=6.105 sys=1.004 maxrss_mib=864.9 exit=0
+RUN rb BIG 8 rep=1 wall=1.028 user=6.214 sys=0.901 maxrss_mib=919.7 exit=0
+RUN rb BIG 8 rep=2 wall=1.035 user=6.131 sys=0.979 maxrss_mib=869.0 exit=0
+MEDIAN rb BIG 8 n=3 wall=1.035 min=1.028 max=1.041
+RUN go RUN3GZ 1 rep=0 wall=5.720 user=5.533 sys=0.192 maxrss_mib=218.5 exit=0
+RUN go RUN3GZ 1 rep=1 wall=5.724 user=5.560 sys=0.168 maxrss_mib=221.6 exit=0
+RUN go RUN3GZ 1 rep=2 wall=5.731 user=5.547 sys=0.188 maxrss_mib=209.8 exit=0
+MEDIAN go RUN3GZ 1 n=3 wall=5.724 min=5.720 max=5.731
+RUN rb RUN3GZ 1 rep=0 wall=1.064 user=1.016 sys=0.048 maxrss_mib=154.7 exit=0
+RUN rb RUN3GZ 1 rep=1 wall=1.065 user=0.989 sys=0.076 maxrss_mib=154.7 exit=0
+RUN rb RUN3GZ 1 rep=2 wall=1.068 user=1.024 sys=0.044 maxrss_mib=154.7 exit=0
+MEDIAN rb RUN3GZ 1 n=3 wall=1.065 min=1.064 max=1.068
+RUN go RUN3GZ 2 rep=0 wall=3.064 user=5.669 sys=0.180 maxrss_mib=210.3 exit=0
+RUN go RUN3GZ 2 rep=1 wall=3.053 user=5.629 sys=0.199 maxrss_mib=212.1 exit=0
+RUN go RUN3GZ 2 rep=2 wall=3.056 user=5.685 sys=0.148 maxrss_mib=205.9 exit=0
+MEDIAN go RUN3GZ 2 n=3 wall=3.056 min=3.053 max=3.064
+RUN rb RUN3GZ 2 rep=0 wall=0.549 user=1.026 sys=0.052 maxrss_mib=131.3 exit=0
+RUN rb RUN3GZ 2 rep=1 wall=0.556 user=1.032 sys=0.056 maxrss_mib=123.5 exit=0
+RUN rb RUN3GZ 2 rep=2 wall=0.549 user=1.016 sys=0.060 maxrss_mib=150.4 exit=0
+MEDIAN rb RUN3GZ 2 n=3 wall=0.549 min=0.549 max=0.556
+RUN go RUN3GZ 4 rep=0 wall=1.684 user=5.670 sys=0.208 maxrss_mib=206.4 exit=0
+RUN go RUN3GZ 4 rep=1 wall=1.693 user=5.738 sys=0.139 maxrss_mib=212.7 exit=0
+RUN go RUN3GZ 4 rep=2 wall=1.693 user=5.678 sys=0.211 maxrss_mib=212.1 exit=0
+MEDIAN go RUN3GZ 4 n=3 wall=1.693 min=1.684 max=1.693
+RUN rb RUN3GZ 4 rep=0 wall=0.381 user=0.999 sys=0.105 maxrss_mib=129.4 exit=0
+RUN rb RUN3GZ 4 rep=1 wall=0.401 user=1.007 sys=0.127 maxrss_mib=126.8 exit=0
+RUN rb RUN3GZ 4 rep=2 wall=0.401 user=1.028 sys=0.104 maxrss_mib=117.7 exit=0
+MEDIAN rb RUN3GZ 4 n=3 wall=0.401 min=0.381 max=0.401
+RUN go RUN3GZ 8 rep=0 wall=1.182 user=5.890 sys=0.218 maxrss_mib=207.8 exit=0
+RUN go RUN3GZ 8 rep=1 wall=1.186 user=5.904 sys=0.196 maxrss_mib=208.3 exit=0
+RUN go RUN3GZ 8 rep=2 wall=1.169 user=5.834 sys=0.251 maxrss_mib=250.1 exit=0
+MEDIAN go RUN3GZ 8 n=3 wall=1.182 min=1.169 max=1.186
+RUN rb RUN3GZ 8 rep=0 wall=0.383 user=1.014 sys=0.158 maxrss_mib=125.5 exit=0
+RUN rb RUN3GZ 8 rep=1 wall=0.376 user=1.042 sys=0.118 maxrss_mib=122.1 exit=0
+RUN rb RUN3GZ 8 rep=2 wall=0.366 user=1.049 sys=0.092 maxrss_mib=134.0 exit=0
+MEDIAN rb RUN3GZ 8 n=3 wall=0.376 min=0.366 max=0.383
+RUN go BIGGZ 1 rep=0 wall=45.407 user=44.498 sys=0.940 maxrss_mib=1577.0 exit=0
+RUN go BIGGZ 1 rep=1 wall=45.286 user=44.511 sys=0.808 maxrss_mib=1578.3 exit=0
+RUN go BIGGZ 1 rep=2 wall=45.283 user=44.406 sys=0.908 maxrss_mib=1591.4 exit=0
+MEDIAN go BIGGZ 1 n=3 wall=45.286 min=45.283 max=45.407
+RUN rb BIGGZ 1 rep=0 wall=8.437 user=8.161 sys=0.276 maxrss_mib=924.8 exit=0
+RUN rb BIGGZ 1 rep=1 wall=8.461 user=8.165 sys=0.296 maxrss_mib=930.5 exit=0
+RUN rb BIGGZ 1 rep=2 wall=8.482 user=8.218 sys=0.264 maxrss_mib=930.4 exit=0
+MEDIAN rb BIGGZ 1 n=3 wall=8.461 min=8.437 max=8.482
+RUN go BIGGZ 2 rep=0 wall=24.096 user=45.272 sys=0.740 maxrss_mib=1566.4 exit=0
+RUN go BIGGZ 2 rep=1 wall=24.070 user=45.215 sys=0.720 maxrss_mib=1506.6 exit=0
+RUN go BIGGZ 2 rep=2 wall=24.053 user=45.234 sys=0.648 maxrss_mib=1538.8 exit=0
+MEDIAN go BIGGZ 2 n=3 wall=24.070 min=24.053 max=24.096
+RUN rb BIGGZ 2 rep=0 wall=4.346 user=8.315 sys=0.288 maxrss_mib=955.1 exit=0
+RUN rb BIGGZ 2 rep=1 wall=4.365 user=8.310 sys=0.328 maxrss_mib=955.1 exit=0
+RUN rb BIGGZ 2 rep=2 wall=4.390 user=8.346 sys=0.336 maxrss_mib=965.5 exit=0
+MEDIAN rb BIGGZ 2 n=3 wall=4.365 min=4.346 max=4.390
+RUN go BIGGZ 4 rep=0 wall=13.321 user=45.301 sys=0.897 maxrss_mib=1585.5 exit=0
+RUN go BIGGZ 4 rep=1 wall=13.389 user=45.486 sys=0.905 maxrss_mib=1562.5 exit=0
+RUN go BIGGZ 4 rep=2 wall=13.351 user=45.462 sys=0.771 maxrss_mib=1602.7 exit=0
+MEDIAN go BIGGZ 4 n=3 wall=13.351 min=13.321 max=13.389
+RUN rb BIGGZ 4 rep=0 wall=2.277 user=8.395 sys=0.404 maxrss_mib=921.0 exit=0
+RUN rb BIGGZ 4 rep=1 wall=2.273 user=8.429 sys=0.383 maxrss_mib=948.6 exit=0
+RUN rb BIGGZ 4 rep=2 wall=2.270 user=8.411 sys=0.397 maxrss_mib=915.1 exit=0
+MEDIAN rb BIGGZ 4 n=3 wall=2.273 min=2.270 max=2.277
+RUN go BIGGZ 8 rep=0 wall=9.125 user=46.160 sys=1.034 maxrss_mib=1524.9 exit=0
+RUN go BIGGZ 8 rep=1 wall=9.045 user=45.953 sys=1.025 maxrss_mib=1540.8 exit=0
+RUN go BIGGZ 8 rep=2 wall=9.089 user=46.049 sys=0.944 maxrss_mib=1528.7 exit=0
+MEDIAN go BIGGZ 8 n=3 wall=9.089 min=9.045 max=9.125
+RUN rb BIGGZ 8 rep=0 wall=1.259 user=8.560 sys=0.497 maxrss_mib=1074.5 exit=0
+RUN rb BIGGZ 8 rep=1 wall=1.249 user=8.595 sys=0.458 maxrss_mib=1029.0 exit=0
+RUN rb BIGGZ 8 rep=2 wall=1.250 user=8.527 sys=0.490 maxrss_mib=1033.6 exit=0
+MEDIAN rb BIGGZ 8 n=3 wall=1.250 min=1.249 max=1.259
+RUN go RUN3JSON 1 rep=0 wall=7.077 user=6.758 sys=0.324 maxrss_mib=225.7 exit=0
+RUN go RUN3JSON 1 rep=1 wall=7.084 user=6.809 sys=0.280 maxrss_mib=212.4 exit=0
+RUN go RUN3JSON 1 rep=2 wall=7.094 user=6.880 sys=0.220 maxrss_mib=212.1 exit=0
+MEDIAN go RUN3JSON 1 n=3 wall=7.084 min=7.077 max=7.094
+RUN rb RUN3JSON 1 rep=0 wall=1.297 user=1.169 sys=0.128 maxrss_mib=105.7 exit=0
+RUN rb RUN3JSON 1 rep=1 wall=1.299 user=1.207 sys=0.092 maxrss_mib=105.7 exit=0
+RUN rb RUN3JSON 1 rep=2 wall=1.304 user=1.199 sys=0.104 maxrss_mib=105.7 exit=0
+MEDIAN rb RUN3JSON 1 n=3 wall=1.299 min=1.297 max=1.304
+RUN go RUN3JSON 2 rep=0 wall=3.723 user=6.904 sys=0.248 maxrss_mib=201.9 exit=0
+RUN go RUN3JSON 2 rep=1 wall=3.717 user=6.919 sys=0.228 maxrss_mib=218.8 exit=0
+RUN go RUN3JSON 2 rep=2 wall=3.719 user=6.935 sys=0.220 maxrss_mib=218.9 exit=0
+MEDIAN go RUN3JSON 2 n=3 wall=3.719 min=3.717 max=3.723
+RUN rb RUN3JSON 2 rep=0 wall=0.673 user=1.157 sys=0.161 maxrss_mib=139.8 exit=0
+RUN rb RUN3JSON 2 rep=1 wall=0.668 user=1.217 sys=0.096 maxrss_mib=148.2 exit=0
+RUN rb RUN3JSON 2 rep=2 wall=0.675 user=1.169 sys=0.156 maxrss_mib=142.4 exit=0
+MEDIAN rb RUN3JSON 2 n=3 wall=0.673 min=0.668 max=0.675
+RUN go RUN3JSON 4 rep=0 wall=2.533 user=6.938 sys=0.239 maxrss_mib=212.6 exit=0
+RUN go RUN3JSON 4 rep=1 wall=2.535 user=6.954 sys=0.232 maxrss_mib=208.0 exit=0
+RUN go RUN3JSON 4 rep=2 wall=2.536 user=6.972 sys=0.211 maxrss_mib=207.4 exit=0
+MEDIAN go RUN3JSON 4 n=3 wall=2.535 min=2.533 max=2.536
+RUN rb RUN3JSON 4 rep=0 wall=0.358 user=1.189 sys=0.161 maxrss_mib=157.6 exit=0
+RUN rb RUN3JSON 4 rep=1 wall=0.356 user=1.195 sys=0.148 maxrss_mib=149.8 exit=0
+RUN rb RUN3JSON 4 rep=2 wall=0.357 user=1.173 sys=0.169 maxrss_mib=159.1 exit=0
+MEDIAN rb RUN3JSON 4 n=3 wall=0.357 min=0.356 max=0.358
+RUN go RUN3JSON 8 rep=0 wall=2.498 user=6.983 sys=0.307 maxrss_mib=244.4 exit=0
+RUN go RUN3JSON 8 rep=1 wall=2.498 user=7.038 sys=0.265 maxrss_mib=211.2 exit=0
+RUN go RUN3JSON 8 rep=2 wall=2.498 user=6.982 sys=0.310 maxrss_mib=211.7 exit=0
+MEDIAN go RUN3JSON 8 n=3 wall=2.498 min=2.498 max=2.498
+RUN rb RUN3JSON 8 rep=0 wall=0.226 user=1.207 sys=0.170 maxrss_mib=117.4 exit=0
+RUN rb RUN3JSON 8 rep=1 wall=0.219 user=1.214 sys=0.164 maxrss_mib=116.7 exit=0
+RUN rb RUN3JSON 8 rep=2 wall=0.219 user=1.204 sys=0.168 maxrss_mib=116.0 exit=0
+MEDIAN rb RUN3JSON 8 n=3 wall=0.219 min=0.219 max=0.226
+RUN go RUN3JSONGZ 1 rep=0 wall=7.673 user=7.550 sys=0.128 maxrss_mib=215.6 exit=0
+RUN go RUN3JSONGZ 1 rep=1 wall=7.690 user=7.568 sys=0.128 maxrss_mib=212.4 exit=0
+RUN go RUN3JSONGZ 1 rep=2 wall=7.698 user=7.564 sys=0.140 maxrss_mib=221.5 exit=0
+MEDIAN go RUN3JSONGZ 1 n=3 wall=7.690 min=7.673 max=7.698
+RUN rb RUN3JSONGZ 1 rep=0 wall=1.503 user=1.459 sys=0.044 maxrss_mib=119.9 exit=0
+RUN rb RUN3JSONGZ 1 rep=1 wall=1.500 user=1.452 sys=0.048 maxrss_mib=120.0 exit=0
+RUN rb RUN3JSONGZ 1 rep=2 wall=1.499 user=1.443 sys=0.056 maxrss_mib=119.9 exit=0
+MEDIAN rb RUN3JSONGZ 1 n=3 wall=1.500 min=1.499 max=1.503
+RUN go RUN3JSONGZ 2 rep=0 wall=4.035 user=7.611 sys=0.124 maxrss_mib=199.1 exit=0
+RUN go RUN3JSONGZ 2 rep=1 wall=4.042 user=7.571 sys=0.164 maxrss_mib=204.7 exit=0
+RUN go RUN3JSONGZ 2 rep=2 wall=4.041 user=7.554 sys=0.200 maxrss_mib=218.0 exit=0
+MEDIAN go RUN3JSONGZ 2 n=3 wall=4.041 min=4.035 max=4.042
+RUN rb RUN3JSONGZ 2 rep=0 wall=0.772 user=1.447 sys=0.072 maxrss_mib=135.9 exit=0
+RUN rb RUN3JSONGZ 2 rep=1 wall=0.771 user=1.460 sys=0.060 maxrss_mib=133.6 exit=0
+RUN rb RUN3JSONGZ 2 rep=2 wall=0.775 user=1.472 sys=0.052 maxrss_mib=159.6 exit=0
+MEDIAN rb RUN3JSONGZ 2 n=3 wall=0.772 min=0.771 max=0.775
+RUN go RUN3JSONGZ 4 rep=0 wall=3.134 user=7.641 sys=0.107 maxrss_mib=211.6 exit=0
+RUN go RUN3JSONGZ 4 rep=1 wall=3.129 user=7.634 sys=0.108 maxrss_mib=210.6 exit=0
+RUN go RUN3JSONGZ 4 rep=2 wall=3.137 user=7.638 sys=0.119 maxrss_mib=210.2 exit=0
+MEDIAN go RUN3JSONGZ 4 n=3 wall=3.134 min=3.129 max=3.137
+RUN rb RUN3JSONGZ 4 rep=0 wall=0.435 user=1.466 sys=0.075 maxrss_mib=120.8 exit=0
+RUN rb RUN3JSONGZ 4 rep=1 wall=0.428 user=1.457 sys=0.076 maxrss_mib=117.6 exit=0
+RUN rb RUN3JSONGZ 4 rep=2 wall=0.429 user=1.475 sys=0.060 maxrss_mib=117.9 exit=0
+MEDIAN rb RUN3JSONGZ 4 n=3 wall=0.429 min=0.428 max=0.435
+RUN go RUN3JSONGZ 8 rep=0 wall=3.095 user=7.722 sys=0.113 maxrss_mib=213.8 exit=0
+RUN go RUN3JSONGZ 8 rep=1 wall=3.089 user=7.651 sys=0.180 maxrss_mib=206.9 exit=0
+RUN go RUN3JSONGZ 8 rep=2 wall=3.104 user=7.723 sys=0.156 maxrss_mib=231.9 exit=0
+MEDIAN go RUN3JSONGZ 8 n=3 wall=3.095 min=3.089 max=3.104
+RUN rb RUN3JSONGZ 8 rep=0 wall=0.416 user=1.519 sys=0.057 maxrss_mib=123.8 exit=0
+RUN rb RUN3JSONGZ 8 rep=1 wall=0.417 user=1.497 sys=0.076 maxrss_mib=124.4 exit=0
+RUN rb RUN3JSONGZ 8 rep=2 wall=0.416 user=1.491 sys=0.080 maxrss_mib=118.7 exit=0
+MEDIAN rb RUN3JSONGZ 8 n=3 wall=0.416 min=0.416 max=0.417
+RUN go BIGJSONGZ 1 rep=0 wall=61.051 user=60.171 sys=0.924 maxrss_mib=1710.2 exit=0
+RUN go BIGJSONGZ 1 rep=1 wall=61.010 user=60.171 sys=0.880 maxrss_mib=1753.6 exit=0
+RUN go BIGJSONGZ 1 rep=2 wall=60.978 user=60.085 sys=0.936 maxrss_mib=1716.2 exit=0
+MEDIAN go BIGJSONGZ 1 n=3 wall=61.010 min=60.978 max=61.051
+RUN rb BIGJSONGZ 1 rep=0 wall=12.056 user=11.779 sys=0.276 maxrss_mib=976.4 exit=0
+RUN rb BIGJSONGZ 1 rep=1 wall=12.002 user=11.714 sys=0.288 maxrss_mib=976.3 exit=0
+RUN rb BIGJSONGZ 1 rep=2 wall=12.043 user=11.723 sys=0.320 maxrss_mib=976.4 exit=0
+MEDIAN rb BIGJSONGZ 1 n=3 wall=12.043 min=12.002 max=12.056
+RUN go BIGJSONGZ 2 rep=0 wall=32.199 user=60.876 sys=0.632 maxrss_mib=1519.1 exit=0
+RUN go BIGJSONGZ 2 rep=1 wall=32.213 user=60.854 sys=0.632 maxrss_mib=1591.5 exit=0
+RUN go BIGJSONGZ 2 rep=2 wall=32.178 user=60.800 sys=0.664 maxrss_mib=1562.6 exit=0
+MEDIAN go BIGJSONGZ 2 n=3 wall=32.199 min=32.178 max=32.213
+RUN rb BIGJSONGZ 2 rep=0 wall=6.217 user=11.974 sys=0.360 maxrss_mib=1074.8 exit=0
+RUN rb BIGJSONGZ 2 rep=1 wall=6.237 user=12.083 sys=0.276 maxrss_mib=1152.0 exit=0
+RUN rb BIGJSONGZ 2 rep=2 wall=6.229 user=12.050 sys=0.300 maxrss_mib=1079.7 exit=0
+MEDIAN rb BIGJSONGZ 2 n=3 wall=6.229 min=6.217 max=6.237
+RUN go BIGJSONGZ 4 rep=0 wall=25.024 user=60.950 sys=0.606 maxrss_mib=1619.2 exit=0
+RUN go BIGJSONGZ 4 rep=1 wall=25.046 user=60.954 sys=0.576 maxrss_mib=1622.7 exit=0
+RUN go BIGJSONGZ 4 rep=2 wall=25.026 user=60.889 sys=0.672 maxrss_mib=1613.9 exit=0
+MEDIAN go BIGJSONGZ 4 n=3 wall=25.026 min=25.024 max=25.046
+RUN rb BIGJSONGZ 4 rep=0 wall=3.166 user=11.901 sys=0.456 maxrss_mib=927.6 exit=0
+RUN rb BIGJSONGZ 4 rep=1 wall=3.162 user=11.932 sys=0.400 maxrss_mib=961.5 exit=0
+RUN rb BIGJSONGZ 4 rep=2 wall=3.163 user=11.961 sys=0.384 maxrss_mib=984.7 exit=0
+MEDIAN rb BIGJSONGZ 4 n=3 wall=3.163 min=3.162 max=3.166
+RUN go BIGJSONGZ 8 rep=0 wall=24.604 user=61.103 sys=0.648 maxrss_mib=1558.9 exit=0
+RUN go BIGJSONGZ 8 rep=1 wall=24.598 user=61.119 sys=0.745 maxrss_mib=1632.3 exit=0
+RUN go BIGJSONGZ 8 rep=2 wall=24.580 user=61.141 sys=0.689 maxrss_mib=1625.8 exit=0
+MEDIAN go BIGJSONGZ 8 n=3 wall=24.598 min=24.580 max=24.604
+RUN rb BIGJSONGZ 8 rep=0 wall=1.721 user=12.168 sys=0.472 maxrss_mib=941.2 exit=0
+RUN rb BIGJSONGZ 8 rep=1 wall=1.740 user=12.094 sys=0.559 maxrss_mib=977.0 exit=0
+RUN rb BIGJSONGZ 8 rep=2 wall=1.707 user=12.091 sys=0.567 maxrss_mib=1011.6 exit=0
+MEDIAN rb BIGJSONGZ 8 n=3 wall=1.721 min=1.707 max=1.740

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# rbfast: an optional, parallel Rust accelerator for rhobound-cli. The Go binary stays the reference:
+# every output here is checked against it.
+[workspace]
+resolver = "2"
+members = ["crates/gostr", "crates/otlp", "crates/math", "crates/infer", "crates/cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+# No workspace licence: each crate states its own, Apache-2.0 AND BSD-3-Clause (parts derived from Go's standard
+# library; see LICENSE-GO).
+rust-version = "1.83"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = 1

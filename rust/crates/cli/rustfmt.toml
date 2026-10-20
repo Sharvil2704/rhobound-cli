@@ -1,0 +1,3 @@
+# rbfast (the CLI): lines up to 120 columns, as rbfast-infer and the Go source it ports
+max_width = 120
+use_small_heuristics = "Max"

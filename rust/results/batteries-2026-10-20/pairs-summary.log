@@ -1,0 +1,18 @@
+== json
+TOTAL 285 cases, 285 identical, 0 DIFF
+== jsoncap
+TOTAL 30 cases, 30 identical, 0 DIFF
+== os
+DIFF workers 'a=9223372036854775807' exit 2 vs 101; stderr go=b'panic: runtime error: makeslice: cap out of range\n\ngoroutine 41 [running]:\ngithub.com/Sharvil2704/rhobound-cli/internal/infer.(*workerSearch).try(0x5f08c080dd58, 0x7fffffffffffffff)\n\t<repo>/internal/infer/fifo.go:
+TOTAL 72 cases, 71 identical, 1 DIFF
+== os2
+TOTAL 10 cases, 10 identical, 0 DIFF
+== rise
+TOTAL 312 cases, 312 identical, 0 DIFF
+== threads
+TOTAL 30 cases, 30 identical, 0 DIFF
+== topo
+TOTAL 1893 cases, 1893 identical, 0 DIFF
+== fuzz
+TOTAL 3846 cases, 3846 identical, 0 DIFF
+finished

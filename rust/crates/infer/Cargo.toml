@@ -1,0 +1,29 @@
+[package]
+name = "rbfast-infer"
+description = "Topology inference from a span table, mirroring rhobound-cli's internal/infer"
+version.workspace = true
+edition.workspace = true
+# Apache-2.0, except the parts derived from Go's slices sort and strconv float layouts (src/gosort.rs,
+# src/gofmt.rs): BSD-3-Clause, ../../LICENSE-GO
+license = "Apache-2.0 AND BSD-3-Clause"
+rust-version.workspace = true
+
+[dependencies]
+rbfast-gostr = { path = "../gostr" }
+# the span types only; the inflate backend is chosen by the binary (default: zlib-rs, see the features below)
+rbfast-otlp = { path = "../otlp", default-features = false }
+# the model crate's GammaP and Lgamma (Go's bits) for the even-split test
+rbfast-math = { path = "../math" }
+# MIT OR Apache-2.0: the work-stealing pool for the per-chunk, per-pod and per-service parallel loops
+rayon = "1.10"
+
+[features]
+# rbfast-otlp needs one inflate backend to build; this crate never inflates, so it just keeps otlp's default.
+# The CLI turns this off and picks the backend itself (its `miniz` feature).
+default = ["rbfast-otlp/zlib-rs"]
+
+[dev-dependencies]
+# MIT OR Apache-2.0: reads the oracle's .gz span dumps (pure-Rust miniz_oxide backend)
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# MIT OR Apache-2.0: reads the oracle's JSON; float_roundtrip parses floats correctly rounded
+serde_json = { version = "1", features = ["float_roundtrip"] }

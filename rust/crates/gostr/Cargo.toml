@@ -1,0 +1,11 @@
+[package]
+name = "rbfast-gostr"
+description = "Go's string semantics for rbfast's texts: strconv.Quote, QuoteRune and IsPrint (Go's tables), utf8.DecodeRune, Go's replacement of invalid UTF-8"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# Apache-2.0, except the parts derived from Go's strconv, unicode, unicode/utf8 and strings (src/lib.rs) and
+# src/isprint.rs, generated from Go's strconv tables: BSD-3-Clause, ../../LICENSE-GO
+license = "Apache-2.0 AND BSD-3-Clause"
+
+# no dependencies

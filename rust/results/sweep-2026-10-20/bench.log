@@ -1,0 +1,25 @@
+2026-10-20T16:12:58+00:00 WAIT load1=1.50 busy3s=0.12
+2026-10-20T16:15:01+00:00 WAIT load1=0.18 busy3s=0.15
+2026-10-20T16:15:01+00:00 QUIET
+2026-10-20T16:15:01+00:00 STATE load=0.18 1.37 1.75
+2026-10-20T16:15:02+00:00 GRID 2244 lines: sweep $RBFAST_ORACLE/testbed-run3-before/infer.json --rps 50:150:2 --patch-grid pricing=0:9:1%;recommend=+0.5ms|+1ms|+2ms|+4ms|+8ms;pricing=+5%,recommend=+1ms|+2ms|+4ms|-1ms|-2ms|-4ms --both
+RUN rbfast sweep threads=1 rep=0 wall=1.584 user=1.584 sys=0.000 maxrss_mib=12.4 exit=0
+RUN rbfast sweep threads=1 rep=1 wall=1.582 user=1.582 sys=0.000 maxrss_mib=10.6 exit=0
+RUN rbfast sweep threads=1 rep=2 wall=1.583 user=1.583 sys=0.000 maxrss_mib=10.5 exit=0
+MEDIAN rbfast sweep threads=1 n=3 wall=1.583 min=1.582 max=1.584
+RUN rbfast sweep threads=8 rep=0 wall=0.299 user=1.598 sys=0.008 maxrss_mib=12.2 exit=0
+RUN rbfast sweep threads=8 rep=1 wall=0.296 user=1.588 sys=0.008 maxrss_mib=10.5 exit=0
+RUN rbfast sweep threads=8 rep=2 wall=0.305 user=1.579 sys=0.015 maxrss_mib=10.4 exit=0
+MEDIAN rbfast sweep threads=8 n=3 wall=0.299 min=0.296 max=0.305
+GO one process per point, 1 at a time: 2244 points in 17.45 s; lines differing from rbfast's: 0
+GO one process per point, 8 at a time: 2244 points in 2.60 s; lines differing from rbfast's: 0
+GO in one process (Go model driver sweep, GOMAXPROCS=1): 2244 evaluations x 3 reps: median 9363.258 ms per rep, 4172.57 us per evaluation
+MEDIAN go model one call n=10 wall=0.006 min=0.006 max=0.006
+MEDIAN go model one call --patch n=10 wall=0.015 min=0.014 max=0.015
+MEDIAN go predict small capture n=10 wall=0.019 min=0.019 max=0.020
+MEDIAN go version (process start) n=10 wall=0.001 min=0.001 max=0.001
+MEDIAN rb model one call n=10 wall=0.002 min=0.002 max=0.002
+MEDIAN rb model one call --patch n=10 wall=0.002 min=0.002 max=0.003
+MEDIAN rb predict small capture n=10 wall=0.009 min=0.009 max=0.010
+MEDIAN rb version (process start) n=10 wall=0.001 min=0.001 max=0.001
+2026-10-20T16:15:57+00:00 STATE load=1.25 1.47 1.76

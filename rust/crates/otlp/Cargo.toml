@@ -1,0 +1,39 @@
+[package]
+name = "rbfast-otlp"
+description = "Parallel reader for OTLP/JSON trace captures (the Collector's file exporter layout), mirroring rhobound-cli's internal/otlp"
+version.workspace = true
+edition.workspace = true
+# Apache-2.0, except the parts derived from Go's strconv, encoding/json/jsontext, compress/gzip and path
+# (src/gonum.rs, src/json.rs, src/gzip.rs, go_clean in src/reader.rs): BSD-3-Clause, ../../LICENSE-GO
+license = "Apache-2.0 AND BSD-3-Clause"
+rust-version.workspace = true
+
+# Third-party crates (all permissive):
+#   rayon 1.x      MIT OR Apache-2.0   work-stealing thread pool (with crossbeam-*, either: MIT OR Apache-2.0)
+#   memchr 2.x     MIT OR Unlicense    line and substring search
+#   flate2 1.x     MIT OR Apache-2.0   raw inflate (the gzip framing is ours); its CRC-32 is zlib-rs's by default,
+#                                      crc32fast's (MIT OR Apache-2.0) with `miniz`
+#   inflate backend, one of:
+#     zlib-rs 0.6  Zlib                the default: the Rust port of zlib-ng. It rejects the same corrupt deflate
+#                                      streams as Go (with Go's offsets, on every case the fuzzer found) and is
+#                                      1.6x faster than miniz_oxide on gzipped captures here
+#     miniz_oxide  MIT OR Zlib OR Apache-2.0 (with adler2: 0BSD OR MIT OR Apache-2.0, simd-adler32: MIT):
+#                                      `--no-default-features --features miniz`, for an MIT/Apache-only build;
+#                                      some corrupt streams then fail as "gzip: invalid checksum" instead of
+#                                      Go's "flate: corrupt input before offset N"
+[dependencies]
+rbfast-gostr = { path = "../gostr" }
+rayon = "1.10"
+memchr = "2.7"
+# runtime_detection: the hardware CRC-32 of the inflate backend (without it, a software CRC took about a third
+# of the inflating thread's time)
+flate2 = { version = "1.0", default-features = false, features = ["runtime_detection"] }
+
+[features]
+default = ["zlib-rs"]
+zlib-rs = ["flate2/zlib-rs"]
+miniz = ["flate2/rust_backend"]
+
+[[bin]]
+name = "rbfast-otlp"
+path = "src/bin/rbfast-otlp.rs"

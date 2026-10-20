@@ -2,4 +2,11 @@ rhobound-cli
 Copyright 2026 The rhobound-cli authors
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
-It contains no third-party code: the Go standard library is its only dependency.
+
+The Go module contains no third-party code: the Go standard library is its only dependency.
+
+rust/ (rbfast, an optional Rust port of the Go binary) contains code derived from the Go standard library,
+Copyright The Go Authors, under the BSD-3-Clause licence in rust/LICENSE-GO; each such file names the Go file it is
+derived from. Some of it (Exp, Log, Lgamma, Erfc) comes through Go from FreeBSD's msun, Copyright (C) 1993 and 2004
+by Sun Microsystems, Inc., whose notices are kept in rust/crates/math/src/gomath.rs. rust/ depends on the
+third-party crates listed, with their licences, in rust/THIRD-PARTY.md.

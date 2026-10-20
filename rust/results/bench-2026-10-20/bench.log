@@ -1,0 +1,63 @@
+2026-10-20T15:31:36+00:00 BINARIES go=<scratch>/bin/rhobound (rhobound 0.1.0-dev) rbfast=<target>/release/rbfast (rbfast 0.1.0 (port of rhobound-cli 0.1.0)) sha256: go=6e9743f281024bec rbfast=546fdb7f22f5bcf2
+2026-10-20T15:31:36+00:00 MACHINE 8 cores, 15689 MiB, aarch64, Linux 6.12
+2026-10-20T15:31:39+00:00 WAIT load1=2.08 busy3s=0.15
+2026-10-20T15:33:42+00:00 WAIT load1=0.41 busy3s=0.15
+2026-10-20T15:33:42+00:00 QUIET
+2026-10-20T15:33:43+00:00 WARM page cache (RUN3 BIG RUN3GZ BIGGZ RUN3JSON RUN3JSONGZ BIGJSONGZ)
+2026-10-20T15:33:49+00:00 STATE load=0.38 1.47 2.20 busy3s=0.11 mem_avail_mib=13253
+2026-10-20T15:34:15+00:00 STATE load=0.55 1.40 2.15 busy3s=0.11 mem_avail_mib=13210
+2026-10-20T15:34:25+00:00 STATE load=0.54 1.37 2.14 busy3s=0.06 mem_avail_mib=13182
+2026-10-20T15:34:42+00:00 STATE load=0.71 1.37 2.12 busy3s=0.14 mem_avail_mib=13181
+2026-10-20T15:34:50+00:00 STATE load=0.60 1.33 2.10 busy3s=0.13 mem_avail_mib=13126
+2026-10-20T15:35:02+00:00 STATE load=1.34 1.46 2.13 busy3s=0.21 mem_avail_mib=13088
+2026-10-20T15:35:10+00:00 STATE load=1.13 1.42 2.11 busy3s=0.13 mem_avail_mib=13134
+2026-10-20T15:35:20+00:00 STATE load=1.92 1.58 2.16 busy3s=0.12 mem_avail_mib=13127
+2026-10-20T15:35:26+00:00 STATE load=1.76 1.55 2.15 busy3s=0.09 mem_avail_mib=13167
+2026-10-20T15:38:14+00:00 STATE load=1.18 1.41 1.99 busy3s=0.16 mem_avail_mib=13165
+2026-10-20T15:38:47+00:00 STATE load=1.09 1.36 1.95 busy3s=0.09 mem_avail_mib=12848
+2026-10-20T15:40:19+00:00 STATE load=2.17 1.67 2.01 busy3s=0.13 mem_avail_mib=13241
+2026-10-20T15:40:40+00:00 STATE load=1.96 1.66 1.99 busy3s=0.11 mem_avail_mib=12707
+2026-10-20T15:41:34+00:00 STATE load=2.89 1.98 2.09 busy3s=0.11 mem_avail_mib=13195
+2026-10-20T15:41:48+00:00 STATE load=2.98 2.05 2.11 busy3s=0.11 mem_avail_mib=12844
+2026-10-20T15:42:24+00:00 STATE load=3.19 2.23 2.17 busy3s=0.15 mem_avail_mib=13076
+2026-10-20T15:42:35+00:00 STATE load=3.29 2.29 2.19 busy3s=0.08 mem_avail_mib=12962
+2026-10-20T15:43:04+00:00 STATE load=2.51 2.18 2.16 busy3s=0.15 mem_avail_mib=13219
+2026-10-20T15:43:14+00:00 STATE load=2.20 2.13 2.14 busy3s=0.12 mem_avail_mib=13165
+2026-10-20T15:43:32+00:00 STATE load=2.02 2.09 2.12 busy3s=0.16 mem_avail_mib=13196
+2026-10-20T15:43:41+00:00 STATE load=1.71 2.02 2.10 busy3s=0.12 mem_avail_mib=13193
+2026-10-20T15:43:54+00:00 STATE load=2.35 2.15 2.14 busy3s=0.15 mem_avail_mib=13189
+2026-10-20T15:44:01+00:00 STATE load=2.15 2.11 2.13 busy3s=0.13 mem_avail_mib=13147
+2026-10-20T15:44:12+00:00 STATE load=1.96 2.07 2.12 busy3s=0.15 mem_avail_mib=13182
+2026-10-20T15:44:20+00:00 STATE load=1.88 2.05 2.11 busy3s=0.15 mem_avail_mib=13124
+2026-10-20T15:47:27+00:00 STATE load=1.04 1.58 1.91 busy3s=0.09 mem_avail_mib=13143
+2026-10-20T15:48:07+00:00 STATE load=0.90 1.47 1.86 busy3s=0.10 mem_avail_mib=12860
+2026-10-20T15:49:49+00:00 STATE load=1.83 1.63 1.88 busy3s=0.14 mem_avail_mib=13220
+2026-10-20T15:50:13+00:00 STATE load=1.78 1.63 1.87 busy3s=0.20 mem_avail_mib=12811
+2026-10-20T15:51:13+00:00 STATE load=2.94 2.03 1.99 busy3s=0.17 mem_avail_mib=13151
+2026-10-20T15:51:28+00:00 STATE load=2.91 2.06 2.01 busy3s=0.08 mem_avail_mib=12881
+2026-10-20T15:52:10+00:00 STATE load=3.52 2.37 2.12 busy3s=0.11 mem_avail_mib=13167
+2026-10-20T15:52:21+00:00 STATE load=3.56 2.42 2.14 busy3s=0.13 mem_avail_mib=12883
+2026-10-20T15:52:56+00:00 STATE load=2.35 2.25 2.09 busy3s=0.13 mem_avail_mib=13252
+2026-10-20T15:53:07+00:00 STATE load=2.06 2.19 2.07 busy3s=0.11 mem_avail_mib=13173
+2026-10-20T15:53:28+00:00 STATE load=1.84 2.13 2.05 busy3s=0.12 mem_avail_mib=13214
+2026-10-20T15:53:37+00:00 STATE load=1.56 2.06 2.03 busy3s=0.10 mem_avail_mib=13226
+2026-10-20T15:53:53+00:00 STATE load=1.67 2.06 2.03 busy3s=0.13 mem_avail_mib=13208
+2026-10-20T15:54:01+00:00 STATE load=1.41 1.99 2.01 busy3s=0.10 mem_avail_mib=13178
+2026-10-20T15:54:17+00:00 STATE load=1.84 2.05 2.03 busy3s=0.10 mem_avail_mib=13215
+2026-10-20T15:54:24+00:00 STATE load=1.93 2.07 2.03 busy3s=0.13 mem_avail_mib=13210
+2026-10-20T15:55:01+00:00 STATE load=1.35 1.90 1.98 busy3s=0.12 mem_avail_mib=13239
+2026-10-20T15:55:13+00:00 STATE load=1.38 1.89 1.97 busy3s=0.15 mem_avail_mib=13230
+2026-10-20T15:55:35+00:00 STATE load=1.32 1.83 1.95 busy3s=0.08 mem_avail_mib=13197
+2026-10-20T15:55:44+00:00 STATE load=1.61 1.89 1.97 busy3s=0.11 mem_avail_mib=13181
+2026-10-20T15:56:03+00:00 STATE load=1.59 1.86 1.96 busy3s=0.13 mem_avail_mib=13200
+2026-10-20T15:56:11+00:00 STATE load=1.35 1.80 1.94 busy3s=0.14 mem_avail_mib=13162
+2026-10-20T15:56:29+00:00 STATE load=1.56 1.83 1.94 busy3s=0.15 mem_avail_mib=13218
+2026-10-20T15:56:37+00:00 STATE load=1.32 1.77 1.92 busy3s=0.10 mem_avail_mib=13175
+2026-10-20T16:00:47+00:00 STATE load=1.09 1.40 1.72 busy3s=0.12 mem_avail_mib=13214
+2026-10-20T16:01:42+00:00 STATE load=1.00 1.31 1.68 busy3s=0.12 mem_avail_mib=13224
+2026-10-20T16:03:57+00:00 STATE load=1.65 1.54 1.72 busy3s=0.09 mem_avail_mib=13256
+2026-10-20T16:04:28+00:00 STATE load=1.78 1.58 1.73 busy3s=0.11 mem_avail_mib=12961
+2026-10-20T16:06:14+00:00 STATE load=3.11 2.12 1.91 busy3s=0.15 mem_avail_mib=13229
+2026-10-20T16:06:33+00:00 STATE load=2.79 2.11 1.91 busy3s=0.13 mem_avail_mib=12904
+2026-10-20T16:08:17+00:00 STATE load=2.48 2.18 1.96 busy3s=0.14 mem_avail_mib=13244
+2026-10-20T16:08:44+00:00 STATE load=4.50 2.68 2.13 busy3s=0.15 mem_avail_mib=12716

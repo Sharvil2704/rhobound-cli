@@ -1,0 +1,32 @@
+RUN go RUN3 1 rep=0 wall=5.163 user=4.899 sys=0.272 maxrss_mib=212.6 exit=0
+RUN go RUN3 1 rep=1 wall=5.134 user=4.877 sys=0.264 maxrss_mib=202.5 exit=0
+RUN go RUN3 1 rep=2 wall=5.161 user=4.918 sys=0.252 maxrss_mib=212.9 exit=0
+MEDIAN go RUN3 1 n=3 wall=5.161 min=5.134 max=5.163
+RUN rb RUN3 1 rep=0 wall=0.894 user=0.794 sys=0.100 maxrss_mib=99.0 exit=0
+RUN rb RUN3 1 rep=1 wall=0.897 user=0.793 sys=0.104 maxrss_mib=99.1 exit=0
+RUN rb RUN3 1 rep=2 wall=0.894 user=0.775 sys=0.120 maxrss_mib=99.1 exit=0
+MEDIAN rb RUN3 1 n=3 wall=0.894 min=0.894 max=0.897
+RUN go RUN3 2 rep=0 wall=2.773 user=5.038 sys=0.232 maxrss_mib=212.6 exit=0
+RUN go RUN3 2 rep=1 wall=2.765 user=5.007 sys=0.256 maxrss_mib=215.9 exit=0
+RUN go RUN3 2 rep=2 wall=2.775 user=4.990 sys=0.284 maxrss_mib=205.6 exit=0
+MEDIAN go RUN3 2 n=3 wall=2.773 min=2.765 max=2.775
+RUN rb RUN3 2 rep=0 wall=0.466 user=0.790 sys=0.125 maxrss_mib=101.2 exit=0
+RUN rb RUN3 2 rep=1 wall=0.467 user=0.815 sys=0.100 maxrss_mib=100.9 exit=0
+RUN rb RUN3 2 rep=2 wall=0.465 user=0.803 sys=0.108 maxrss_mib=100.9 exit=0
+MEDIAN rb RUN3 2 n=3 wall=0.466 min=0.465 max=0.467
+RUN go RUN3 4 rep=0 wall=1.539 user=4.990 sys=0.317 maxrss_mib=211.8 exit=0
+RUN go RUN3 4 rep=1 wall=1.541 user=5.070 sys=0.240 maxrss_mib=212.6 exit=0
+RUN go RUN3 4 rep=2 wall=1.541 user=5.040 sys=0.264 maxrss_mib=213.2 exit=0
+MEDIAN go RUN3 4 n=3 wall=1.541 min=1.539 max=1.541
+RUN rb RUN3 4 rep=0 wall=0.253 user=0.798 sys=0.127 maxrss_mib=104.6 exit=0
+RUN rb RUN3 4 rep=1 wall=0.254 user=0.783 sys=0.144 maxrss_mib=102.4 exit=0
+RUN rb RUN3 4 rep=2 wall=0.253 user=0.793 sys=0.137 maxrss_mib=102.7 exit=0
+MEDIAN rb RUN3 4 n=3 wall=0.253 min=0.253 max=0.254
+RUN go RUN3 8 rep=0 wall=0.996 user=5.246 sys=0.243 maxrss_mib=218.6 exit=0
+RUN go RUN3 8 rep=1 wall=0.992 user=5.305 sys=0.246 maxrss_mib=217.1 exit=0
+RUN go RUN3 8 rep=2 wall=0.990 user=5.243 sys=0.262 maxrss_mib=242.9 exit=0
+MEDIAN go RUN3 8 n=3 wall=0.992 min=0.990 max=0.996
+RUN rb RUN3 8 rep=0 wall=0.153 user=0.804 sys=0.150 maxrss_mib=115.5 exit=0
+RUN rb RUN3 8 rep=1 wall=0.151 user=0.800 sys=0.155 maxrss_mib=116.3 exit=0
+RUN rb RUN3 8 rep=2 wall=0.150 user=0.782 sys=0.175 maxrss_mib=113.1 exit=0
+MEDIAN rb RUN3 8 n=3 wall=0.151 min=0.150 max=0.153

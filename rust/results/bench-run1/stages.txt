@@ -1,0 +1,12 @@
+STAGES RUN3 rbfast: times: read 0.1143 s, infer 0.0283 s, model 0.0007 s, report 0.0002 s
+STAGES RUN3 rbfast: times: read 0.1151 s, infer 0.0302 s, model 0.0009 s, report 0.0002 s
+STAGES RUN3 rbfast: times: read 0.1181 s, infer 0.0296 s, model 0.0007 s, report 0.0001 s
+STAGES BIG rbfast: times: read 0.8252 s, infer 0.2287 s, model 0.0072 s, report 0.0001 s
+STAGES BIG rbfast: times: read 0.8260 s, infer 0.2154 s, model 0.0073 s, report 0.0001 s
+STAGES BIG rbfast: times: read 0.8304 s, infer 0.2161 s, model 0.0097 s, report 0.0002 s
+STAGES RUN3GZ rbfast: times: read 0.4182 s, infer 0.0280 s, model 0.0006 s, report 0.0001 s
+STAGES RUN3GZ rbfast: times: read 0.4185 s, infer 0.0277 s, model 0.0007 s, report 0.0002 s
+STAGES RUN3GZ rbfast: times: read 0.4263 s, infer 0.0280 s, model 0.0006 s, report 0.0001 s
+STAGES BIGGZ rbfast: times: read 1.1397 s, infer 0.2318 s, model 0.0067 s, report 0.0001 s
+STAGES BIGGZ rbfast: times: read 1.1505 s, infer 0.2262 s, model 0.0046 s, report 0.0001 s
+STAGES BIGGZ rbfast: times: read 1.1341 s, infer 0.2487 s, model 0.0133 s, report 0.0001 s
