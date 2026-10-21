@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Added to the OpenTelemetry Demo's Collector as a second --config, after the shipped /conf/relay.yaml, which is left
+# as it is. The Collector merges its --config files in order: maps merge, a list is replaced. So this adds one
+# exporter and gives the traces pipeline the shipped exporters (otlp, debug, spanmetrics in the pinned release
+# 2.2.0; run.sh checks that) plus it. Every receiver and processor of the pipeline stays as shipped, among them
+# k8sattributes (k8s.pod.name on each span's resource) and resource (service.instance.id from k8s.pod.uid).
+#
+# The file is OTLP/JSON, one ExportTraceServiceRequest per line: what rhobound reads. No rotation and no compression
+# (rhobound does not read zstd). append: true opens the file in append mode, so a Collector restart adds to the file
+# instead of truncating it, and a cut of it on the machine that runs the tool (otelcap cut) takes the windows out by time.
+exporters:
+  file/rhobound:
+    path: /capture/spans.jsonl
+    format: json
+    append: true
+    flush_interval: 1s
+
+service:
+  pipelines:
+    traces:
+      exporters: [otlp, debug, spanmetrics, file/rhobound]

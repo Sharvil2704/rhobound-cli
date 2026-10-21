@@ -6,6 +6,17 @@ the reference and the specification. Every rbfast output was checked against it 
 the two ever disagree, the Go binary is right. Byte-identity with the Go binary was verified on linux/arm64 only
 (see [Architectures](#architectures)).
 
+> **NOTE: rbfast ports the Go code as of the first release (commit 6841f9f of this repository) and does NOT include the changes of the release after it.**
+> Its byte-for-byte parity with `rhobound` holds only against the Go code of that first release; every "identical" in this file means that. The Go binary has
+> since changed what it reads and prints for real traces: nested spans of one kind in one pod are read as one (with a rule for two spans of one instrumentation
+> scope); calls per visit that vary and visits of several call shapes enter as a mean count, a stage or a mixture of shapes; lost spans are named in the
+> refusal, the warnings and the report; the network time of a call is read per edge, as the mean gap less the model's wait on a callee at most 30% busy
+> (rbfast takes the quietest tenth per callee, so on a quiet capture its latencies are lower, and its topology file has no per-call `hop`); a capture whose
+> server spans are streams is refused; calls of a caller whose spans start on whole milliseconds are read by where their callees' spans are; and there are new
+> warnings (batch arrivals, services that are not modelled, long server spans) and a `--plain` that reaches the hop rule. So rbfast refuses captures the Go
+> binary reads (a Next.js front end, a varying call count), and on any capture with a callee at most 30% busy and an edge of 50 calls or more its numbers
+> differ. Use the Go binary when it matters; port the changes before trusting a comparison.
+
 What it is made of (a Cargo workspace; each crate is a port of one Go package, line by line where it matters):
 
 | crate | ports | what runs in parallel |

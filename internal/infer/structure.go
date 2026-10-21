@@ -6,8 +6,9 @@ package infer
 // calls a visit makes to each callee and whether its calls run one after
 // another, all at once, or in stages (for example, Sock Shop's orders call
 // four services at once, then payment, then shipping when the payment went
-// through). The model has a form for each of these; other shapes are refused,
-// not rounded to the nearest one.
+// through). The model has a form for each of these; other shapes are not rounded
+// to the nearest one: counts.go reads calls per visit that vary as a mean count,
+// and visits of several shapes as a mixture of the shapes.
 
 import (
 	"fmt"
@@ -22,6 +23,11 @@ const (
 	parallelShare   = 0.95 // share of multi-call visits whose calls overlap: above -> parallel, below 1 - it -> sequential
 	callAgreement   = 0.99 // share of visits showing k or k + 1 calls to a callee
 	stageCandidates = 8    // the stage template is the best fit among this many of the commonest call shapes
+	// maxTemplateStages: a visit that calls in more stages than this (hundreds of calls one after another: a query per
+	// row) is not fitted to a stage template, and such a shape is not a candidate. A call structure that long is not
+	// one the stage form is for, and the fit costs time in proportion to the stages of the shape times those of the
+	// template, for every pair of shapes.
+	maxTemplateStages = 200
 )
 
 // stageSig is a visit's calls in stages, in order. A stage is one call, or
@@ -107,8 +113,9 @@ func sigOf(cs []call, stages [][]int) stageSig {
 // callCount reads how many calls a visit makes to one callee from hist
 // (calls per visit -> visits, for visits making at least one; nsp visits in
 // all): a fixed count k, or k and one more with probability p (a conditional
-// call). Any other distribution is refused, unless two adjacent counts cover
-// callAgreement of the visits: the rest (a share other) is then ignored.
+// call). Any other distribution is an error (Run then takes the mean count, see
+// counts.go), unless two adjacent counts cover callAgreement of the visits: the
+// rest (a share other) is then ignored.
 func callCount(hist map[int]int64, nsp int64) (k int, p, other float64, err error) {
 	cnt := map[int]int64{}
 	sum := int64(0)
@@ -154,15 +161,18 @@ func callCount(hist map[int]int64, nsp int64) (k int, p, other float64, err erro
 // are the template's with whole stages left out, where one stage of the
 // template may show as several in turn (calls launched together need not
 // overlap: a fast one can end before the next starts).
+//
+// The search tries, for the signature's stage i and the template's stage j, to
+// match stage j to the next stages of the signature and, failing that, to leave
+// stage j out. A pair (i, j) that failed fails again whenever it is reached
+// by another route, so it is remembered: without that the search is
+// exponential in the number of stages (a service that calls one callee 1 to 30
+// times in a row per visit took minutes), and with it at most
+// len(sig) * len(tmpl) pairs are tried. The first match found is the same.
 func fitStages(sig, tmpl stageSig) ([]int, bool) {
+	dead := make([]bool, (len(sig)+1)*(len(tmpl)+1)) // (i, j) known not to fit
 	var fit func(i, j int) ([]int, bool)
-	fit = func(i, j int) ([]int, bool) {
-		if i == len(sig) {
-			return []int{}, true
-		}
-		if j == len(tmpl) {
-			return nil, false
-		}
+	try := func(i, j int) ([]int, bool) {
 		need := map[int32]int{}
 		for _, c := range tmpl[j] {
 			need[c]++
@@ -186,6 +196,19 @@ func fitStages(sig, tmpl stageSig) ([]int, bool) {
 		}
 		return fit(i, j+1)
 	}
+	fit = func(i, j int) ([]int, bool) {
+		if i == len(sig) {
+			return []int{}, true
+		}
+		if j == len(tmpl) || dead[i*(len(tmpl)+1)+j] {
+			return nil, false
+		}
+		res, ok := try(i, j)
+		if !ok {
+			dead[i*(len(tmpl)+1)+j] = true
+		}
+		return res, ok
+	}
 	return fit(0, 0)
 }
 
@@ -208,7 +231,9 @@ func equalCounts(a, b map[int32]int) bool {
 // the share of the fitting visits that ran each of its stages and the share
 // of all nsp visits that fit; ok is false when no visit makes a call. Ties
 // between equally common shapes go to the smaller key (the reference takes
-// the first seen, which a parallel read does not keep).
+// the first seen, which a parallel read does not keep). Shapes of more than maxTemplateStages
+// stages are not fitted (they count among the visits that do not fit), and a template of
+// that many is not tried; ok is false when no shape is left to try.
 func stageTemplate(sigs map[string]int64, nsp int64) (tmpl stageSig, ran []float64, fit float64, ok bool) {
 	keys := make([]string, 0, len(sigs))
 	for k, n := range sigs {
@@ -232,6 +257,18 @@ func stageTemplate(sigs map[string]int64, nsp int64) (tmpl stageSig, ran []float
 	for _, k := range all {
 		parsed[k] = parseSig(k)
 	}
+	cands := make([]string, 0, stageCandidates)
+	for _, k := range keys {
+		if len(cands) == stageCandidates {
+			break
+		}
+		if len(parsed[k]) <= maxTemplateStages {
+			cands = append(cands, k)
+		}
+	}
+	if len(cands) == 0 {
+		return nil, nil, 0, false
+	}
 	var none int64 = nsp // visits making no call
 	for _, k := range all {
 		none -= sigs[k]
@@ -243,11 +280,14 @@ func stageTemplate(sigs map[string]int64, nsp int64) (tmpl stageSig, ran []float
 		fits         map[string][]int
 	}
 	var b *best
-	for _, tk := range keys[:min(len(keys), stageCandidates)] {
+	for _, tk := range cands {
 		tm := parsed[tk]
 		fits := map[string][]int{}
 		cover := none
 		for _, k := range all {
+			if len(parsed[k]) > maxTemplateStages {
+				continue
+			}
 			if f, ok := fitStages(parsed[k], tm); ok {
 				fits[k] = f
 				cover += sigs[k]

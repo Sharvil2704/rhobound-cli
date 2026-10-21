@@ -62,6 +62,11 @@ $ zcat testdata/capture-chain/traces/spans.jsonl.gz | head -c 700
 `CAPTURE` can also be a folder of trace files, or a single file. File names must end in `.jsonl`, `.json`,
 `.jsonl.gz` or `.json.gz`; other files are ignored. Any number of files is read, in name order, on all cores.
 
+**Cut a window by the time its traces started.** A Collector's file holds everything it wrote since it started, warm-up included. Take
+the traces whose first span started inside the window, whole (the repository's `otelcap cut`, in `validation/cluster/otel/`, does it), not
+the spans that ended in it: a cut by span time leaves the requests that straddle its start without their first spans (broken traces),
+and holds the gRPC streams and long polls that began earlier and are still open, which the tool refuses ([section 9](#9-exit-codes-and-refusals)).
+
 The example capture is synthetic: 120 s of a simulated chain where `a` calls `b`, which calls `c`
 ([DEMO.md](DEMO.md) says how it was made).
 
@@ -120,7 +125,10 @@ How to read it:
   its squared coefficient of variation (1 for exponential).
 - `servers` and `routing`: `"pooled"` is one shared queue of `servers` workers (one pod); `"random"` is `servers`
   pods with `workers` each, the load split at random between them. Here `b` is one pod with 2 workers.
-- `hop` is the network time added to each call into the service, in ms.
+- `hop` is the network time added to each call into the service, in ms. A service called from several callers over links
+  of different speeds (a Go client and a Node.js one) has a hop per call: its calls then read
+  `{"name": ..., "hop": 0.5}`, and the service's own `hop` is the mean of them by the calls observed (what the report adds
+  to its latency). A call that names no hop has the service's. A file you write needs neither.
 - `entry` says where outside traffic comes in, with each entry's share.
 - The JSON goes to standard output; the warnings and the `external load` line go to standard error. So you can save
   the topology (here in `bin/`, which git ignores), edit it, and evaluate it with `model` (section 8):
@@ -235,7 +243,9 @@ What to look at first:
    model covers. Fix that before trusting a change.
 3. **`wait ms` against `seen wait`**: the model's queueing against the queueing the traces show. They should be close.
    The exception is an entry whose spans start once a worker has taken the request: its wait before the span is not
-   visible (`a` shows 0.00 above).
+   visible (`a` shows 0.00 above). A line under the table, "hop from the mean", names the services whose network time is
+   the mean client-minus-server time less the model's wait (a service at most 30% busy: [REQUIREMENTS.md](REQUIREMENTS.md#the-network-time-of-a-call));
+   for them `seen wait` is set by the hop, and so is the hop's part of `seen ms`, so they do not check the model.
 4. **`change ms`** on the entry row: the predicted change of the latency your users see.
 5. **The warnings**: each one names a service and what may be off (section 10).
 
@@ -291,7 +301,11 @@ $ bin/rhobound predict testdata/capture-chain --patch b=+3ms --json
 The JSON keys match the text columns: `rate_rps` (rps), `replicas` and `workers_per_pod` (pods x w),
 `workers_are_a_lower_bound` (the `+`), `own_ms`, `own_cs2`, `glue_ms`, `utilization`, `model_wait_ms` (wait ms),
 `observed_wait_ms` (seen wait), `model_ms`, `observed_ms` (seen ms), `error_pct`, `after_ms`, `change_ms`,
-`change_pct`. Keys that do not apply are left out. After `services` come `changes`, `warnings`, `scope` and `model`.
+`change_pct`, and `hop_from_mean` (the "hop from the mean" line). Keys that do not apply are left out. After `services` come `changes`, `warnings`, `scope` and `model`,
+and then `nested_spans_merged` when nested spans of one kind in one pod were read as one: a list of `service`,
+`server_spans` and `client_spans`, the numbers of SERVER and CLIENT spans that were made INTERNAL, and
+`server_spans_without_scope` (left out when 0), how many of the SERVER spans had no instrumentation scope to judge the pair by
+([REQUIREMENTS.md](REQUIREMENTS.md#nested-spans-of-one-kind-in-one-pod)).
 
 `--out DIR` writes both forms into a folder (it is created if needed) and still prints the text report. The note
 about the files goes to standard error:
@@ -314,20 +328,33 @@ With `--json --out DIR` the files are written the same way and the JSON is print
 
 A worker count shown with `+` is only a lower bound, and the model uses that bound. If you know the real number of
 workers per pod (threads, processes, connections), give it. Check the result: the model's `wait ms` should stay close
-to `seen wait`. In this capture `b` really has 2 workers. Telling the tool 4 is wrong, and the report shows it:
+to `seen wait`, except on the callees that the "hop from the mean" line under the table names: their seen wait is set by
+the network-time rule and checks nothing. In this capture `b` really has 2 workers. Telling the tool 4 is wrong, and the
+report shows it, but not in the `err %` column:
 
 ```
 $ bin/rhobound predict testdata/capture-chain --workers b=4
 ...
   service   rps  pods x w  own ms   cs2  util  wait ms  seen wait  model ms  seen ms  err %
-      a *  25.8    1 x 1+    7.83  1.00   20%     1.99       0.00     43.82    43.74   +0.2
-        b  25.8     1 x 4   19.94  1.00   13%     0.01       1.61     34.00    35.91   -5.3
+      a *  25.8    1 x 1+    7.83  1.00   20%     1.99       0.00     45.42    43.74   +3.8
+        b  25.8     1 x 4   19.94  1.00   13%     0.01       0.01     35.60    35.91   -0.9
         c  25.8    1 x 1+    9.98  1.00   26%     3.47       3.78     13.75    14.06   -2.2
+...
+hop from the mean: the network time of the calls into b is the mean client-minus-server span time less the model's wait (not its quietest tenth, which lies below the mean by the spread of the network time). Their seen wait, and the hop's part of their seen ms, are set by it, so they do not check it.
+
+warnings:
+...
+  - a -> b: a call takes 1.91 ms on average between its client span and the server span under it, and 0.30 ms for the quietest tenth of the calls; the model's wait for b outside its spans (0.01 ms at 13% utilization) explains little of the difference. The hop is taken as that mean less the wait, 1.90 ms, so what the model does not show (calls that reach b together, a stall) is in the hop, and a change of b's time will not move it
 ```
 
-`b`'s wait drops to 0.01 ms against 1.61 seen, and its error grows to -5.3%. (The entry `a` gets closer only because
-two errors cancel: `b`'s missing wait, and `a`'s own wait, which the model counts and `a`'s seen time leaves out.) A
-name that is not a service is ignored.
+`b`'s model wait drops to 0.01 ms, but its error is only -0.9%: `b` is now 13% busy, so the tool takes the network time of the
+calls into `b` as the mean gap less the model's wait, and the queueing that `b` really has (1.61 ms seen) moves into that
+network time. A wrong `--workers` value therefore does not show in `err %` when the callee is at most 30% busy. What shows it
+is the "hop from the mean" line naming `b` and the warning under it: a call takes 1.91 ms on average and 0.30 ms for the
+quietest tenth, and the model's wait explains almost none of the difference. After a `--workers` override, read those two
+too. ([ACCURACY.md](ACCURACY.md#1-where-it-is-still-wrong-read-this-first), item 22, gives the limit: at or below 30% busy a wait
+the model does not show lands in the hop.) The entry `a` is further from its seen time (+3.8%) because its own wait, which the
+model counts and `a`'s seen time leaves out, is no longer offset by `b`'s missing one. A name that is not a service is ignored.
 
 ### `--kept-share F`: when the traces are sampled
 
@@ -376,6 +403,10 @@ model     basic: Poisson arrivals at every queue, exponential parallel branches
         b  25.8    1 x 2+   19.94  1.00   26%     1.42       1.61     35.40    35.91   -1.4     38.93      +3.52      +9.9
         c  25.8    1 x 1+    9.98  1.00   26%     3.47       3.78     13.75    14.06   -2.2     13.75      +0.00      +0.0
 ```
+
+`--plain` reaches the inference too: the network time of a call is cut against the wait the model predicts outside the callee's
+spans ([REQUIREMENTS.md](REQUIREMENTS.md#the-network-time-of-a-call)), and that wait is the basic model's under `--plain` (the hops
+move in the sixth decimal on a quiet capture).
 
 In this capture every service time is exponential (cs2 1.00) and there is no fan-out, so the two models agree before
 the change. After it they differ a little: a constant +3 ms makes `b`'s service time less variable, the refined model
@@ -485,14 +516,14 @@ $ bin/rhobound model examples/fanout-topology.json --rps 30
 | `services[].name` | the service's name; `children` and `entry` refer to it | |
 | `services[].s` | mean own service time per visit, ms (until the first call out) | 0 |
 | `services[].cs2` | squared coefficient of variation of `s` (1 = exponential, 0 = constant) | 1 |
-| `services[].children` | the calls of a visit, in order: a name, or `{"name": ..., "p": 0.3, "async": true}`; `p` is the share of visits that make the call, `async` a call the service does not wait for (it loads the child but is not on the service's latency path); a repeated name is a repeated call | none |
+| `services[].children` | the calls of a visit, in order: a name, or `{"name": ..., "p": 0.3, "async": true, "hop": 0.5}`; `p` is the share of visits that make the call, `async` a call the service does not wait for (it loads the child but is not on the service's latency path), `hop` the network time of this call in ms when it is not the child's `hop` (`infer` writes it for a child reached over links of different speeds); a repeated name is a repeated call | none |
 | `services[].parallel` | `true`: the calls run at once and the service waits for the slowest | `false` |
 | `services[].branch_corr` | the correlation between parallel branches' latencies, in [-1, 1] (values of 0 or less are independent). Measured from traces by `infer`; in a file you write it is 0 unless you set it, and a fan-out's level can then read up to 17-20% high ([ACCURACY.md](ACCURACY.md#1-where-it-is-still-wrong-read-this-first), item 14) | 0 |
 | `services[].servers` | with `"routing": "pooled"`: the workers of one shared queue (one pod); with `"random"`: the number of pods | 1 |
 | `services[].workers` | workers per pod; more than 1 needs `"routing": "random"` | 1 |
 | `services[].routing` | `"pooled"` or `"random"` (`round_robin` and `p2c` are refused) | `"pooled"` |
 | `services[].shares` | with `"random"`: each pod's share of the visits (one per pod, summing to 1); absent is an even split | even |
-| `services[].hop` | network time added to every call into this service, ms | 0 |
+| `services[].hop` | network time added to every call into this service, ms, unless the call names its own | 0 |
 | `services[].glue`, `glue_cs2` | own time per visit after the first call out, which holds no worker, ms, and its cs2 | 0 |
 | `services[].delay` | `true`: a pure delay (no queue), such as an outside API | `false` |
 
@@ -543,7 +574,7 @@ is too busy; with `model` it says "refusing to evaluate: at N requests/s".
 $ bin/rhobound predict few
 rhobound: only 50 entry requests in the capture; need at least 100
 $ bin/rhobound predict lost
-rhobound: 309 of 3099 traces miss spans (10.0%): 309 have a call to a service with no span of that service under it. The queue reconstruction needs every request and the call structure whole requests, so above 5% the result is not trustworthy -- check the exporters' queues and the sampling, and that the capture holds whole requests (not the end of one window and the start of another)
+rhobound: 309 of 3099 traces miss spans (10.0%): 309 have a call to a service with no span of that service under it (b -> c: 309 of 3099 calls (10.0%)). The queue reconstruction needs every request and the call structure whole requests, so above 5% the result is not trustworthy -- check the exporters' queues and the sampling, and that the capture holds whole requests (not the end of one window and the start of another)
 $ bin/rhobound predict noserver
 rhobound: the capture holds no SERVER spans: nothing to infer
 $ bin/rhobound predict badjson
@@ -553,6 +584,13 @@ rhobound: bad OTLP/JSON: unexpected end of JSON input
 (`few`, `lost`, `noserver` and `badjson` were copies of the example capture cut down to 50 traces, with `c`'s spans
 removed from every tenth trace, with only the CLIENT spans, and a truncated line.) Capture a longer window; check
 the exporters' queues, the sampling and the trace context; check that the file is OTLP/JSON.
+
+The parenthesis in the refusal for lost spans names where they were lost: the caller, the address its calls went to
+(and the service that answers on it, when the address is an IP or a name of another form: `checkout ->
+192.0.2.9:8080 (answered by cart)`), and how many of the calls on that edge had no span of the callee under them.
+The three edges with the most lost calls are named. A hole below a top of a trace names the services and the kinds
+of the spans whose parent is gone (`the spans, by service and kind: b CLIENT 819`), and a lost caller of a service
+that the capture calls names the service. Look at the exporter (queue, sampling, restarts) of the service named.
 
 **The wrong path.**
 
@@ -567,13 +605,40 @@ rhobound: no trace files (*.jsonl, *.json, *.gz) under testdata
 
 **A call shape the model does not have.** These come from the inference; their text, from the source code:
 
-- `X -> Y: calls per visit vary as {...}; the model has a fixed count or one conditional call per visit, not this`
-- `X: its calls overlap in N% of its visits with two or more calls (most common shape: ...); neither all at once, one
-  after another nor in stages, the shapes the model has`
-- `X: calls in parallel, and calls to Y only on some visits; the model's expected maximum needs every branch on every
-  visit`
+- `X: its calls overlap in N% of its visits with two or more calls, and its visits take more than 12 call shapes, so
+  that the commonest 12 leave N% of its visits that make calls out (the limit is 5%); the model has sequential, parallel and staged
+  calls, or a mixture of up to 12 shapes (most common shape: ...)`: the visits of X take more different shapes than a
+  mixture holds (for example a fan-out of 14 different widths, each on 1/14 of the visits). Calls per visit that vary
+  (`X -> Y: calls per visit vary as {...}`), a branch called on some visits only in a parallel fan-out, and calls that
+  overlap on some visits only used to be refused here; they are read now, as the mean count or as a mixture of call
+  shapes, and warned about (section 10, [REQUIREMENTS.md](REQUIREMENTS.md#calls-per-visit-that-vary-and-visits-of-several-call-shapes)).
+- `the inferred call graph is not usable: the call graph has a cycle; the model needs a DAG (a service calling itself: X;
+  nested spans of one pod are read as one, so this is a call over the network, SERVER spans of one instrumentation scope inside
+  one another (read as a call), or nested spans more than 2 ms apart)`: X calls X over the network (a request that comes back
+  to the same service), which the model cannot hold; or two SERVER spans of X from one instrumentation scope sit one inside the
+  other (a request the service sent to itself with a client that opens no span: they are two visits, where a framework's span
+  inside the HTTP instrumentation's comes from another scope and is merged); or two spans of X that should be one are more than 2
+  ms apart. Without the part in brackets the cycle is between two or more services.
 - `refusing to infer: the rebuilt queues give a negative mean service time (...)`: the spans contradict a
   first-come-first-served queue. Synchronize the clocks (NTP) or export CLIENT spans, and check `--workers`.
+
+**Server spans that are not requests.**
+
+```
+rhobound: the capture holds server spans that are streams or other calls that stay open, not request visits (a span of at least a
+second, a tenth of the capture's duration and 1000 times its service's median is taken for one): flagd: 3 of its server spans last up
+to 600 s (flagd.evaluation.v1.Service/EventStream, trace 8e9010d9683ad2597227a7963c2ec1e4) against a median of 0.0686 ms, and hold 100%
+of its busy time. A visit is one request that holds a worker; read as visits, these would be most of the service's busy time, and its mean
+time and utilization would be theirs. A stream that began before the window is still open in it, so cut the capture by the time its
+traces started, not by the time its spans ended, or drop these spans (for example with a filter in the Collector), and run again
+```
+
+A gRPC server stream, a watch or a long poll is one SERVER span that lasts as long as the client stays connected. A SERVER span is taken for
+one when it lasts at least a second, a tenth of the time over which the capture's server spans start, and a thousand times the median of
+its service; when such spans hold 5% or more of a service's busy time the capture is refused (the numbers would be theirs), before
+anything else is read. The message names the service, how many spans, the longest (its span name, when it lasted a second or more, and its
+trace id), the median visit and the share of the busy time. Below 5% the spans stay in the means and a warning names them. A window cut by the
+time its traces *started* does not hold a stream that began earlier; the Collector's whole file does, and so does a cut by the time spans ended.
 
 **A flag out of range.**
 
@@ -621,10 +686,14 @@ window    120 s, 3038 entry requests (25.8 /s), 15434 spans, 61 of 3099 traces b
 ...
 warnings:
   - 61 of 3099 traces miss a span (1.97%): left out of the entries and the call structure, kept in the queues and the rates (the external rate is scaled up by 1.0201 to count them)
+  - c: 61 calls to it lost its span (2.0% of its visits): b -> c: 61 of 3099 calls (2.0%). Their traces are out of the entries and the call structure and stay in the queues and the rates. The model counts their requests (the external rate is scaled up) and gives them the calls of the others, but the service time, the queue and the worker count of c are read from the visits whose spans were captured, so they are off if the lost spans are not typical (the slow ones, or those of the busiest moments, as when an exporter's queue is full); the row is marked !. The span was dropped (an exporter's full queue, sampling, a pod that went away) or the trace context did not reach it
   - no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: a 1+ (0 waited; up to 1 in a pod at once), b 2+ (0 waited; up to 2 in a pod at once), c 1+ (0 waited; up to 1 in a pod at once)
 ```
 
-Under 5% the capture is used. Over 5% it is refused (section 9).
+Under 5% the capture is used. Over 5% it is refused (section 9). The row of `c` is marked `!` in the table (and has
+`lost_visits` and `lost_share` in the JSON report) once a service lost 1% of its visits; a line under the table says
+how many. The model counts the requests of the broken traces, but `c`'s service time, queue and worker count are read
+from the visits that were captured.
 
 The others, from the source:
 
@@ -636,11 +705,27 @@ The others, from the source:
 | `X: N% of reconstructed service times are negative (clock or ordering jitter)` | small timing noise; large shares point to clock skew |
 | `X: its N pods took uneven shares of its visits: ...` | the replicas did not share the load evenly (often keep-alive connections behind a Kubernetes Service); each pod is modelled with its measured share |
 | `X: on N% of its visits ... the first call starts before the visit's own span ...` | clock skew between pods, or a server span that starts late; the warning says which way the reading moves |
+| `X: N calls to it lost its span (P% of its visits): A -> B:port: n of m calls (q%); ...` | calls to an address that X answers on elsewhere in the capture had no span of X under them: the span was dropped, or the trace context did not reach X. The traces holding them are out of the entries and the call structure; X's service time, queue and worker count are read from the visits captured. The three edges with the most calls are named |
+| `N traces hold spans whose parent is not in the capture below a top that is ...` | a hole in the middle of a trace; the spans are named by service and kind |
+| `X: N traces hold a SERVER span of it whose parent is not in the capture, and services in the capture call X on P% of its visits` | a caller of X lost its span (X is not read as an entry from outside because the capture calls it too often) |
+| `X: P% of its N visits are in traces that miss a span, ...` | broken traces that are mostly one kind of request: X's call structure comes from the other visits only (or from none, and X is then modelled without calls); the row is marked `!` |
+| `X is entered from outside the capture and is also called by A, B: P% of its N visits have no caller's visit in the capture ...` | most of X's visits have no caller in the capture (read as requests from outside) and a share of at least 5% do. Those may be requests from a service whose spans are not in the capture, or that does not pass the trace context on; X's load is right, and a change of X's time reaches the captured callers and not those senders |
 | `calls the caller does not wait for ... are modelled as async: ...` | calls sent after the response (fire and forget): they load the callee but are off the caller's latency path |
 | `X -> Y: N% of the calls start after X's span has ended or outlive it ... and the rest within it; all are modelled as on its latency path` | a mix of waited and not-waited calls (5-95%); if it says the calls are timed by the callee's clock, suspect clock skew |
+| `X -> Y: a call takes N ms on average between its client span and the server span under it, and M ms for the quietest tenth ...` | the hop into Y is the mean gap less the model's wait (Y is at most 30% busy), and it is more than a network's spread (above 1 ms and three times the quietest tenth): waiting the model does not show (calls that reach Y together, a stall) is in the hop, and a change of Y's time will not move it; "(and part of it may be the calls of one group, made to Y at once, queueing behind each other)" is added when Y is called several times at once by a service |
 | `X -> Y: N% of visits show another call count; ignored` | a few visits made another number of calls |
+| `X -> Y: calls per visit vary as {1: a, 2: b, ...}; only their mean (M per visit) enters the model, as K call(s) made on every visit and one more with probability P. That is exact for ...` | X calls Y a different number of times on different visits (a cart service that makes 1, 2 or 3 Redis calls by request type) and makes them one after another: the model takes the mean count. Y's load and X's mean time are exact; the spread of the counts is not modelled (the calls of one visit reach Y close together, the model takes them as independent arrivals; in simulations with 1 to 20 calls per visit and Y 30-60% busy the mean latency was within 2% on average, and single runs against a one-worker Y with heavy tails were off by up to 10%). A count that varies because CLIENT spans were lost or sampled out looks the same: check the exporters if it should be fixed. The long explanation is given in full on the first such line only; the later ones say "As for the callees above, ..." |
+| `X -> Y: calls per visit vary as {...}; the stages below carry them (M per visit on average)` | the same, in a service whose visits fit one stage template (see below): a repeated stage that runs on some visits only carries the count |
+| `X: its visits take N call shapes, modelled as a mixture (it calls each shape with the share of visits that took it): ...` | X's visits take several shapes (a front end: a cart call, two in a row, a recommendation and then four catalogue lookups at once): X calls each shape with the share of visits that took it, and a shape is a call, a group of calls at once, or stages one after another (the `shape:` and `stage:` rows of the report, zero-time delays). Up to 12 shapes; the rarer ones may hold 5% of the visits at most |
+| `X: N% of its visits that make calls take rarer shapes; their calls enter as mean counts, one after another` | the shapes beyond the 12 commonest hold N% of the visits that make calls |
+| `X -> Y: calls per visit vary as {...}; the call shapes carry them (M per visit on average)` | Y's varying count is carried by X's mixture of shapes |
+| `X -> Y: the call shapes hold A of the M calls per visit that the visits made ...; the rest enter as mean counts, one after another` | calls that the shapes do not hold (calls that start after the visit's span has ended, and are not async because too few of them are) are added as mean-count calls, so that Y's load is the observed one |
+| `X calls Y N times at once (on P% of its visits); Y has W workers and is U% busy. The model takes the N calls as independent arrivals ...` | calls made at once reach Y together and queue behind each other; the model has them as independent arrivals, so Y's wait and the latency of whoever waits for it is understated, in simulations by up to 60% of Y's latency (batches of 4: one worker about 60% at any load; 4 workers at 20-40% busy, 4% to 16%; 8 workers at 20% busy, under 0.5%). Given when the batch is larger than Y's workers (for a worker count that is only a lower bound, "at least W workers", when the batch is 3 or more), or when Y's utilization times the batch over its workers reaches 15%, for a group of at least 1% of X's visits; "a group larger than the workers waits for itself at any load" ends the warning when the batch is larger than the workers. Shapes of X that each hold a group of N calls to Y are one warning, with their shares added. Not modelled |
 | `X: calls Y on some visits only, all of them or none` | a group of calls made on some visits: modelled as one conditional stage |
 | `X: calls in N stages, each after the last ends: ...` | staged calls: a group at once, then the next |
 | `X: N% of its visits call in another shape than its stages; modelled as the stages` | a few visits did not follow the stages |
+| `nested spans of one kind in one pod ... were read as one: ...: X N SERVER (the outer span kept), Y M CLIENT (the span the callee's SERVER span is under kept, else the outermost)` | a framework opened a span of the same kind inside another one (Next.js, flagd's handler, .NET's gRPC client); the inner SERVER spans and the wrapping CLIENT spans were made INTERNAL, so that a request is one visit and a call one call; the numbers are of spans ([REQUIREMENTS.md](REQUIREMENTS.md#nested-spans-of-one-kind-in-one-pod)). When the SERVER spans carry no instrumentation scope the warning adds "Of the SERVER pairs, these name no instrumentation scope on one or both spans, so a framework's wrapper could not be told from a request the service sent to itself ...: X N"; if X does call itself that way without a CLIENT span, its visits are counted once |
+| `N services emit no SERVER span, so they are not in the model ...: A (CLIENT, CONSUMER spans), B (CLIENT spans)` | a message consumer, a load generator or a batch job that only calls out has no visit that holds a worker, so it is not a service of the model and `--patch` cannot name it; the kinds of span it emits are listed |
+| `X: N of its server spans last up to T (name, trace ID) against a median of M ms, and hold P% of its busy time. They are read as visits ...` | streams or other long server spans that hold under 5% of a busy service's time: they are in its mean time as the visits they are; drop them and run again if they are not requests (at 5% or more the capture is refused: section 9) |
 | `N client calls to services without server spans were treated as external delays` | outside peers (a managed database, an external API): their mean time is added, with no queue |
 | `N client calls made under message consumers ..., to services without server spans, are on no request's path and were left out` | a consumer's calls to outside peers |

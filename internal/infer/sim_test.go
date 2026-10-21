@@ -26,6 +26,23 @@ import (
 
 const hopMs = 0.15 // one-way network time
 
+// hopJitterK is the shape of the extra time a network leg takes when a run has a hop jitter (simOpts.hopJitter).
+const hopJitterK = 0.7
+
+// envHopJitter is ACC_HOPJIT, the hop jitter the accuracy runs use when their options set none (default 0: the
+// constant hop, the logs of docs/accuracy-logs).
+func envHopJitter() float64 {
+	v := os.Getenv("ACC_HOPJIT")
+	if v == "" {
+		return 0
+	}
+	var x float64
+	if _, err := fmt.Sscanf(v, "%g", &x); err != nil || x < 0 {
+		panic(fmt.Sprintf("ACC_HOPJIT=%q is not a non-negative number of ms", v))
+	}
+	return x
+}
+
 type node struct {
 	name     string
 	c        int // workers per pod
@@ -94,6 +111,9 @@ type span struct {
 	peer       string
 	port       int    // a client span's server.port, if set
 	route      string // a server span's url.path, if set
+	scope      string // the instrumentation scope that emitted it, if set
+	wholeMs    bool   // start is a whole number of ms, written exactly (a float64 holds a Unix time in ns only to about 250 ns)
+	name       string // the span's name, if set
 }
 
 type simOut struct {
@@ -120,13 +140,30 @@ type sim struct {
 	simOpts
 	spans  []span
 	nextID int
+	hr     *rand.Rand // the random stream of the hop jitter
 }
 
-// simOpts are a run's options. None of them draws random numbers, so a seed gives the same requests and
-// service times whatever they are.
+// hop is the time of one network leg: hopMs, and with a hop jitter that much extra on average (a gamma draw: network
+// times have a right-skewed spread, the mean above the quietest tenth).
+func (s *sim) hop() float64 {
+	if s.hr == nil {
+		return hopMs
+	}
+	return hopMs + gammaSample(s.hr, hopJitterK, s.hopJitter/hopJitterK)
+}
+
+// simOpts are a run's options. None of them changes the random numbers of the requests and the service times, so a
+// seed gives the same ones whatever they are (the hop jitter draws from a stream of its own).
 type simOpts struct {
 	queueInSpan bool // the server span starts at arrival, so it includes the wait for a worker
 	noSpans     bool // write no spans (a truth run needs only the latencies)
+	// hopJitter, when positive, is the mean extra time of each network leg, ms, on top of hopMs: the legs of one call
+	// then differ, and the hop of a callee, taken as the mean, lies above the hop as its quietest tenth.
+	hopJitter float64
+	// nest, when set, adds framework-style nested spans to the written spans (nestSpans). It draws no random
+	// numbers and adds spans only at the end, so the requests, the times and the ids of the other spans are the
+	// same with and without it.
+	nest nestOpts
 	// rec, when set, sees every visit batch of a node once its server spans have ended: arrival, start of
 	// service, end of own work and end of the server span (ms), and the pod and trace of each visit.
 	rec func(n *node, arr, start, ownEnd, end []float64, podOf, traces []int)
@@ -221,11 +258,11 @@ func (s *sim) visit(n *node, arr []float64, parents []string, traces []int, entr
 			if !s.noSpans {
 				clientIDs[x] = s.id()
 			}
-			arrCh[x] = callAt[x] + hopMs
+			arrCh[x] = callAt[x] + s.hop()
 		}
 		chEnd := s.visit(ch, arrCh, clientIDs, tr, false)
 		for x, i := range sel {
-			ce := chEnd[x] + hopMs
+			ce := chEnd[x] + s.hop()
 			if !s.noSpans {
 				s.spans = append(s.spans, span{svc: n.name, pod: fmt.Sprintf("%s-%d", n.name, podOf[i]), id: clientIDs[x], parent: ids[i],
 					kind: 3, start: callAt[x], end: ce, trace: traces[i], peer: ch.name})
@@ -266,7 +303,13 @@ func run(root *node, lam float64, seconds float64, seed int64, queueInSpan bool)
 
 // runWith is run with options.
 func runWith(root *node, lam float64, seconds float64, seed int64, o simOpts) *simOut {
+	if o.hopJitter == 0 {
+		o.hopJitter = envHopJitter()
+	}
 	s := &sim{rng: rand.New(rand.NewSource(seed)), simOpts: o}
+	if o.hopJitter > 0 {
+		s.hr = rand.New(rand.NewSource(seed*7919 + 13))
+	}
 	var arr []float64
 	t := 0.0
 	for {
@@ -283,6 +326,9 @@ func runWith(root *node, lam float64, seconds float64, seed int64, o simOpts) *s
 		traces[i] = i + 1
 	}
 	end := s.visit(root, arr, parents, traces, true)
+	if o.nest.server || o.nest.client {
+		s.nestSpans(o.nest)
+	}
 	out := &simOut{spans: s.spans}
 	for i := range arr {
 		out.totalMs = append(out.totalMs, end[i]-arr[i])
@@ -293,6 +339,73 @@ func runWith(root *node, lam float64, seconds float64, seed int64, o simOpts) *s
 		}
 	}
 	return out
+}
+
+// nestOpts say which nested spans nestSpans adds.
+type nestOpts struct {
+	server bool // every SERVER span gets a SERVER span inside it: a framework's handler span inside the HTTP instrumentation's
+	client bool // every CLIENT span gets a CLIENT span around it: a gRPC client's span around the HTTP client's
+	// bare: the inner CLIENT span carries no peer, only the outer one does
+	bare bool
+	// skew, ms: the inner SERVER span is placed this much later than inside the outer one (a runtime whose clock ticks
+	// in whole milliseconds places the spans of one process up to a millisecond away from where they were)
+	skew float64
+}
+
+// nestEps is how much inside the outer span the inner span starts and ends, ms.
+const nestEps = 0.01
+
+// nestSpans adds nested spans to the spans written so far, the way frameworks do. The outer SERVER span and the
+// inner CLIENT span are the simulator's own (their ids, parents and times are unchanged: the callers' CLIENT spans
+// are the parents of the outer SERVER span, the callees' SERVER spans the children of the inner CLIENT span), so a
+// capture read with the nested spans merged is the same as the one without them. A new inner SERVER span takes over
+// the CLIENT spans of its pod's visit; a new outer CLIENT span takes over as the parent of the inner one.
+func (s *sim) nestSpans(o nestOpts) {
+	orig := s.spans
+	s.spans = make([]span, 0, 2*len(orig))
+	innerOf := map[string]string{} // outer SERVER span id -> its inner span's id
+	if o.server {
+		for _, sp := range orig {
+			if sp.kind == 2 {
+				innerOf[sp.id] = s.id()
+			}
+		}
+	}
+	for _, sp := range orig {
+		switch {
+		case sp.kind == 2 && o.server:
+			s.spans = append(s.spans, sp)
+			in := sp
+			in.id, in.parent = innerOf[sp.id], sp.id
+			if sp.end-sp.start > 2*nestEps { // a shorter span has its inner span the same
+				in.start, in.end = sp.start+nestEps, sp.end-nestEps
+			}
+			in.start, in.end = in.start+o.skew, in.end+o.skew
+			s.spans = append(s.spans, in)
+		case sp.kind == 3 && o.client:
+			in := sp
+			if in.parent != "" {
+				if inner, ok := innerOf[in.parent]; ok {
+					in.parent = inner
+				}
+			}
+			wrap := in
+			wrap.id, wrap.parent = s.id(), in.parent
+			wrap.start, wrap.end = sp.start-nestEps, sp.end+nestEps
+			in.parent = wrap.id
+			if o.bare {
+				in.peer, in.port = "", 0
+			}
+			s.spans = append(s.spans, wrap, in)
+		case sp.kind == 3 && o.server:
+			if inner, ok := innerOf[sp.parent]; ok {
+				sp.parent = inner
+			}
+			s.spans = append(s.spans, sp)
+		default:
+			s.spans = append(s.spans, sp)
+		}
+	}
 }
 
 func writeOTLP(t *testing.T, spans []span) string {
@@ -315,30 +428,45 @@ func writeOTLPTo(dir string, spans []span) error {
 	}
 	const base = 1_700_000_000_000_000_000
 	ns := func(ms float64) uint64 { return uint64(base + ms*1e6) }
-	// group by (svc, pod)
-	type key struct{ svc, pod string }
+	startNs := func(sp span) uint64 {
+		if sp.wholeMs {
+			return base + uint64(sp.start)*1_000_000
+		}
+		return ns(sp.start)
+	}
+	// group by (svc, pod, scope)
+	type key struct{ svc, pod, scope string }
 	groups := map[key][]span{}
 	for _, sp := range spans {
-		k := key{sp.svc, sp.pod}
+		k := key{sp.svc, sp.pod, sp.scope}
 		groups[k] = append(groups[k], sp)
 	}
 	var keys []key
 	for k := range groups {
 		keys = append(keys, k)
 	}
-	sort.Slice(keys, func(a, b int) bool { return keys[a].svc+keys[a].pod < keys[b].svc+keys[b].pod })
+	sort.Slice(keys, func(a, b int) bool {
+		return keys[a].svc+keys[a].pod+keys[a].scope < keys[b].svc+keys[b].pod+keys[b].scope
+	})
 	for _, k := range keys {
 		ss := groups[k]
 		for off := 0; off < len(ss); off += 500 {
 			end := min(off+500, len(ss))
 			var b strings.Builder
-			fmt.Fprintf(&b, `{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":%q}},{"key":"k8s.pod.name","value":{"stringValue":%q}}]},"scopeSpans":[{"spans":[`, k.svc, k.pod)
+			scope := ""
+			if k.scope != "" {
+				scope = fmt.Sprintf(`"scope":{"name":%q},`, k.scope)
+			}
+			fmt.Fprintf(&b, `{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":%q}},{"key":"k8s.pod.name","value":{"stringValue":%q}}]},"scopeSpans":[{%s"spans":[`, k.svc, k.pod, scope)
 			for i, sp := range ss[off:end] {
 				if i > 0 {
 					b.WriteByte(',')
 				}
 				fmt.Fprintf(&b, `{"traceId":"%032x","spanId":%q,"parentSpanId":%q,"kind":%d,"startTimeUnixNano":"%d","endTimeUnixNano":"%d"`,
-					sp.trace, sp.id, sp.parent, sp.kind, ns(sp.start), ns(sp.end))
+					sp.trace, sp.id, sp.parent, sp.kind, startNs(sp), ns(sp.end))
+				if sp.name != "" {
+					fmt.Fprintf(&b, `,"name":%q`, sp.name)
+				}
 				if sp.peer != "" && sp.port != 0 {
 					fmt.Fprintf(&b, `,"attributes":[{"key":"server.address","value":{"stringValue":%q}},{"key":"server.port","value":{"intValue":"%d"}}]`,
 						sp.peer, sp.port)

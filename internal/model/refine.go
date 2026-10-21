@@ -158,7 +158,7 @@ func composeMatched(t *Topology, r, v []float64) []float64 {
 			mu := make([]float64, len(calls))
 			va := make([]float64, len(calls))
 			for j, c := range calls {
-				mu[j] = t.Services[c.Child].Hop + l[c.Child]
+				mu[j] = t.CallHop(c) + l[c.Child]
 				va[j] = vl[c.Child]
 			}
 			m, mv := mathx.MaxMomentsGammaCorr(mu, va, sv.BranchCorr)
@@ -166,7 +166,7 @@ func composeMatched(t *Topology, r, v []float64) []float64 {
 		default:
 			sum, vs := 0.0, 0.0
 			for _, c := range calls {
-				m := t.Services[c.Child].Hop + l[c.Child]
+				m := t.CallHop(c) + l[c.Child]
 				sum += c.P * m
 				vs += c.P*(vl[c.Child]+m*m) - (c.P*m)*(c.P*m)
 			}

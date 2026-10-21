@@ -3,7 +3,7 @@
 // Package infer builds a model.Topology from traces.
 //
 // What it reads from the spans: which service calls which (parent and child
-// spans), how often (a fixed count, or one more call on a share of visits),
+// spans), how often (a fixed count, one more call on a share of visits, or the mean count),
 // whether the calls of a visit overlap (parallel), follow one another
 // (sequential) or run in stages (a group at once, then the next; see
 // structure.go), the network time per call, the arrival rate, the
@@ -32,9 +32,10 @@
 // is outside the capture (an ingress, a gateway, a browser), of a service most
 // of whose server spans have no caller in the capture, is an entry, as is a
 // CONSUMER span whose producer is outside it, however many a trace holds, when
-// the trace's top is not in the capture (topLoss). Shapes the model has no form for are refused by
-// name: calls that overlap on some visits only, a parallel branch called on
-// some visits, call counts other than k or k + 1 per visit.
+// the trace's top is not in the capture (topLoss). Calls per visit
+// that are not k or k + 1 enter as their mean count, and visits that take several call shapes (calls that overlap on
+// some visits only, a parallel branch called on some visits, a varying number of calls at once) as a mixture of the
+// shapes (counts.go); a mixture of more than maxShapes shapes is refused by name.
 //
 // What it does not do: read sampling rates, see a wait that happens before the
 // span starts, rebuild a queue that is not first come, first served or that
@@ -65,6 +66,9 @@ type Options struct {
 	Workers map[string]int
 	// MinRequests is the fewest entry requests the capture must hold.
 	MinRequests int
+	// Plain reads the wait the model predicts outside a callee's spans (what the network time of a call is read against, see
+	// hops.go) with the basic model (Poisson arrivals) instead of the refined one.
+	Plain bool
 	// Estimator picks how workers and service times are read: EstimatorFIFO
 	// (the FIFO queue reconstruction per pod, the default) or EstimatorRise (own
 	// time by visits busy at arrival). Empty: the RHOBOUND_ESTIMATOR variable,
@@ -101,6 +105,22 @@ type ServiceStats struct {
 	Stage               bool     `json:"stage,omitempty"`       // a stage: calls a service makes at once, a zero-time delay node
 	BranchCorr          float64  `json:"branch_corr,omitempty"` // correlation between parallel branches' latencies
 	Images              []string `json:"images,omitempty"`
+	// HopFromMean: on some edge that calls this service the hop (HopMs: the network time of a call into it, the mean
+	// over its edges, hops.go) is the mean time between a client span and the server span under it less the model's
+	// wait, not the quietest tenth of that time. The report's seen wait for this service, and the hop's part of its
+	// seen ms, are then set by the hop and do not check it.
+	HopFromMean bool `json:"hop_from_mean,omitempty"`
+	// LostVisits are calls to an address this service answers on that had no span of it under them (lost.go): its
+	// visits missing from the capture, LostShare as a share of its visits. BrokenVisitShare is the share of its
+	// visits in traces that miss a span (left out of the call structure), when above brokenVisitShareWarn.
+	LostVisits       int64   `json:"lost_visits,omitempty"`
+	LostShare        float64 `json:"lost_share,omitempty"`
+	BrokenVisitShare float64 `json:"broken_visit_share,omitempty"`
+	// VariableCalls are the callees this service calls a varying number of times per visit, and how the model
+	// takes them (counts.go).
+	VariableCalls []VariableCall `json:"variable_calls,omitempty"`
+	// CallShapes are the shapes of the calls a service's visits take, when it is modelled as a mixture of them.
+	CallShapes []CallShape `json:"call_shapes,omitempty"`
 	// PodShares is each pod's share of the visits (two or more pods), SplitP the
 	// p-value of those visits under an even random split (when enough visits),
 	// UnevenSplit that it is below 1e-6: the model then takes the shares.
@@ -126,7 +146,9 @@ type Inferred struct {
 	// in the entries and the call structure.
 	BrokenTraces int64
 	ProbeSpans   int // health and readiness probe spans the reader dropped
-	Warnings     []string
+	// NestedSpans lists, by service, the nested spans of one kind in one pod that were read as one (nested.go).
+	NestedSpans []NestedMerge
+	Warnings    []string
 }
 
 type edgeKey struct{ caller, callee int32 }
@@ -224,7 +246,8 @@ type acc struct {
 	counts     map[countKey]int64 // visits by the number of calls to a callee they wait for
 	asyncN     map[edgeKey]int64  // calls on an async edge that the visits did not wait for
 	sigs       map[sigKey]int64
-	hopSamples [][]float64
+	hopSamples [][]float64           // client span time minus server span time of each call, by callee
+	edgeGaps   map[edgeKey][]float64 // the same gaps by edge (caller, callee)
 	segs       []seg
 	vrec       []visitRec
 	entries    []int64
@@ -242,6 +265,9 @@ type acc struct {
 	early      []int64      // visits whose first call starts before their span, by more than earlyCallNs ...
 	earlyOwn   []int64      // ... of which the call's start is on the visit's own pod clock (a CLIENT span of its own)
 	earlyMax   []float64    // ... and by how much at most, ms
+
+	lostEdges map[lostKey]int64   // calls with no span of their callee under them, by caller and address (lost.go)
+	lostBelow map[orphanKey]int64 // spans whose parent is not in the capture, below a top in it or not SERVER/CONSUMER, by service and kind
 }
 
 func newAcc(n int) *acc {
@@ -251,22 +277,27 @@ func newAcc(n int) *acc {
 		serverSum: make([]float64, n), clientSum: make([]float64, n), clientN: make([]int64, n),
 		multi: make([]int64, n), overlap: make([]int64, n), edges: map[edgeKey]*edgeAcc{},
 		counts: map[countKey]int64{}, asyncN: map[edgeKey]int64{}, sigs: map[sigKey]int64{},
-		hopSamples: make([][]float64, n), entries: make([]int64, n), entryMin: math.MaxUint64,
+		hopSamples: make([][]float64, n), edgeGaps: map[edgeKey][]float64{}, entries: make([]int64, n), entryMin: math.MaxUint64,
 		pairs: map[pairKey]*pairAcc{}, early: make([]int64, n), earlyOwn: make([]int64, n), earlyMax: make([]float64, n),
 		calledTop: make([]int64, n), consumerEn: make([]int64, n),
+		lostEdges: map[lostKey]int64{}, lostBelow: map[orphanKey]int64{},
 	}
 }
 
 type call struct {
-	callee     int32
-	start, end uint64
-	clientDur  float64
-	hasServer  bool
-	ownClock   bool // start is read on the caller's pod clock (a CLIENT span of its own), not the callee's or another's
-	async      bool // not waited for (notWaited), on an edge whose calls mostly are not (prepass.async)
+	callee       int32
+	start, end   uint64
+	clientDur    float64
+	hasServer    bool
+	sstart, send uint64 // the callee's SERVER span, when the call has one
+	ownClock     bool   // start is read on the caller's pod clock (a CLIENT span of its own), not the callee's or another's
+	quant        bool   // the CLIENT span is stamped on whole milliseconds (quantized.go): its start is up to a millisecond early
+	async        bool   // not waited for (notWaited), on an edge whose calls mostly are not (prepass.async)
 }
 
-// Run infers a topology from the capture's spans.
+// Run infers a topology from the capture's spans. It reorders d.Spans in place (by trace and start) and makes
+// nested spans of one kind in one pod INTERNAL (nested.go), so d is not the capture as read afterwards: a second
+// Run on the same d gives the same topology but reports no nested spans, as they are INTERNAL by then.
 func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	if opt.KeptShare == 0 {
 		opt.KeptShare = 1
@@ -385,15 +416,45 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	// then do not depend on which goroutine finished first
 	chunk := chunkSize(nGroups)
 	nChunks := (nGroups + chunk - 1) / chunk
+	// nested spans of one kind in one pod become one (see nested.go), before anything reads the kinds
+	nameList := make([]string, len(nameOf))
+	for n, id := range nameOf {
+		nameList[id] = n
+	}
+	// streams and other server spans that stay open for much of the capture are no visits (see longlived.go)
+	long := longVisits(d, resName, nameList)
+	if err := longVisitsError(d, long); err != nil {
+		return nil, err
+	}
+	nestedBy := make([][]nestedCount, nChunks)
+	eachChunk(nGroups, chunk, func(ci, lo, hi int) {
+		cnt := make([]nestedCount, len(nameList))
+		for g := lo; g < hi; g++ {
+			sp := d.Spans[bounds[g]:bounds[g+1]]
+			mergeNested(sp, spanIndex(sp), resPod, resName, cnt)
+		}
+		nestedBy[ci] = cnt
+	})
+	nestedTotal := make([]nestedCount, len(nameList))
+	for _, cnt := range nestedBy {
+		for i, c := range cnt {
+			nestedTotal[i].server += c.server
+			nestedTotal[i].client += c.client
+			nestedTotal[i].unscoped += c.unscoped
+		}
+	}
+	quantPod := quantizedPods(d.Spans, resPod, len(podOf))
 	pps := make([]*prepass, nChunks)
 	eachChunk(nGroups, chunk, func(ci, lo, hi int) {
 		pp := newPrepass(len(d.Addrs), nSvc, len(nameOf))
+		pp.quantPod = quantPod
 		for g := lo; g < hi; g++ {
 			pp.addTrace(d.Spans[bounds[g]:bounds[g+1]], resSvc, resPod, resName, nSvc, unknownPeer)
 		}
 		pps[ci] = pp
 	})
 	pp := newPrepass(len(d.Addrs), nSvc, len(nameOf))
+	pp.quantPod = quantPod
 	for _, o := range pps {
 		pp.merge(o)
 	}
@@ -429,6 +490,9 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 			t.earlyOwn[i] += a.earlyOwn[i]
 			t.earlyMax[i] = max(t.earlyMax[i], a.earlyMax[i])
 			t.hopSamples[i] = append(t.hopSamples[i], a.hopSamples[i]...)
+		}
+		for k, g := range a.edgeGaps {
+			t.edgeGaps[k] = append(t.edgeGaps[k], g...)
 		}
 		for k, e := range a.edges {
 			te := t.edges[k]
@@ -476,11 +540,18 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		for c := range a.brokenBy {
 			t.brokenBy[c] += a.brokenBy[c]
 		}
+		for k, n := range a.lostEdges {
+			t.lostEdges[k] += n
+		}
+		for k, n := range a.lostBelow {
+			t.lostBelow[k] += n
+		}
 		t.consumerN += a.consumerN
 		t.consumerX += a.consumerX
 	}
+	lostEdges := lostEdgesOf(t, pp, d, nameList, names)
 	if t.broken > 0 && float64(t.broken) > maxBrokenShare*float64(t.traces) {
-		return nil, brokenError(t, names, pp)
+		return nil, brokenError(t, names, pp, nameList, lostEdges)
 	}
 	if t.entryN < int64(opt.MinRequests) {
 		return nil, fmt.Errorf("only %d entry requests in the capture; need at least %d", t.entryN, opt.MinRequests)
@@ -492,10 +563,16 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	}
 
 	out := &Inferred{WindowS: windowS, Requests: t.entryN, Spans: len(d.Spans), Traces: t.traces, BrokenTraces: t.broken,
-		ProbeSpans: d.Probes}
+		ProbeSpans: d.Probes, NestedSpans: nestedSummary(nameList, nestedTotal)}
 	warn := func(f string, a ...any) { out.Warnings = append(out.Warnings, fmt.Sprintf(f, a...)) }
 	if d.Skipped > 0 {
 		warn("%d spans were skipped (a missing id, service name, start or end time)", d.Skipped)
+	}
+	for _, w := range longVisitsWarnings(d, long) {
+		warn("%s", w)
+	}
+	if w := nestedWarning(out.NestedSpans); w != "" {
+		warn("%s", w)
 	}
 	// The entries are read from complete traces only, so the external rate is scaled up by the broken share to
 	// count every request (the reference does not scale it; the per-service rates there count every visit).
@@ -505,6 +582,12 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		warn("%d of %d traces miss a span (%.2f%%): left out of the entries and the call structure, kept in the queues "+
 			"and the rates (the external rate is scaled up by %.4f to count them)", t.broken, t.traces,
 			100*float64(t.broken)/float64(t.traces), entryScale)
+		for _, w := range lostWarnings(t, pp, lostEdges, nameList, names) {
+			warn("%s", w)
+		}
+	}
+	for _, w := range entryCalledWarnings(pp, names) {
+		warn("%s", w)
 	}
 
 	// pods and peak concurrency per service
@@ -512,11 +595,17 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	for i := range podsOf {
 		podsOf[i] = map[int32]bool{}
 	}
+	spanKinds := map[int32]uint8{} // the kinds (a bit each) of the spans of services that emit no SERVER span
 	for i := range d.Spans {
 		sp := &d.Spans[i]
 		if sp.Kind == otlp.KindServer && resSvc[sp.Res] >= 0 {
 			podsOf[resSvc[sp.Res]][resPod[sp.Res]] = true
+		} else if resSvc[sp.Res] < 0 {
+			spanKinds[resName[sp.Res]] |= 1 << sp.Kind
 		}
+	}
+	if w := notModelledWarning(spanKinds, nameList); w != "" {
+		warn("%s", w)
 	}
 	podName := make([]string, len(podOf))
 	for i, r := range d.Resources {
@@ -773,6 +862,14 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		callers = append(callers, caller)
 	}
 	slices.Sort(callers)
+	meanExplained := false // the long explanation of the mean count rule is given once (meanRuleWarning)
+	meanWarn := func(caller string, v varyEdge) string {
+		w := meanRuleWarning(caller, v, !meanExplained)
+		meanExplained = true
+		return w
+	}
+	var batchNodes []int          // parallel nodes of calls made at once that batchWarnings checks (counts.go)
+	nodeOwner := map[int]string{} // ... and the service whose calls each holds
 	for _, caller := range callers {
 		var list []*ce
 		for _, c := range callsOf[caller] {
@@ -793,6 +890,7 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		}
 		var cnts []counted
 		var cond []string
+		var varying []varyEdge      // callees whose calls per visit are neither k nor k + 1 (counts.go)
 		var asyncCalls []model.Call // calls sent after the response: k + p per visit, the mean count (only the load matters)
 		nkeys := 0
 		for _, c := range list {
@@ -824,8 +922,15 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 			}
 			k, p, other, err := callCount(c.hist, nsp)
 			if err != nil {
-				return nil, fmt.Errorf("%s -> %s: %v; the model has a fixed count or one conditional call per visit, not this",
-					name, stats[ci].Name, err)
+				// calls per visit that are neither k nor k + 1: the mean enters (counts.go)
+				ve := newVaryEdge(ci, stats[ci].Name, c.hist, nsp)
+				varying = append(varying, ve)
+				k, p = meanCount(ve.mean)
+				stats[si].VariableCalls = append(stats[si].VariableCalls, VariableCall{Callee: ve.name, MeanPerVisit: ve.mean,
+					VisitsByCalls: ve.byCalls, ModelledAs: ModelledMean})
+				cnts = append(cnts, counted{ci, k, p})
+				nkeys += ve.maxN // it may be made at once, up to that many
+				continue
 			}
 			if other > 0 {
 				warn("%s -> %s: %.2f%% of visits show another call count; ignored", name, stats[ci].Name, 100*other)
@@ -836,6 +941,23 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 			}
 			nkeys += k
 			cnts = append(cnts, counted{ci, k, p})
+		}
+		// topUpCalls are the mean-count calls that bring the calls the model makes to each callee (expected, per
+		// visit) up to the calls the visits made, and a warning for a callee left far short
+		topUpCalls := func(expected map[int]float64, what string) []model.Call {
+			var obs []callTotals
+			for _, c := range list {
+				if ci, ok := idx[c.callee]; ok {
+					obs = append(obs, callTotals{ci, histMean(c.hist, nsp), expected[ci]})
+				}
+			}
+			calls, big := topUp(obs)
+			for _, x := range big {
+				warn("%s -> %s: %s hold %.3g of the %.3g calls per visit that the visits made (calls that start after a visit's "+
+					"span ends, or shapes left out); the rest enter as mean counts, one after another", name,
+					stats[x.child].Name, what, x.have, x.observed)
+			}
+			return calls
 		}
 		multi := t.multi[caller]
 		share := stats[si].ParallelShare
@@ -856,6 +978,7 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 			(len(tm) >= 2 || ran[0] < 1-1e-12) {
 			var desc []string
 			var stCalls []model.Call
+			expected := map[int]float64{} // calls per visit the stages make to each callee
 			for j, g := range tm {
 				q := ran[j]
 				if q >= 1-1e-12 {
@@ -867,6 +990,7 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 					if ci, ok := idx[id]; ok {
 						members = append(members, model.Call{Child: ci, P: 1})
 						mnames = append(mnames, stats[ci].Name)
+						expected[ci] += q
 					}
 				}
 				d := strings.Join(mnames, " + ")
@@ -889,6 +1013,22 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 				stats = append(stats, ServiceStats{Name: stName, Stage: true, Visits: int64(math.Round(float64(t.visits[caller]) * q)),
 					RateRPS: stats[si].RateRPS * q, Pods: 1, WorkersPerPod: 1, ParallelShare: 1, BranchCorr: r})
 				stCalls = append(stCalls, model.Call{Child: len(topo.Services) - 1, P: q})
+				batchNodes = append(batchNodes, len(topo.Services)-1)
+				nodeOwner[len(topo.Services)-1] = name
+			}
+			if len(varying) > 0 {
+				// calls per visit that vary, carried by the stages: the stages are the count's shape. A callee that no
+				// stage calls (all its calls start after the visits' spans) enters as a mean count.
+				for j, v := range varying {
+					if expected[v.child] > 0 {
+						stats[si].VariableCalls[j].ModelledAs = ModelledStages
+						warn("%s -> %s: calls per visit vary as {%s}; the stages below carry them (%.3g per visit on average)",
+							name, v.name, countsText(v.byCalls), v.mean)
+					} else {
+						warn("%s", meanWarn(name, v))
+					}
+				}
+				stCalls = append(stCalls, topUpCalls(expected, "the stages")...)
 			}
 			topo.Services[si].Calls = append(stCalls, asyncCalls...)
 			stats[si].Stages = len(tm)
@@ -902,24 +1042,62 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 			}
 			continue
 		}
-		parallel := false
+		parallel, mixture := false, false
 		switch {
 		case nkeys <= 1 || multi == 0 || share <= 1-parallelShare:
 		case share >= parallelShare:
 			parallel = true
 		default:
-			shape, seen := commonShape(sigs, stats, idx)
-			return nil, fmt.Errorf("%s: its calls overlap in %.0f%% of its visits with two or more calls (most common shape: "+
-				"%s, %.0f%% of visits); neither all at once, one after another nor in stages, the shapes the model has",
-				name, 100*share, shape, 100*float64(seen)/float64(nsp))
+			mixture = true // overlap on some visits, in a shape the stage template does not carry
 		}
-		if parallel && len(cond) > 0 {
-			return nil, fmt.Errorf("%s: calls in parallel, and calls to %s only on some visits; the model's expected maximum "+
-				"needs every branch on every visit", name, strings.Join(cond, ", "))
+		if parallel && (len(cond) > 0 || len(varying) > 0) {
+			// the expected maximum needs every branch, and how many there are, on every visit: each shape of
+			// the visits has them
+			parallel, mixture = false, true
+		}
+		if mixture {
+			b := &shapeBuilder{topo: topo, stats: &stats, si: si, name: name, caller: caller, nsp: nsp, idx: idx, pairs: t.pairs,
+				owner: nodeOwner}
+			res, ok := b.mixtureCalls(sigs)
+			if !ok {
+				shape, seen := commonShape(sigs, stats, idx)
+				return nil, fmt.Errorf("%s: its calls overlap in %.0f%% of its visits with two or more calls, and its visits take "+
+					"more than %d call shapes, so that the commonest %d leave %.0f%% of its visits that make calls out (the limit is %.0f%%); the model has "+
+					"sequential, parallel and staged calls, or a mixture of up to %d shapes (most common shape: %s, %.0f%% of visits)",
+					name, 100*share, maxShapes, maxShapes, 100*res.tail, 100*shapeTail, maxShapes, shape, 100*float64(seen)/float64(nsp))
+			}
+			calls := append(res.calls, topUpCalls(res.expected, "the call shapes")...)
+			topo.Services[si].Calls = append(calls, asyncCalls...)
+			batchNodes = append(batchNodes, res.nodes...)
+			stats[si].CallShapes = res.shapes
+			var desc []string
+			for _, sh := range res.shapes {
+				desc = append(desc, fmt.Sprintf("%s (%.1f%% of visits)", sh.Shape, 100*sh.Share))
+			}
+			warn("%s: its visits take %d call shapes, modelled as a mixture (it calls each shape with the share of visits that "+
+				"took it): %s", name, len(res.shapes), strings.Join(desc, "; "))
+			if res.tail > 0 {
+				warn("%s: %.2f%% of its visits that make calls take rarer shapes; their calls enter as mean counts, one after another", name, 100*res.tail)
+			}
+			for j, v := range varying {
+				if res.expected[v.child] > 0 {
+					stats[si].VariableCalls[j].ModelledAs = ModelledMixture
+					warn("%s -> %s: calls per visit vary as {%s}; the call shapes carry them (%.3g per visit on average)", name,
+						v.name, countsText(v.byCalls), v.mean)
+				} else {
+					warn("%s", meanWarn(name, v))
+				}
+			}
+			continue
+		}
+		for _, v := range varying {
+			warn("%s", meanWarn(name, v))
 		}
 		sv := &topo.Services[si]
 		sv.Parallel = parallel
 		if parallel {
+			batchNodes = append(batchNodes, si)
+			nodeOwner[si] = name
 			if r, n := branchCorrelation(t.pairs, caller); n > 0 {
 				stats[si].BranchCorr = math.Max(0, math.Min(r, 0.95))
 				sv.BranchCorr = stats[si].BranchCorr
@@ -978,10 +1156,32 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	}
 	out.ConsumerRequests = t.consumerN
 	if err := topo.Finish(); err != nil {
+		// name the services that call themselves: what is left of a self-call once nested spans are read as one is a
+		// call over the network (SERVER -> CLIENT -> SERVER of one service), or nested spans too far apart in time
+		var selfCalls []string
+		for i, sv := range topo.Services {
+			if slices.ContainsFunc(sv.Calls, func(c model.Call) bool { return c.Child == i }) {
+				selfCalls = append(selfCalls, stats[i].Name)
+			}
+		}
+		if len(selfCalls) > 0 {
+			return nil, fmt.Errorf("the inferred call graph is not usable: %w (a service calling itself: %s; nested spans of one pod "+
+				"are read as one, so this is a call over the network, SERVER spans of one instrumentation scope inside one another (read as a "+
+				"call), or nested spans more than %d ms apart)", err,
+				strings.Join(selfCalls, ", "), nestedSlackNs/1_000_000)
+		}
 		return nil, fmt.Errorf("the inferred call graph is not usable: %w", err)
+	}
+	batchWarnings(topo, stats, batchNodes, nodeOwner, warn)
+	markLost(lostEdges, stats, idx)
+	for _, w := range markStructure(t, stats, idx) {
+		warn("%s", w)
 	}
 	out.Topology, out.Stats = topo, stats
 	out.LamExtPerMs = float64(t.entryN) * entryScale / windowS / opt.KeptShare / 1000
+	for _, w := range setHops(out, t, used, nodeOwner, opt.Plain) {
+		warn("%s", w)
+	}
 	if t.unmatched > 0 {
 		warn("%d client calls to services without server spans were treated as external delays", t.unmatched)
 	}
@@ -1031,9 +1231,46 @@ const cs2SnapSigma = 3.0
 
 // notWaited reports whether a call cannot have been waited for by a visit that ends at end: it starts after the
 // visit's span has ended, or its CLIENT span, on the visit's own pod clock, ends after the span (a fire-and-forget
-// call sent just before the response). A call timed on another clock is judged by its start only.
+// call sent just before the response). A call timed on another clock is judged by its start only. The end of a CLIENT span
+// may follow the visit's end by a quarter of a millisecond (clock jitter); a caller that stamps its spans on whole
+// milliseconds (quantized.go) closes the visit's span before the last client span's end is read, by up to a millisecond
+// (in the Demo, 8.4% of the front end's calls to the cart and 9.3% of those to the ad service end more than a quarter of a
+// millisecond after the front end's span, by up to 0.8 ms, though it waited for them), and is allowed that.
 func notWaited(c call, end uint64) bool {
-	return c.start >= end || (c.ownClock && c.end > end+earlyCallNs)
+	tol := uint64(earlyCallNs)
+	if c.quant {
+		tol = quantSlackNs
+	}
+	return c.start >= end || (c.ownClock && c.end > end+tol)
+}
+
+// notModelledWarning names the services that have spans in the capture and no SERVER span: the model has a service for a
+// SERVER span (a visit that holds a worker), so a message consumer, a load generator or a batch job that only calls out is not
+// in it, and a patch cannot name it. kinds is each such service's span kinds, a bit for each kind.
+func notModelledWarning(kinds map[int32]uint8, nameList []string) string {
+	var parts []string
+	for id, k := range kinds {
+		var ks []string
+		for _, kind := range []struct {
+			bit  uint8
+			name string
+		}{{otlp.KindClient, "CLIENT"}, {otlp.KindConsumer, "CONSUMER"}, {otlp.KindProducer, "PRODUCER"}, {otlp.KindInternal, "INTERNAL"}} {
+			if k>>kind.bit&1 == 1 && (kind.bit != otlp.KindInternal || len(ks) == 0) { // INTERNAL only when it is all there is
+				ks = append(ks, kind.name)
+			}
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s spans)", nameList[id], strings.Join(ks, ", ")))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	slices.Sort(parts)
+	if len(parts) == 1 {
+		return "1 service emits no SERVER span, so it is not in the model (the model has a service for a SERVER span, a visit that " +
+			"holds a worker; --patch cannot name it): " + parts[0]
+	}
+	return fmt.Sprintf("%d services emit no SERVER span, so they are not in the model (the model has a service for a SERVER span, a "+
+		"visit that holds a worker; --patch cannot name them): %s", len(parts), strings.Join(parts, ", "))
 }
 
 // maxBrokenShare is the reference's limit on traces that miss a span.
@@ -1041,7 +1278,7 @@ const maxBrokenShare = 0.05
 
 // brokenError is the refusal of a capture with too many broken traces: what
 // they lost, by cause, and what to check.
-func brokenError(t *acc, names []string, pp *prepass) error {
+func brokenError(t *acc, names []string, pp *prepass, nameList []string, edges []lostEdge) error {
 	var parts []string
 	if n := t.brokenBy[lossCalledTop]; n > 0 {
 		var svcs []string
@@ -1057,10 +1294,11 @@ func brokenError(t *acc, names []string, pp *prepass) error {
 	}
 	if n := t.brokenBy[lossBelowTop]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d have a span whose parent is not in the capture below a top that is in it "+
-			"(a SERVER span with no parent), or on a span that is not a SERVER or CONSUMER span", n))
+			"(a SERVER span with no parent), or on a span that is not a SERVER or CONSUMER span (the spans, by service and kind: %s)",
+			n, orphanList(t.lostBelow, nameList)))
 	}
 	if n := t.brokenBy[lossCallee]; n > 0 {
-		parts = append(parts, fmt.Sprintf("%d have a call to a service with no span of that service under it", n))
+		parts = append(parts, fmt.Sprintf("%d have a call to a service with no span of that service under it (%s)", n, edgeList(edges)))
 	}
 	return fmt.Errorf("%d of %d traces miss spans (%.1f%%): %s. The queue reconstruction needs every request and the "+
 		"call structure whole requests, so above %.0f%% the result is not trustworthy -- check the exporters' queues "+
@@ -1432,7 +1670,7 @@ type traceCalls struct {
 }
 
 // collectCalls reads one trace's calls (the pre-pass and processTrace share it).
-func collectCalls(g []otlp.Span, pos map[uint64]int, resSvc, resPod []int32, nSvc int, unknownPeer int32) traceCalls {
+func collectCalls(g []otlp.Span, pos map[uint64]int, resSvc, resPod []int32, quantPod []bool, nSvc int, unknownPeer int32) traceCalls {
 	svcOf := func(k int) int32 { return resSvc[g[k].Res] }
 	tc := traceCalls{calls: map[int][]call{}}
 	matched := map[int]bool{}
@@ -1451,7 +1689,8 @@ func collectCalls(g []otlp.Span, pos map[uint64]int, resSvc, resPod []int32, nSv
 				if owner >= 0 && svcOf(owner) >= 0 {
 					cs := &g[p]
 					tc.calls[owner] = append(tc.calls[owner], call{callee: callee, start: cs.Start, end: cs.End,
-						clientDur: cs.Dur(), hasServer: true, ownClock: resPod[cs.Res] == resPod[g[owner].Res]})
+						clientDur: cs.Dur(), hasServer: true, sstart: g[k].Start, send: g[k].End,
+						ownClock: resPod[cs.Res] == resPod[g[owner].Res], quant: quantPod[resPod[cs.Res]]})
 					l.owner = owner
 				} else {
 					l.consumer = ostop == stopConsumer
@@ -1478,7 +1717,7 @@ func collectCalls(g []otlp.Span, pos map[uint64]int, resSvc, resPod []int32, nSv
 		if owner >= 0 && svcOf(owner) >= 0 {
 			lc.owner = owner
 			tc.calls[owner] = append(tc.calls[owner], call{callee: peer, start: g[k].Start, end: g[k].End,
-				clientDur: g[k].Dur(), ownClock: resPod[g[k].Res] == resPod[g[owner].Res]})
+				clientDur: g[k].Dur(), ownClock: resPod[g[k].Res] == resPod[g[owner].Res], quant: quantPod[resPod[g[k].Res]]})
 		}
 		tc.loose = append(tc.loose, lc)
 	}
@@ -1498,11 +1737,12 @@ func collectCalls(g []otlp.Span, pos map[uint64]int, resSvc, resPod []int32, nSv
 
 // prepass is what processTrace needs to know about the whole capture, read in
 // a first pass over every trace (broken ones included; it only counts):
-//   - answered: the addresses (peer and port) some service answers on: somewhere
-//     a client span to the address has a server span under it. A call to such an
-//     address with no server span under it lost its callee's span. The port
-//     matters: services on one host (localhost) answer on theirs, a database on
-//     that host on its own.
+//   - answeredBy: the addresses (peer and port) some service answers on: somewhere
+//     a client span to the address has a server span under it, and that service.
+//     A call to such an address with no server span under it lost its callee's
+//     span. The port matters: services on one host (localhost) answer on theirs, a
+//     database on that host on its own. addrCalls counts, per caller and address,
+//     the calls that did find their callee's span (the share a lost edge lost).
 //   - per service, its server spans and those with a caller's visit in the
 //     capture; per service name (resName), its CONSUMER spans and those whose
 //     parent is not in the capture or that have none. They decide which services
@@ -1512,7 +1752,8 @@ func collectCalls(g []otlp.Span, pos map[uint64]int, resSvc, resPod []int32, nSv
 //     those of them timed on another pod's clock (the callee's, with no CLIENT
 //     span), where a clock that runs ahead looks the same.
 type prepass struct {
-	answered            []bool
+	answeredBy          []int32           // per address: the service whose server span sits under a call to it (-1: none, not answered; -2: several)
+	addrCalls           map[lostKey]int64 // per caller (service name) and address: the calls that have a server span under them
 	srvSpans, srvCalled []int64
 	conSpans, conTops   []int64
 	callN, callAfter    map[edgeKey]int64
@@ -1520,17 +1761,36 @@ type prepass struct {
 
 	entryLike, consumerLike []bool
 	async                   map[edgeKey]bool
+	quantPod                []bool // per pod: its spans start on whole milliseconds (quantized.go)
 }
 
 func newPrepass(nAddr, nSvc, nNames int) *prepass {
-	return &prepass{answered: make([]bool, nAddr), srvSpans: make([]int64, nSvc), srvCalled: make([]int64, nSvc),
-		conSpans: make([]int64, nNames), conTops: make([]int64, nNames), callN: map[edgeKey]int64{}, callAfter: map[edgeKey]int64{},
-		afterOther: map[edgeKey]int64{}}
+	by := make([]int32, nAddr)
+	for i := range by {
+		by[i] = -1
+	}
+	return &prepass{answeredBy: by, addrCalls: map[lostKey]int64{}, srvSpans: make([]int64, nSvc),
+		srvCalled: make([]int64, nSvc), conSpans: make([]int64, nNames), conTops: make([]int64, nNames), callN: map[edgeKey]int64{},
+		callAfter: map[edgeKey]int64{}, afterOther: map[edgeKey]int64{}}
+}
+
+// answered reports whether some service answers on the address: somewhere a client span to it has a server span under it.
+func (pp *prepass) answered(addr int32) bool { return pp.answeredBy[addr] != -1 }
+
+// answeredByMerge combines two readings of which service answers on an address (answeredBy).
+func answeredByMerge(x, y int32) int32 {
+	switch {
+	case x == -1:
+		return y
+	case y == -1 || x == y:
+		return x
+	}
+	return -2
 }
 
 func (pp *prepass) addTrace(g []otlp.Span, resSvc, resPod, resName []int32, nSvc int, unknownPeer int32) {
 	pos := spanIndex(g)
-	tc := collectCalls(g, pos, resSvc, resPod, nSvc, unknownPeer)
+	tc := collectCalls(g, pos, resSvc, resPod, pp.quantPod, nSvc, unknownPeer)
 	for _, l := range tc.links {
 		svc := resSvc[g[l.server].Res]
 		pp.srvSpans[svc]++
@@ -1538,7 +1798,9 @@ func (pp *prepass) addTrace(g []otlp.Span, resSvc, resPod, resName []int32, nSvc
 			pp.srvCalled[svc]++
 		}
 		if l.client >= 0 && g[l.client].Addr >= 0 {
-			pp.answered[g[l.client].Addr] = true
+			addr := g[l.client].Addr
+			pp.answeredBy[addr] = answeredByMerge(pp.answeredBy[addr], svc)
+			pp.addrCalls[lostKey{resName[g[l.client].Res], addr}]++
 		}
 	}
 	for owner, cs := range tc.calls {
@@ -1568,8 +1830,11 @@ func (pp *prepass) addTrace(g []otlp.Span, resSvc, resPod, resName []int32, nSvc
 
 // merge adds another chunk's counts (integers: the order does not matter).
 func (pp *prepass) merge(o *prepass) {
-	for i, v := range o.answered {
-		pp.answered[i] = pp.answered[i] || v
+	for i, v := range o.answeredBy {
+		pp.answeredBy[i] = answeredByMerge(pp.answeredBy[i], v)
+	}
+	for k, n := range o.addrCalls {
+		pp.addrCalls[k] += n
 	}
 	for i := range o.srvSpans {
 		pp.srvSpans[i] += o.srvSpans[i]
@@ -1661,8 +1926,8 @@ const (
 // SERVER span of an entryLike service or a CONSUMER span of a consumerLike
 // one, in a trace whose top is not in the capture (no SERVER span of a service
 // without a parent). called gets the services of SERVER spans that fail only
-// because their service is not entryLike.
-func topLoss(g []otlp.Span, pos map[uint64]int, resSvc, resName []int32, pp *prepass, called func(svc int32)) uint8 {
+// because their service is not entryLike; orphan gets each span lost below a top.
+func topLoss(g []otlp.Span, pos map[uint64]int, resSvc, resName []int32, pp *prepass, called func(svc int32), orphan func(k int)) uint8 {
 	topIn := false
 	for k := range g {
 		if g[k].Parent == 0 && g[k].Kind == otlp.KindServer && resSvc[g[k].Res] >= 0 {
@@ -1683,6 +1948,7 @@ func topLoss(g []otlp.Span, pos map[uint64]int, resSvc, resName []int32, pp *pre
 		switch {
 		case topIn:
 			loss |= 1 << lossBelowTop
+			orphan(k)
 		case g[k].Kind == otlp.KindServer && svc >= 0:
 			if !pp.entryLike[svc] {
 				loss |= 1 << lossCalledTop
@@ -1691,6 +1957,7 @@ func topLoss(g []otlp.Span, pos map[uint64]int, resSvc, resName []int32, pp *pre
 		case g[k].Kind == otlp.KindConsumer && pp.consumerLike[resName[g[k].Res]]:
 		default:
 			loss |= 1 << lossBelowTop
+			orphan(k)
 		}
 	}
 	return loss
@@ -1724,11 +1991,12 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 		if !slices.Contains(calledTop, s) {
 			calledTop = append(calledTop, s)
 		}
-	})
-	tc := collectCalls(g, pos, resSvc, resPod, nSvc, unknownPeer)
+	}, func(k int) { a.lostBelow[orphanKey{resName[g[k].Res], g[k].Kind}]++ })
+	tc := collectCalls(g, pos, resSvc, resPod, pp.quantPod, nSvc, unknownPeer)
 	for _, lc := range tc.loose {
-		if g[lc.client].Addr >= 0 && pp.answered[g[lc.client].Addr] {
+		if addr := g[lc.client].Addr; addr >= 0 && pp.answered(addr) {
 			loss |= 1 << lossCallee
+			a.lostEdges[lostKey{resName[g[lc.client].Res], addr}]++
 		}
 	}
 	broken := loss != 0
@@ -1757,7 +2025,7 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 				a.entryMax = max(a.entryMax, sp.Start)
 			case l.client >= 0:
 				cs := &g[l.client]
-				a.hop(callee, cs.Dur()-sp.Dur())
+				a.hop(svcOf(l.owner), callee, cs.Dur()-sp.Dur())
 				a.clientSum[callee] += cs.Dur()
 				a.clientN[callee]++
 			default:
@@ -1803,6 +2071,21 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 				structCs = append(structCs, cs[j])
 			}
 		}
+		// calls stamped on whole milliseconds are ordered, and told apart from calls at once, by where their callees' spans are
+		placed := anyPlaced(structCs)
+		var placedStages [][]int
+		if placed {
+			slices.SortStableFunc(structCs, func(x, y call) int {
+				if xa, ya := x.qa(), y.qa(); xa != ya {
+					if xa < ya {
+						return -1
+					}
+					return 1
+				}
+				return int(x.callee - y.callee)
+			})
+			placedStages = stagesOfQ(structCs)
+		}
 		var covered, maxEnd uint64
 		for _, c := range cs {
 			if c.async {
@@ -1820,6 +2103,11 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 				}
 				maxEnd = e
 			}
+		}
+		if placed {
+			// the model adds the calls' times stage by stage, so the time they cover is read stage by stage too: calls
+			// stamped on whole milliseconds that follow one another can overlap in the spans though they do not in time
+			covered = min(stageSpans(structCs, placedStages, v.Start, v.End), v.End-v.Start)
 		}
 		// The release: the first call out it waits for, or the end, clipped to the span. A call that starts after
 		// the span has ended does not free the worker before the end; one that starts before the span (a callee
@@ -1902,6 +2190,9 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 			continue
 		}
 		stages := stagesOf(structCs)
+		if placed {
+			stages = placedStages
+		}
 		a.sigs[sigKey{svc, sigOf(structCs, stages).key()}]++
 		if len(structCs) >= 2 {
 			a.multi[svc]++
@@ -1928,11 +2219,14 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 	}
 }
 
-func (a *acc) hop(callee int32, d float64) {
+// hop records the gap of one call (its CLIENT span's time less its callee's SERVER span's) under its callee and its edge.
+func (a *acc) hop(caller, callee int32, d float64) {
 	if d < 0 {
 		d = 0
 	}
 	a.hopSamples[callee] = append(a.hopSamples[callee], d)
+	k := edgeKey{caller, callee}
+	a.edgeGaps[k] = append(a.edgeGaps[k], d)
 }
 
 // recordBranches adds one parallel visit's call durations (or one stage's),

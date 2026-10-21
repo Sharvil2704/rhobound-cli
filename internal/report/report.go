@@ -45,6 +45,23 @@ type Row struct {
 	Parallel      bool     `json:"parallel,omitempty"`
 	Stage         bool     `json:"stage,omitempty"` // calls a service makes at once, one stage of its calls: a zero-time delay
 	Images        []string `json:"images,omitempty"`
+	// LostVisits are calls to the address this service answers on that had no span of it under them (a span lost, or
+	// the trace context not passed on): visits missing from its rate and utilization, LostShare as a share of its visits.
+	LostVisits int64   `json:"lost_visits,omitempty"`
+	LostShare  float64 `json:"lost_share,omitempty"`
+	// HopFromMean: the hop added to this service's latency (model_ms) is the mean client-minus-server time less the
+	// model's wait, not its quietest tenth. The observed_wait_ms of this row, and the hop's part of observed_ms and
+	// error_pct, are then set by the hop: they do not check it.
+	HopFromMean bool `json:"hop_from_mean,omitempty"`
+	// BrokenVisitShare is the share of its visits that are in traces that miss a span (left out of the call
+	// structure), when it is a quarter or more.
+	BrokenVisitShare float64 `json:"broken_visit_share,omitempty"`
+	// VariableCalls are the callees this service calls a varying number of times per visit, with the visits by
+	// calls and how the model takes them: the mean count, the stages, or a mixture of the call shapes.
+	VariableCalls []infer.VariableCall `json:"variable_calls,omitempty"`
+	// CallShapes are the shapes of the calls its visits take, with the share of visits that took each, when
+	// it is modelled as a mixture of them.
+	CallShapes []infer.CallShape `json:"call_shapes,omitempty"`
 	// ReplicaShares is each replica's share of the visits when they are
 	// uneven (the inference's pod_shares, in pod-name order); the model and the
 	// change keep them.
@@ -92,6 +109,11 @@ type Report struct {
 	Warnings         []string    `json:"warnings,omitempty"`
 	Scope            string      `json:"scope"`
 	Model            string      `json:"model"`
+
+	// NestedSpans are the nested spans of one kind in one pod that were read as one, by service: SERVER spans
+	// made INTERNAL inside another SERVER span, CLIENT spans made INTERNAL around another CLIENT span.
+	NestedSpans []infer.NestedMerge `json:"nested_spans_merged,omitempty"`
+
 	// FromTopology marks a report of a topology file (rhobound model): no
 	// capture, so no window and nothing seen to compare with.
 	FromTopology bool `json:"-"`
@@ -106,7 +128,7 @@ func Build(capture string, inf *infer.Inferred, kept float64, base *model.Result
 	topo := inf.Topology
 	rep := &Report{Version: Version, Capture: capture, WindowS: inf.WindowS, Requests: inf.Requests,
 		ConsumerRequests: inf.ConsumerRequests, Spans: inf.Spans, Traces: inf.Traces, Broken: inf.BrokenTraces,
-		Probes: inf.ProbeSpans, RPS: inf.LamExtPerMs * 1000, KeptShare: kept, Changes: changes, Warnings: inf.Warnings,
+		Probes: inf.ProbeSpans, NestedSpans: inf.NestedSpans, RPS: inf.LamExtPerMs * 1000, KeptShare: kept, Changes: changes, Warnings: inf.Warnings,
 		Scope: Scope}
 	for _, sv := range topo.Services {
 		for _, c := range sv.Calls {
@@ -132,7 +154,9 @@ func Build(capture string, inf *infer.Inferred, kept float64, base *model.Result
 			UserEntry: st.Entry && (st.Entries > st.ConsumerEntries || st.Entries == 0), RateRPS: base.Lam[i] * 1000,
 			Replicas: sv.Servers, WorkersPerPod: sv.Workers, WorkersLower: st.WorkersInferred && !st.WorkersFromQueueing && !st.External,
 			OwnMs: sv.S, CS2: sv.CS2, GlueMs: sv.Glue, Util: base.Rho[i], WaitMs: base.R[i] - sv.S, ObservedWait: st.ObservedWaitMs + st.InSpanWaitMs,
-			Parallel: sv.Parallel, Stage: st.Stage, Images: st.Images, ReplicaShares: sv.Shares}
+			Parallel: sv.Parallel, Stage: st.Stage, Images: st.Images, ReplicaShares: sv.Shares, VariableCalls: st.VariableCalls,
+			CallShapes: st.CallShapes, LostVisits: st.LostVisits, LostShare: st.LostShare,
+			BrokenVisitShare: st.BrokenVisitShare, HopFromMean: st.HopFromMean}
 		if sv.Routing == model.Pooled {
 			row.Replicas, row.WorkersPerPod = 1, sv.Servers*sv.Workers
 		}
@@ -246,6 +270,18 @@ func (r *Report) writeHeader(w io.Writer) {
 	fmt.Fprintln(w)
 }
 
+// inMixture reports whether a node's name is that of a node of a mixture of call shapes ("shape:S:j", "stage:S:j.n"), as
+// opposed to a stage of the stage template ("stage:S:n").
+func inMixture(name string) bool {
+	if strings.HasPrefix(name, "shape:") {
+		return true
+	}
+	if !strings.HasPrefix(name, "stage:") {
+		return false
+	}
+	return strings.Contains(name[strings.LastIndex(name, ":")+1:], ".")
+}
+
 // WriteText writes the human report and returns the first write error.
 func (r *Report) WriteText(out io.Writer) error {
 	w := &errWriter{w: out}
@@ -265,10 +301,21 @@ func (r *Report) WriteText(out io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', tabwriter.AlignRight)
 	hasChange := len(r.Changes) > 0
 	hasGlue := false // the column is shown only when some service has glue that rounds to more than 0.00
-	hasStage, hasShares, hasConsumer := false, false, false
+	hasStage, hasShape, hasShares, hasConsumer := false, false, false, false
+	var lost, thin, hopMean []string // services with calls that lost their span, with many visits in broken traces, and a hop read from the mean
 	for _, x := range rows {
+		if x.HopFromMean {
+			hopMean = append(hopMean, x.Name)
+		}
+		if x.LostVisits > 0 {
+			lost = append(lost, fmt.Sprintf("%s %d (%.1f%%)", x.Name, x.LostVisits, 100*x.LostShare))
+		}
+		if x.BrokenVisitShare > 0 {
+			thin = append(thin, fmt.Sprintf("%s %.0f%%", x.Name, 100*x.BrokenVisitShare))
+		}
 		hasGlue = hasGlue || x.GlueMs >= 0.005
-		hasStage = hasStage || x.Stage
+		hasStage = hasStage || (x.Stage && !inMixture(x.Name))
+		hasShape = hasShape || (x.Stage && inMixture(x.Name))
 		hasShares = hasShares || x.ReplicaShares != nil
 		hasConsumer = hasConsumer || x.ConsumerEntry
 	}
@@ -293,6 +340,9 @@ func (r *Report) WriteText(out io.Writer) error {
 		}
 		if x.Parallel {
 			name += " ||"
+		}
+		if x.LostVisits > 0 || x.BrokenVisitShare > 0 {
+			name += " !"
 		}
 		w2 := fmt.Sprint(x.WorkersPerPod)
 		if x.WorkersLower {
@@ -333,6 +383,24 @@ func (r *Report) WriteText(out io.Writer) error {
 	if hasStage {
 		fmt.Fprintf(w, "stage:S:n: the calls S makes at once in stage n of its calls (each stage starts once the last has answered); a zero-time delay.\n")
 	}
+	if hasShape {
+		fmt.Fprintf(w, "shape:S:j, stage:S:j.n: S's visits take several call shapes; S calls shape j with the share of its visits that took it "+
+			"(rps: visits per second that do); a shape holds its stages one after another, and stage j.n is the calls made at once in "+
+			"stage n of shape j; zero-time delays.\n")
+	}
+	if len(lost) > 0 {
+		fmt.Fprintf(w, "! lost spans, calls to this service had no span of it under them (visits lost, share of its visits: %s): its service time, "+
+			"queue and worker count are read from the visits captured (see the warnings).\n", strings.Join(lost, ", "))
+	}
+	if len(thin) > 0 {
+		fmt.Fprintf(w, "! many visits in traces that miss a span (share of its visits: %s): they are left out of its call structure (see the warnings).\n",
+			strings.Join(thin, ", "))
+	}
+	if len(hopMean) > 0 {
+		fmt.Fprintf(w, "hop from the mean: the network time of the calls into %s is the mean client-minus-server span time less the model's wait "+
+			"(not its quietest tenth, which lies below the mean by the spread of the network time). Their seen wait, and the hop's part of "+
+			"their seen ms, are set by it, so they do not check it.\n", strings.Join(hopMean, ", "))
+	}
 	if hasShares {
 		fmt.Fprintf(w, "pods~: the pods take uneven shares of the visits (from the traces, see the warnings), each a queue fed its share; the shares are kept at any load and after the change; util is the busiest pod's.\n")
 	}
@@ -349,6 +417,15 @@ func (r *Report) WriteText(out io.Writer) error {
 			fmt.Fprintf(w, "%s %s -> %s (%.3g per visit)", sep, a.Caller, a.Callee, a.PerVisit)
 		}
 		fmt.Fprintln(w)
+	}
+	var vary []string
+	for _, x := range rows {
+		for _, v := range x.VariableCalls {
+			vary = append(vary, fmt.Sprintf("%s -> %s %.3g per visit (%s)", x.Name, v.Callee, v.MeanPerVisit, v.ModelledAs))
+		}
+	}
+	if len(vary) > 0 {
+		fmt.Fprintf(w, "calls per visit that vary (the visits' counts are in the JSON report and the warnings): %s\n", strings.Join(vary, ", "))
 	}
 	if hasChange {
 		fmt.Fprintf(w, "\nchange applied:")

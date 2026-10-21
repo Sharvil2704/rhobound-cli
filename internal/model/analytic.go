@@ -175,13 +175,13 @@ func compose(t *Topology, r []float64) []float64 {
 		case sv.Parallel:
 			vals := make([]float64, len(calls))
 			for j, c := range calls {
-				vals[j] = c.P * (t.Services[c.Child].Hop + l[c.Child])
+				vals[j] = c.P * (t.CallHop(c) + l[c.Child])
 			}
 			l[i] = r[i] + mathx.EmaxExp(vals)
 		default:
 			sum := 0.0
 			for _, c := range calls {
-				sum += c.P * (t.Services[c.Child].Hop + l[c.Child])
+				sum += c.P * (t.CallHop(c) + l[c.Child])
 			}
 			l[i] = r[i] + sum
 		}

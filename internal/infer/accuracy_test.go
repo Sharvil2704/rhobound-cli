@@ -71,7 +71,7 @@ func topo(root *node, corr map[string]float64) *model.Topology {
 			sv.Servers, sv.Workers, sv.Routing = n.c, 1, model.Pooled
 		}
 		if n != root {
-			sv.Hop = 2 * hopMs
+			sv.Hop = 2 * (hopMs + envHopJitter())
 		}
 		t.Services = append(t.Services, sv)
 	})

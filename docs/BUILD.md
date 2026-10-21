@@ -113,8 +113,8 @@ The Makefile is a shortcut for the `go` commands. `make` is not needed; every ta
 | target | the go command | what it does |
 |---|---|---|
 | `make build` | `go build -o bin/rhobound ./cmd/rhobound` | builds the binary |
-| `make test` | `go test ./...` | unit, golden, simulator and CLI tests (about 12 s) |
-| `make race` | `go test -race ./...` | the same with the race detector (about 2 minutes) |
+| `make test` | `go test ./...` | unit, golden, simulator and CLI tests (about 35 s on three cores) |
+| `make race` | `go test -race -timeout 30m ./...` | the same with the race detector (about 5-6 minutes on three cores) |
 | `make vet` | `go vet ./... && go vet -tags e2e ./... && go vet -tags accuracy ./...` | static checks, with each build tag |
 | `make cover` | `go test -cover ./...` | the tests with coverage per package |
 | `make fmt` | `gofmt -l -w .` | formats the code in place |
@@ -130,14 +130,16 @@ memory cap. On more cores they are shorter.
 
 ```
 $ go test -count=1 ./...
-ok  	github.com/Sharvil2704/rhobound-cli/cmd/rhobound	0.558s
+ok  	github.com/Sharvil2704/rhobound-cli/cmd/rhobound	0.965s
 ?   	github.com/Sharvil2704/rhobound-cli/e2e/demoapp	[no test files]
+ok  	github.com/Sharvil2704/rhobound-cli/e2e/imagetar	0.002s
 ?   	github.com/Sharvil2704/rhobound-cli/e2e/loadgen	[no test files]
-ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	10.836s
-ok  	github.com/Sharvil2704/rhobound-cli/internal/mathx	6.638s
-ok  	github.com/Sharvil2704/rhobound-cli/internal/model	0.073s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	31.671s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/mathx	6.642s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/model	0.074s
 ok  	github.com/Sharvil2704/rhobound-cli/internal/otlp	0.005s
-?   	github.com/Sharvil2704/rhobound-cli/internal/report	[no test files]
+ok  	github.com/Sharvil2704/rhobound-cli/internal/report	0.002s
+ok  	github.com/Sharvil2704/rhobound-cli/validation/cluster/otel/otelcap	0.029s
 ```
 
 `-count=1` makes Go run them again instead of printing a cached result. They cover: the CLI on the example capture
@@ -154,42 +156,74 @@ values; and the OTLP reader.
 - `internal/infer/testdata/` holds the reference implementation's outputs for the queue rebuild (on inputs that
   `TestDumpFIFOInputs` writes from simulated captures) and for the stage template. The scripts that made them are
   not published.
-- Comments in the regression tests say how earlier code behaved, by short commit hash ("each failed at 29a7ed9").
-  Those hashes name commits of the development history, which is not published; this repository starts with one
-  commit that holds the final code.
+- `internal/infer/testdata/nested/` holds whole traces of the OpenTelemetry Demo (release 2.2.0) from a real cluster, cut down to
+  the fields the reader uses: four patterns of nested spans (Next.js and flagd SERVER spans inside the HTTP or RPC
+  instrumentation's, .NET's gRPC client CLIENT span around the HTTP client's) and a message consumer's receive and
+  process spans, which are not merged. `nested_real_test.go` reads them.
+- `internal/infer/testdata/counts/shipped-20s/` is 478 whole traces (6,049 spans) of the same Demo under its shipped load mix,
+  the first 20 s of a 420 s window, cut down the same way (service and pod; ids, kind, times, name; the peer, port and route
+  attributes; this set carries no instrumentation scope names, see its [README](../internal/infer/testdata/README.md)): the cart's cache calls 1, 2 or 3 per visit, checkout's one call per cart line, a front end of 11 call shapes.
+  `counts_real_test.go` and the CLI test `TestVariableCallsInTheReport` read it. `counts_sim_test.go` is an
+  event-driven simulator (one first-come, first-served queue per callee, variable call counts and call shapes) for the tests
+  of calls per visit that vary; it is test code, and the rest of the simulator is in `sim_test.go`.
+- `lost_test.go` (in `internal/infer`) tests the naming of lost spans on hand-made spans from the simulator, and on
+  `internal/infer/testdata/counts/shipped-20s` read with the SERVER spans of product-catalog taken out of some traces in memory;
+  `TestLostSpansAreMarkedInTheReport` in `cmd/rhobound` tests the report's marks.
+- `longlived_test.go` tests the refusal of server spans that are streams, not visits (hand-made spans for the three conditions
+  and their edges, and `internal/infer/testdata/counts/shipped-20s` with three streams of 600 s added to flagd in memory);
+  `structure_internal_test.go` tests that the stage template's search finishes on a service that calls one callee dozens of
+  times in a row per visit (it took minutes before it remembered the stage pairs that failed), with a time limit;
+  `quantized_internal_test.go` and `quantized_run_test.go` test the reading of calls from a caller whose spans start on whole
+  milliseconds (the pod found from its spans, the callee-based stages, the allowance at the visit's end, and a Node.js-like
+  caller in the simulator's span writer, which can write a start exactly); `warnings_internal_test.go` the batch and
+  mean-count warnings and the list of services that are not modelled.
+- `validation/cluster/otel/otelcap` has tests of its own (the time parsing, the cut by the time a trace started, the rewrite of nested
+  spans and the dropping of a service, the description of a capture), and `e2e/imagetar` has one that reads back the image tar it writes
+  as an importer does (manifest, config and layer digests, the two programs in the layer).
+- Comments in the regression tests, the headers of the logs in `docs/accuracy-logs/`, and the numbers quoted in
+  [ACCURACY.md](ACCURACY.md), [VALIDATION.md](VALIDATION.md) and [DEMO.md](DEMO.md) say how earlier code behaved, by
+  short commit hash ("each failed at 29a7ed9"). Those hashes name commits of the development history, which is not
+  published; the commits of this repository are squashed releases, so those hashes do not name commits that can be
+  checked out here.
 
 With coverage:
 
 ```
 $ go test -count=1 -cover ./...
-ok  	github.com/Sharvil2704/rhobound-cli/cmd/rhobound	0.584s	coverage: 90.0% of statements
+ok  	github.com/Sharvil2704/rhobound-cli/cmd/rhobound	0.966s	coverage: 90.3% of statements
 	github.com/Sharvil2704/rhobound-cli/e2e/demoapp		coverage: 0.0% of statements
+ok  	github.com/Sharvil2704/rhobound-cli/e2e/imagetar	0.003s	coverage: 35.4% of statements
 	github.com/Sharvil2704/rhobound-cli/e2e/loadgen		coverage: 0.0% of statements
-ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	11.495s	coverage: 96.4% of statements
-ok  	github.com/Sharvil2704/rhobound-cli/internal/mathx	6.722s	coverage: 99.0% of statements
-ok  	github.com/Sharvil2704/rhobound-cli/internal/model	0.074s	coverage: 91.6% of statements
-ok  	github.com/Sharvil2704/rhobound-cli/internal/otlp	0.005s	coverage: 90.5% of statements
-	github.com/Sharvil2704/rhobound-cli/internal/report		coverage: 0.0% of statements
+ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	32.772s	coverage: 96.7% of statements
+ok  	github.com/Sharvil2704/rhobound-cli/internal/mathx	6.728s	coverage: 99.0% of statements
+ok  	github.com/Sharvil2704/rhobound-cli/internal/model	0.074s	coverage: 92.1% of statements
+ok  	github.com/Sharvil2704/rhobound-cli/internal/otlp	0.006s	coverage: 91.3% of statements
+ok  	github.com/Sharvil2704/rhobound-cli/internal/report	0.002s	coverage: 60.6% of statements
+ok  	github.com/Sharvil2704/rhobound-cli/validation/cluster/otel/otelcap	0.031s	coverage: 79.9% of statements
 ```
 
-(`internal/report` has no tests of its own; the CLI tests in `cmd/rhobound` exercise it. The demo services are
-tested by the end-to-end tests below.)
+(`internal/report` is exercised mostly by the CLI tests in `cmd/rhobound`; `report_test.go` covers the "hop from the mean" line. The demo services
+are tested by the end-to-end tests below. `e2e/imagetar`'s test covers the archive writer (`writeArchive`); `main` and `run`, which cross-build the demo's
+programs, are run by `go run ./e2e/imagetar` and by the cluster scripts.)
 
 ### The race detector
 
 ```
-$ go test -race -count=1 ./...
-ok  	github.com/Sharvil2704/rhobound-cli/cmd/rhobound	7.411s
+$ go test -race -count=1 -timeout 30m ./...
+ok  	github.com/Sharvil2704/rhobound-cli/cmd/rhobound	11.893s
 ?   	github.com/Sharvil2704/rhobound-cli/e2e/demoapp	[no test files]
+ok  	github.com/Sharvil2704/rhobound-cli/e2e/imagetar	1.007s
 ?   	github.com/Sharvil2704/rhobound-cli/e2e/loadgen	[no test files]
-ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	113.836s
-ok  	github.com/Sharvil2704/rhobound-cli/internal/mathx	17.165s
-ok  	github.com/Sharvil2704/rhobound-cli/internal/model	1.362s
-ok  	github.com/Sharvil2704/rhobound-cli/internal/otlp	1.018s
-?   	github.com/Sharvil2704/rhobound-cli/internal/report	[no test files]
+ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	326.919s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/mathx	17.127s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/model	1.353s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/otlp	1.016s
+ok  	github.com/Sharvil2704/rhobound-cli/internal/report	1.008s
+ok  	github.com/Sharvil2704/rhobound-cli/validation/cluster/otel/otelcap	1.357s
 ```
 
-It took 1 minute 54 seconds in all.
+It took 5 minutes 27 seconds in all; `internal/infer` is about ten times slower under the race detector than without it. Go's default limit
+for one package's tests is 10 minutes, which is why the command gives `-timeout 30m`.
 
 ### Formatting and vet
 
@@ -236,7 +270,7 @@ ok  	github.com/Sharvil2704/rhobound-cli/internal/infer	1.552s
 
 Each `GLUE` row compares the truth of a simulation with the model, first given the true parameters, then given what
 it read from one simulated capture. `TestAccuracy` (32 scenarios against 64 simulated replications each) took 18.3 s
-here. [ACCURACY.md section 10](ACCURACY.md#10-re-running) lists every study, its run time (from about 1 s to about
+here. [ACCURACY.md section 11](ACCURACY.md#11-re-running) lists every study, its run time (from about 1 s to about
 2 minutes) and the switches that pick seeds and modes. `make accuracy` runs them all in one go, with a 60-minute
 timeout; it was not run as a whole for this page.
 
@@ -282,10 +316,10 @@ Without `RHOBOUND_E2E=1` it skips:
 ```
 $ go test -tags e2e -count=1 -run TestClusterEndToEnd -v ./e2e
 === RUN   TestClusterEndToEnd
-    e2e_test.go:913: set RHOBOUND_E2E=1 (needs docker, kind and kubectl)
+    e2e_test.go:1291: set RHOBOUND_E2E=1 (needs docker, kind and kubectl; or kubectl and RHOBOUND_E2E_KUBECONFIG)
 --- SKIP: TestClusterEndToEnd (0.00s)
 PASS
-ok  	github.com/Sharvil2704/rhobound-cli/e2e	0.003s
+ok  	github.com/Sharvil2704/rhobound-cli/e2e	0.002s
 ```
 
 Its settings are environment variables, described at the top of `e2e/e2e_test.go`:
@@ -295,9 +329,20 @@ Its settings are environment variables, described at the top of `e2e/e2e_test.go
 | `RHOBOUND_E2E_ROUNDS=N` | before/after pairs (default 2) |
 | `RHOBOUND_E2E_STRICT=1` | fail instead of skip when the measurement was not steady |
 | `RHOBOUND_E2E_KEEPALIVE=1` | the services reuse connections (a robustness run; expect the share gate to mark it unsteady) |
-| `RHOBOUND_E2E_WORK=DIR` | the work folder (default: a new folder under `$HOME/.cache/rb-e2e-work`, kept when the test fails or skips) |
+| `RHOBOUND_E2E_WORK=DIR` | the work folder (default: a new folder under `rb-e2e-work` in the user cache folder, Go's `os.UserCacheDir`; kept when the test fails or skips) |
 | `RHOBOUND_E2E_KEEP=1` | keep the cluster afterwards; a later run reuses it |
 | `RHOBOUND_E2E_CAPTURE=DIR` | read one kept capture offline (`TestAnalyzeCapture`) |
+| `RHOBOUND_E2E_RPS=N` | the load generator's rate, requests/s (default 30) |
+| `RHOBOUND_E2E_EXTRA_MS=X` | the change: a constant extra time in api, ms (default 8) |
+| `RHOBOUND_E2E_MAX_RHO=F` | passed to `rhobound predict` as `--max-rho` (default: the CLI's own, 0.85) |
+| `RHOBOUND_E2E_KUBECONFIG=FILE` | use the cluster of this kubeconfig file instead of kind (no kind, no docker); give its kubelets `container-log-max-size=100Mi` |
+| `RHOBOUND_E2E_IMAGE_LOADED=1` | the image `rhobound-demo:e2e` is on every node already (required with `RHOBOUND_E2E_KUBECONFIG`; `go run ./e2e/imagetar -arch amd64 -o FILE.tar` writes it for another architecture) |
+| `RHOBOUND_E2E_APP_SELECTOR=k=v`, `RHOBOUND_E2E_LOAD_SELECTOR=k=v` | node selectors for the demo services and for the load generator (which tolerates taints with the selector's keys) |
+| `RHOBOUND_E2E_SPREAD=1` | spread the demo's pods over the selected nodes, so calls cross nodes |
+
+[validation/cluster/](../validation/cluster/README.md) runs this test on a real cluster (k3s, or any Kubernetes cluster) in its
+external-cluster mode, at three loads (`phase-a.sh`); [REAL_CLUSTER.md](REAL_CLUSTER.md#2-how-to-reproduce-it) says how to set the
+cluster up and gives the commands.
 
 ## Continuous integration
 
@@ -306,7 +351,9 @@ names:
 
 1. `gofmt -l .` must print nothing;
 2. `go vet ./... && go vet -tags e2e ./...` (the `accuracy` tag is not vetted in CI; `make vet` does it);
-3. `go test -race -count=1 ./...`.
+3. `go test -race -count=1 -timeout 30m ./...` (the race detector makes `internal/infer` about ten times slower, and Go's default limit is 10 minutes per package).
+
+A second job builds and tests `rust/` (rbfast) with `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test --release`; see [rust/README.md](../rust/README.md).
 
 It does not run the accuracy studies or either end-to-end test.
 

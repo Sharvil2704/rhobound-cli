@@ -42,6 +42,7 @@ type Span struct {
 	Res    int32 // index into Data.Resources
 	Peer   int32 // index into Data.Peers for client spans, else -1
 	Addr   int32 // index into Data.Addrs (the peer and its port) for client spans with a peer, else -1
+	Scope  int32 // 1 + the index into Data.Scopes of the instrumentation scope that emitted the span; 0 when it names none
 	Kind   uint8
 }
 
@@ -60,14 +61,30 @@ type Resource struct {
 	Image   string // container.image.name[:tag]
 }
 
+// LongSpan is the duration, in nanoseconds, from which a SERVER span's name is kept (Data.LongNames).
+const LongSpan = 1_000_000_000
+
+// maxLongNames bounds Data.LongNames: a capture of spans that all last seconds keeps this many names.
+const maxLongNames = 4096
+
+// SpanKey names a span across the capture: its trace and its id.
+type SpanKey struct {
+	Trace [2]uint64
+	ID    uint64
+}
+
 // Data is everything read from one capture.
 type Data struct {
 	Spans     []Span
 	Resources []Resource
 	Peers     []string
 	Addrs     []string // "peer:port" as client spans name it (the port when given): where a call went
-	Skipped   int      // spans dropped for a missing id, service, start or end
-	Probes    int      // health and readiness probe spans dropped (see IsProbe)
+	Scopes    []string // instrumentation scope names (Span.Scope - 1 indexes it)
+	// LongNames holds the names of the SERVER spans that lasted LongSpan or more (at most maxLongNames of them, the
+	// first read), to name them in a report. Span names are not kept for the others.
+	LongNames map[SpanKey]string
+	Skipped   int // spans dropped for a missing id, service, start or end
+	Probes    int // health and readiness probe spans dropped (see IsProbe)
 	// ProbeChildren are spans whose parent was a dropped probe; they are
 	// roots now (Parent 0), not spans with a lost parent.
 	ProbeChildren int
@@ -130,6 +147,9 @@ type jsonRequest struct {
 			Attributes []keyValue `json:"attributes"`
 		} `json:"resource"`
 		ScopeSpans []struct {
+			Scope struct {
+				Name string `json:"name"`
+			} `json:"scope"`
 			Spans []jsonSpan `json:"spans"`
 		} `json:"scopeSpans"`
 	} `json:"resourceSpans"`
@@ -235,16 +255,18 @@ type part struct {
 	res     []Resource
 	peers   []string
 	addrs   []string
-	spans   []Span // Res, Peer and Addr index into this part's own tables
-	probes  []spanKey
+	scopes  []string
+	spans   []Span // Res, Peer, Addr and Scope index into this part's own tables
+	probes  []SpanKey
+	long    []longName
 	skipped int
 	err     error
 }
 
-// spanKey names a span across the capture: its trace and its id.
-type spanKey struct {
-	trace [2]uint64
-	id    uint64
+// longName is the name of a SERVER span that lasted LongSpan or more.
+type longName struct {
+	key  SpanKey
+	name string
 }
 
 func decodeRequest(raw []byte) part {
@@ -256,6 +278,7 @@ func decodeRequest(raw []byte) part {
 	}
 	peerIdx := map[string]int32{}
 	addrIdx := map[string]int32{}
+	scopeIdx := map[string]int32{}
 	for _, rs := range req.ResourceSpans {
 		var r Resource
 		var svc, dep string
@@ -295,6 +318,16 @@ func decodeRequest(raw []byte) part {
 		ri := int32(len(p.res))
 		p.res = append(p.res, r)
 		for _, ss := range rs.ScopeSpans {
+			var scope int32 // 0: no scope name
+			if n := ss.Scope.Name; n != "" {
+				si, seen := scopeIdx[n]
+				if !seen {
+					si = int32(len(p.scopes))
+					p.scopes = append(p.scopes, n)
+					scopeIdx[n] = si
+				}
+				scope = si + 1
+			}
 			for i := range ss.Spans {
 				js := &ss.Spans[i]
 				tid, ok1 := traceID(js.TraceID)
@@ -309,11 +342,14 @@ func decodeRequest(raw []byte) part {
 					pid, _ = hex64(js.ParentSpanID)
 				}
 				if js.Kind == KindServer && IsProbe(route(js)) {
-					p.probes = append(p.probes, spanKey{tid, sid})
+					p.probes = append(p.probes, SpanKey{tid, sid})
 					continue
 				}
 				sp := Span{Trace: tid, ID: sid, Parent: pid, Start: uint64(js.Start), End: uint64(js.End),
-					Res: ri, Peer: -1, Addr: -1, Kind: uint8(js.Kind)}
+					Res: ri, Peer: -1, Addr: -1, Scope: scope, Kind: uint8(js.Kind)}
+				if js.Kind == KindServer && js.End-js.Start >= LongSpan {
+					p.long = append(p.long, longName{SpanKey{tid, sid}, js.Name})
+				}
 				if js.Kind == KindClient {
 					for _, key := range peerKeys {
 						found := ""
@@ -402,13 +438,14 @@ func ReadDir(path string) (*Data, error) {
 	resIdx := map[Resource]int32{}
 	peerIdx := map[string]int32{}
 	addrIdx := map[string]int32{}
+	scopeIdx := map[string]int32{}
 	var firstErr error
 	// Parts arrive in the order the workers finish; they are merged in capture
 	// order, so the spans, resources and peers (and every sum over them) come
 	// out the same on every run.
 	pending := map[int]part{}
 	next := 0
-	probes := map[spanKey]bool{}
+	probes := map[SpanKey]bool{}
 	merge := func(p part) {
 		if p.err != nil {
 			if firstErr == nil {
@@ -441,6 +478,24 @@ func ReadDir(path string) (*Data, error) {
 			}
 			pmap[i] = gi
 		}
+		smap := make([]int32, len(p.scopes)+1) // 0 stays 0: no scope
+		for i, s := range p.scopes {
+			gi, ok := scopeIdx[s]
+			if !ok {
+				gi = int32(len(d.Scopes)) + 1
+				d.Scopes = append(d.Scopes, s)
+				scopeIdx[s] = gi
+			}
+			smap[i+1] = gi
+		}
+		for _, ln := range p.long {
+			if d.LongNames == nil {
+				d.LongNames = map[SpanKey]string{}
+			}
+			if len(d.LongNames) < maxLongNames {
+				d.LongNames[ln.key] = ln.name
+			}
+		}
 		amap := make([]int32, len(p.addrs))
 		for i, s := range p.addrs {
 			gi, ok := addrIdx[s]
@@ -459,6 +514,7 @@ func ReadDir(path string) (*Data, error) {
 			if sp.Addr >= 0 {
 				sp.Addr = amap[sp.Addr]
 			}
+			sp.Scope = smap[sp.Scope]
 			d.Spans = append(d.Spans, sp)
 		}
 	}
@@ -485,7 +541,7 @@ func ReadDir(path string) (*Data, error) {
 		// traffic with no parent left, not spans whose parent was lost: they would mark their trace broken
 		for i := range d.Spans {
 			sp := &d.Spans[i]
-			if sp.Parent != 0 && probes[spanKey{sp.Trace, sp.Parent}] {
+			if sp.Parent != 0 && probes[SpanKey{sp.Trace, sp.Parent}] {
 				sp.Parent = 0
 				d.ProbeChildren++
 			}

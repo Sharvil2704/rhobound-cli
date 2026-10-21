@@ -260,11 +260,12 @@ in BUILD.md).
 ### The last passing run (run 6)
 
 It was not re-run for this page. These are the log lines of run 6, on 2026-10-19 19:05-19:17 UTC at commit 53b5068
-(a commit of the unpublished development history; the published code differs from it only in comments), as kept in
+(a commit of the unpublished development history; the code of the first release differs from it only in comments, and
+the later release adds the changes listed in [REAL_CLUSTER.md](REAL_CLUSTER.md)), as kept in
 [accuracy-logs/kind.txt](accuracy-logs/kind.txt):
 
 ```
-    e2e_test.go:895: work folder $HOME/.cache/rb-e2e-work/<run>
+    e2e_test.go:895: work folder <user cache folder>/rb-e2e-work/<run>
     e2e_test.go:957: kubelet containerLogMaxSize 100Mi; the frontend writes about 4.9 MiB per window
     e2e_test.go:989: before1  extra 0ms: load generator 46.06 ms (4367 req, 0 err, lag 1 ms, worst 10-s x1.06); traces: entry 45.84 ms over 4512 spans, api 8zxd4 49.5% wait 9.54 ms, rm2xz 50.5% wait 9.35 ms
     e2e_test.go:989: before1  node: 0.21 cores, 760 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.36% mem 0.00%; largest log 4.5 MiB; restarts 0
@@ -277,7 +278,7 @@ It was not re-run for this page. These are the log lines of run 6, on 2026-10-19
     e2e_test.go:997: after2   extra 8ms: load generator 60.89 ms (4315 req, 0 err, lag 1 ms, worst 10-s x1.16); traces: entry 60.67 ms over 4476 spans, api 8wwqn 49.8% wait 16.15 ms, dm27p 50.2% wait 17.43 ms
     e2e_test.go:997: after2   node: 0.23 cores, 807 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.35% mem 0.00%; largest log 4.4 MiB; restarts 0
     e2e_test.go:1037: before: measured 46.10 ms (2 windows), model 46.15 ms; change in api of +8 ms: predicted +14.93 ms, measured +13.56 ms
-    e2e_test.go:906: passed: removed the captures and the image from $HOME/.cache/rb-e2e-work/<run>; result.json and the load generator outputs are kept
+    e2e_test.go:906: passed: removed the captures and the image from <user cache folder>/rb-e2e-work/<run>; result.json and the load generator outputs are kept
 ```
 
 How to read the last result line:

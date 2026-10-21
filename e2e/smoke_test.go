@@ -177,7 +177,7 @@ func predictSmoke(t *testing.T, bin, dir string, lines []string, measuredMs floa
 	if err := os.WriteFile(filepath.Join(capture, "traces", "spans.jsonl"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"predict", capture, "--json", "--patch", fmt.Sprintf("api=+%gms", extraMs)}
+	args := []string{"predict", capture, "--json", "--patch", fmt.Sprintf("api=+%gms", defaultExtraMs)}
 	cmd := exec.Command(filepath.Join(bin, "rhobound"), args...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -202,7 +202,7 @@ func predictSmoke(t *testing.T, bin, dir string, lines []string, measuredMs floa
 		t.Errorf("api has 2 replicas, the report says %v", api["replicas"])
 	}
 	t.Logf("rhobound: own ms frontend %.2f (3), api %.2f (20), db %.2f (8), cache %.2f (5); entry model %.2f ms, load generator %.2f ms; change api +%gms: %+.2f ms",
-		num(fe, "own_ms"), num(api, "own_ms"), num(db, "own_ms"), num(cache, "own_ms"), num(fe, "model_ms"), measuredMs, extraMs, num(fe, "change_ms"))
+		num(fe, "own_ms"), num(api, "own_ms"), num(db, "own_ms"), num(cache, "own_ms"), num(fe, "model_ms"), measuredMs, defaultExtraMs, num(fe, "change_ms"))
 }
 
 func runLoadgen(t *testing.T, bin, target string, args ...string) string {

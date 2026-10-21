@@ -30,10 +30,34 @@
 //	RHOBOUND_E2E_ROUNDS=N     before/after pairs (default 2, about 13 minutes; 1 is the old single pair)
 //	RHOBOUND_E2E_STRICT=1     fail instead of skip when the run is UNSTABLE
 //	RHOBOUND_E2E_KEEPALIVE=1  frontend and api reuse connections: a robustness run (see maxShare)
-//	RHOBOUND_E2E_WORK=DIR     the work folder; the default is a new folder under $HOME/.cache/rb-e2e-work,
+//	RHOBOUND_E2E_WORK=DIR     the work folder; the default is a new folder under rb-e2e-work in the user cache folder,
 //	                          kept when the test fails or skips (a pass removes the captures, keeps result.json)
 //	RHOBOUND_E2E_KEEP=1       keep the cluster afterwards; a later run reuses it
 //	RHOBOUND_E2E_CAPTURE=DIR  read one kept capture offline (TestAnalyzeCapture)
+//	RHOBOUND_E2E_RPS=N        the load generator's rate, requests/s (default 30)
+//	RHOBOUND_E2E_EXTRA_MS=X   the change: a constant extra time in api, ms (default 8)
+//	RHOBOUND_E2E_MAX_RHO=F    passed to rhobound predict as --max-rho (default: the CLI's own, 0.85)
+//
+// External cluster (instead of kind; validation/cluster/phase-a.sh drives it):
+//
+//	RHOBOUND_E2E_KUBECONFIG=FILE    use the cluster of this kubeconfig file, at its current context: no kind
+//	                                create or delete, no docker. Each node's CPU, memory and pressure come from
+//	                                its kubelet's stats/summary through the API server. The kubelet's log limit
+//	                                is read back and checked, not set: give the kubelets
+//	                                container-log-max-size=100Mi. The namespace rb-e2e is left in place
+//	                                (kubectl delete namespace rb-e2e removes it).
+//	RHOBOUND_E2E_IMAGE_LOADED=1     the image rhobound-demo:e2e is on every node already: no build, no kind
+//	                                load (required with RHOBOUND_E2E_KUBECONFIG). Write it for another
+//	                                architecture with go run ./e2e/imagetar -arch amd64 -o FILE.tar
+//	RHOBOUND_E2E_APP_SELECTOR=k=v   a node selector for the demo services (e.g. rbv/role=app)
+//	RHOBOUND_E2E_LOAD_SELECTOR=k=v  a node selector for the load generator (e.g. rbv/role=load); it tolerates
+//	                                every taint whose key is one of the selector's keys
+//	RHOBOUND_E2E_SPREAD=1           spread the demo's pods over the (selected) nodes, so that calls cross nodes:
+//	                                a topology spread over all of them, another per service, and rollouts
+//	                                that stop a pod before they start its successor. The placement of every
+//	                                window is logged and kept in result.json.
+//
+// A selector is one or more key=value pairs separated by commas. The settings above work with kind too.
 package e2e
 
 import (
@@ -57,9 +81,10 @@ const (
 	cluster = "rb-oss-e2e"
 	ns      = "rb-e2e"
 	image   = "rhobound-demo:e2e"
-	rps     = 30
 	runSecs = 150
-	extraMs = 8.0 // the change: a constant extra time in api
+
+	defaultRPS     = 30  // RHOBOUND_E2E_RPS
+	defaultExtraMs = 8.0 // RHOBOUND_E2E_EXTRA_MS: the change, a constant extra time in api
 
 	skipSecs = 5 // the load generator ignores the latencies of requests sent in this first part
 )
@@ -132,6 +157,84 @@ type env struct {
 	node      string // the kind node's name
 	logMax    int64  // the kubelet's containerLogMaxSize in bytes, 0 if unknown
 	keepAlive bool   // RHOBOUND_E2E_KEEPALIVE=1
+
+	rps      float64 // RHOBOUND_E2E_RPS
+	extraMs  float64 // RHOBOUND_E2E_EXTRA_MS
+	maxRho   string  // RHOBOUND_E2E_MAX_RHO, "" for the CLI's default
+	external bool    // RHOBOUND_E2E_KUBECONFIG: a cluster that is not this test's kind cluster
+	nodes    []string
+	place    placement
+}
+
+// placement is where the pods go: node selectors, the load node's tolerations, and the spread of the demo's pods.
+type placement struct {
+	AppSelector  map[string]string // RHOBOUND_E2E_APP_SELECTOR
+	LoadSelector map[string]string // RHOBOUND_E2E_LOAD_SELECTOR
+	Spread       bool              // RHOBOUND_E2E_SPREAD=1
+}
+
+// parseSelector reads "k=v,k2=v2" (the form kubectl -l takes for equality) into a map; "" is no selector.
+func parseSelector(s string) (map[string]string, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	m := map[string]string{}
+	for _, p := range strings.Split(s, ",") {
+		k, v, ok := strings.Cut(strings.TrimSpace(p), "=")
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if !ok || k == "" || strings.ContainsAny(k+v, "!=<> ") {
+			return nil, fmt.Errorf("selector %q: want key=value pairs separated by commas", s)
+		}
+		m[k] = v
+	}
+	return m, nil
+}
+
+// flowMap writes a map as a YAML flow mapping with quoted keys and values ({"rbv/role": "app"}), sorted by key.
+func flowMap(m map[string]string) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = fmt.Sprintf("%q: %q", k, m[k])
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// selectorArg is the map as a kubectl -l argument.
+func selectorArg(m map[string]string) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = k + "=" + m[k]
+	}
+	return strings.Join(parts, ",")
+}
+
+// loadPlacement is the load generator pod's node selector and tolerations ("" without a load selector): it tolerates
+// every taint whose key is one of the selector's keys, whatever its value and effect, so that a load node tainted
+// rbv/role=load:NoSchedule takes it and nothing else.
+func (p placement) loadPlacement(indent string) string {
+	if len(p.LoadSelector) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(p.LoadSelector))
+	for k := range p.LoadSelector {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	tol := make([]string, len(keys))
+	for i, k := range keys {
+		tol[i] = fmt.Sprintf("{key: %q, operator: Exists}", k)
+	}
+	return indent + "nodeSelector: " + flowMap(p.LoadSelector) + "\n" + indent + "tolerations: [" + strings.Join(tol, ", ") + "]\n"
 }
 
 func (e *env) run(name string, args ...string) string {
@@ -162,7 +265,14 @@ func (e *env) kubectl(args ...string) string {
 	return e.run("kubectl", append([]string{"-n", ns}, args...)...)
 }
 
-var manifest = template.Must(template.New("m").Parse(`
+// manifest renders the demo. Its data: Services, KeepAlive ("true"/"false") and Place (a placement; its zero value
+// renders the manifest the kind test has always used). With Place.Spread a topology spread over all the demo's pods
+// (hard, maxSkew 1: no node gets two pods more than another) keeps them apart, a soft one per service puts api's
+// replicas on different nodes, and a rollout stops a pod before it starts its successor, so a new pod is placed among
+// the pods that stay, not next to the one it replaces. Nodes the pod does not select or whose taints it does not
+// tolerate are left out of the spread (the Honor policies), so a tainted control plane or load node cannot hold
+// it up.
+var manifest = template.Must(template.New("m").Funcs(template.FuncMap{"flow": flowMap}).Parse(`
 apiVersion: v1
 kind: Namespace
 metadata: {name: rb-e2e}
@@ -172,11 +282,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: {name: {{.Name}}, namespace: rb-e2e}
 spec:
-  replicas: {{.Replicas}}
+  replicas: {{.Replicas}}{{if $.Place.Spread}}
+  strategy: {type: RollingUpdate, rollingUpdate: {maxSurge: 0, maxUnavailable: 1}}{{end}}
   selector: {matchLabels: {app: {{.Name}}}}
   template:
-    metadata: {labels: {app: {{.Name}}}}
-    spec:
+    metadata: {labels: {app: {{.Name}}{{if $.Place.Spread}}, rb-e2e-demo: "true"{{end}}}}
+    spec:{{if $.Place.AppSelector}}
+      nodeSelector: {{flow $.Place.AppSelector}}{{end}}{{if $.Place.Spread}}
+      topologySpreadConstraints:
+      - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, nodeAffinityPolicy: Honor, nodeTaintsPolicy: Honor, labelSelector: {matchLabels: {rb-e2e-demo: "true"}}}
+      - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, nodeAffinityPolicy: Honor, nodeTaintsPolicy: Honor, labelSelector: {matchLabels: {app: {{.Name}}}}}{{end}}
       containers:
       - name: app
         image: rhobound-demo:e2e
@@ -270,12 +385,12 @@ spec:
   template:
     spec:
       restartPolicy: Never
-      containers:
+%s      containers:
       - name: load
         image: rhobound-demo:e2e
         imagePullPolicy: IfNotPresent
-        command: ["/loadgen", "-target=http://frontend:8080/", "-rps=%d", "-duration=%ds", "-skip=%ds"]
-`, name, rps, secs, skipSecs)
+        command: ["/loadgen", "-target=http://frontend:8080/", "-rps=%g", "-duration=%ds", "-skip=%ds"]
+`, name, e.place.loadPlacement("      "), e.rps, secs, skipSecs)
 	path := filepath.Join(e.work, name+".yaml")
 	os.WriteFile(path, []byte(job), 0o644)
 	// a Job of this name left by an earlier run on a kept cluster is complete already: apply would leave it
@@ -369,6 +484,17 @@ func (e *env) nodeName() string {
 	return strings.TrimSpace(e.run("kubectl", "get", "nodes", "-o", "jsonpath={.items[0].metadata.name}"))
 }
 
+// nodeNames lists the nodes that match a label selector ("" for all), sorted.
+func (e *env) nodeNames(selector string) []string {
+	args := []string{"get", "nodes", "-o", "jsonpath={.items[*].metadata.name}"}
+	if selector != "" {
+		args = append(args, "-l", selector)
+	}
+	names := strings.Fields(e.run("kubectl", args...))
+	sort.Strings(names)
+	return names
+}
+
 // quantity reads a kubelet size such as "10Mi" or "100M" in bytes (0 if it cannot).
 func quantity(s string) int64 {
 	for _, u := range []struct {
@@ -385,9 +511,9 @@ func quantity(s string) int64 {
 	return 0
 }
 
-// kubeletLogMax reads the kubelet's containerLogMaxSize from its live configuration (the cluster may be reused).
-func (e *env) kubeletLogMax() (int64, string) {
-	out, err := e.try("kubectl", "get", "--raw", "/api/v1/nodes/"+e.node+"/proxy/configz")
+// kubeletLogMax reads a node's kubelet containerLogMaxSize from its live configuration (the cluster may be reused).
+func (e *env) kubeletLogMax(node string) (int64, string) {
+	out, err := e.try("kubectl", "get", "--raw", "/api/v1/nodes/"+node+"/proxy/configz")
 	var c struct {
 		Kubelet struct {
 			ContainerLogMaxSize string `json:"containerLogMaxSize"`
@@ -402,6 +528,20 @@ func (e *env) kubeletLogMax() (int64, string) {
 	return quantity(c.Kubelet.ContainerLogMaxSize), c.Kubelet.ContainerLogMaxSize
 }
 
+// minLogMax is the smallest containerLogMaxSize of the nodes that can run the demo's pods (0 if none could be read).
+func (e *env) minLogMax(nodes []string) (int64, string) {
+	var low int64
+	var desc []string
+	for _, n := range nodes {
+		b, s := e.kubeletLogMax(n)
+		desc = append(desc, n+" "+s)
+		if b > 0 && (low == 0 || b < low) {
+			low = b
+		}
+	}
+	return low, strings.Join(desc, ", ")
+}
+
 // nodeSample is a reading of the node's cumulative counters; -1 marks one that could not be read.
 type nodeSample struct {
 	at                   time.Time
@@ -409,31 +549,72 @@ type nodeSample struct {
 	cpuStall, memStall   float64 // the node container's cgroup pressure, "some" total in microseconds
 	oomKills             float64 // the node container's cgroup memory.events
 	hostCPUUs, hostMemUs float64 // the host's /proc/pressure "some" totals in microseconds
+
+	nodes map[string]kubeletSample // an external cluster: every node's kubelet summary
+}
+
+// kubeletSample is a node's cumulative counters from its kubelet's stats/summary; -1 marks one that is missing
+// (a kubelet without pressure stall information, KubeletPSI, reports no psi).
+type kubeletSample struct {
+	cpuNs, memBytes    float64 // CPU time in ns, working set in bytes
+	cpuStall, memStall float64 // the node's cgroup pressure, "some" total in microseconds
+}
+
+func (e *env) kubeletSummary(node string) kubeletSample {
+	s := kubeletSample{-1, -1, -1, -1}
+	out, err := e.try("kubectl", "get", "--raw", "/api/v1/nodes/"+node+"/proxy/stats/summary")
+	if err != nil {
+		return s
+	}
+	type psi struct {
+		Some struct {
+			Total *float64 `json:"total"`
+		} `json:"some"`
+	}
+	var sum struct {
+		Node struct {
+			CPU struct {
+				Ns  *float64 `json:"usageCoreNanoSeconds"`
+				PSI *psi     `json:"psi"`
+			} `json:"cpu"`
+			Memory struct {
+				WorkingSet *float64 `json:"workingSetBytes"`
+				PSI        *psi     `json:"psi"`
+			} `json:"memory"`
+		} `json:"node"`
+	}
+	if json.Unmarshal([]byte(out), &sum) != nil {
+		return s
+	}
+	if sum.Node.CPU.Ns != nil {
+		s.cpuNs = *sum.Node.CPU.Ns
+	}
+	if sum.Node.Memory.WorkingSet != nil {
+		s.memBytes = *sum.Node.Memory.WorkingSet
+	}
+	if p := sum.Node.CPU.PSI; p != nil && p.Some.Total != nil {
+		s.cpuStall = *p.Some.Total
+	}
+	if p := sum.Node.Memory.PSI; p != nil && p.Some.Total != nil {
+		s.memStall = *p.Some.Total
+	}
+	return s
 }
 
 func (e *env) nodeSample() nodeSample {
+	if e.external {
+		// no docker here, and the host's own pressure is this machine's, not the cluster's
+		s := nodeSample{at: time.Now(), cpuNs: -1, memBytes: -1, cpuStall: -1, memStall: -1, oomKills: -1, hostCPUUs: -1,
+			hostMemUs: -1, nodes: map[string]kubeletSample{}}
+		for _, n := range e.nodes {
+			s.nodes[n] = e.kubeletSummary(n)
+		}
+		return s
+	}
 	s := nodeSample{at: time.Now(), cpuNs: -1, memBytes: -1, cpuStall: -1, memStall: -1, oomKills: -1,
 		hostCPUUs: hostPressure("cpu"), hostMemUs: hostPressure("memory")}
-	if out, err := e.try("kubectl", "get", "--raw", "/api/v1/nodes/"+e.node+"/proxy/stats/summary"); err == nil {
-		var sum struct {
-			Node struct {
-				CPU struct {
-					Ns *float64 `json:"usageCoreNanoSeconds"`
-				} `json:"cpu"`
-				Memory struct {
-					WorkingSet *float64 `json:"workingSetBytes"`
-				} `json:"memory"`
-			} `json:"node"`
-		}
-		if json.Unmarshal([]byte(out), &sum) == nil {
-			if sum.Node.CPU.Ns != nil {
-				s.cpuNs = *sum.Node.CPU.Ns
-			}
-			if sum.Node.Memory.WorkingSet != nil {
-				s.memBytes = *sum.Node.Memory.WorkingSet
-			}
-		}
-	}
+	k := e.kubeletSummary(e.node)
+	s.cpuNs, s.memBytes = k.cpuNs, k.memBytes
 	// the kind node is a container with its own cgroup namespace, so its cgroup root is the whole node; grep prints
 	// what it can read even if one file is missing
 	out, _ := e.try("docker", "exec", e.node, "grep", "-H", "", "/sys/fs/cgroup/cpu.pressure",
@@ -454,6 +635,35 @@ func (e *env) nodeSample() nodeSample {
 		}
 	}
 	return s
+}
+
+// nodeResult is one node's readings over a window (an external cluster); -1 marks one that could not be taken.
+type nodeResult struct {
+	Name     string  `json:"name"`
+	Cores    float64 `json:"cpu_cores"`         // mean over the window
+	MemMiB   float64 `json:"memory_mib"`        // working set at the end
+	CPUStall float64 `json:"cpu_some_share"`    // share of the window in which some task waited for CPU
+	MemStall float64 `json:"memory_some_share"` // ... for memory
+}
+
+// nodeResults turns two samples of an external cluster into each node's readings over the window between them.
+func nodeResults(n0, n1 nodeSample) []nodeResult {
+	us := float64(n1.at.Sub(n0.at).Microseconds())
+	var out []nodeResult
+	for name, b := range n1.nodes {
+		a, ok := n0.nodes[name]
+		if !ok {
+			a = kubeletSample{-1, -1, -1, -1}
+		}
+		r := nodeResult{Name: name, Cores: rate(a.cpuNs, b.cpuNs, 1e3, us), MemMiB: -1,
+			CPUStall: rate(a.cpuStall, b.cpuStall, 1, us), MemStall: rate(a.memStall, b.memStall, 1, us)}
+		if b.memBytes >= 0 {
+			r.MemMiB = b.memBytes / (1 << 20)
+		}
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // pressureTotal reads total=N from the fields of a pressure line.
@@ -659,7 +869,9 @@ func analyze(lines []string) traceStats {
 	return st
 }
 
-// phaseResult is one measured window: the load generator's numbers, the traces' own, and the health signals.
+// phaseResult is one measured window: the load generator's numbers, the traces' own, and the health signals. The
+// Node fields are kind's one node; on an external cluster they hold the largest reading over its nodes (each one is
+// in Nodes) and the OOM kills and host stalls are not read (-1).
 type phaseResult struct {
 	Name          string             `json:"name"`
 	ExtraMs       float64            `json:"extra_ms"`
@@ -688,7 +900,10 @@ type phaseResult struct {
 	HostMemStall  float64            `json:"host_memory_some_share"`
 	ModelMs       float64            `json:"model_entry_ms,omitempty"` // before windows: the CLI on this capture
 	ModelChangeMs float64            `json:"model_change_ms,omitempty"`
+	Refused       string             `json:"model_refused,omitempty"` // the CLI's message when it refused this capture
 	Capture       string             `json:"capture"`
+	Nodes         []nodeResult       `json:"nodes,omitempty"`     // an external cluster: every node
+	PodNodes      map[string]string  `json:"pod_nodes,omitempty"` // an external cluster or a spread: pod -> node
 	Unstable      []string           `json:"unstable,omitempty"`
 }
 
@@ -729,6 +944,17 @@ func (e *env) phase(name string, extra float64) phaseResult {
 	}
 	if n1.memBytes < 0 {
 		res.NodeMemMiB = -1
+	}
+	if e.external {
+		res.Nodes = nodeResults(n0, n1)
+		res.NodeCores, res.NodeMemMiB, res.NodeCPUStall, res.NodeMemStall = -1, -1, -1, -1
+		for _, n := range res.Nodes {
+			res.NodeCores, res.NodeMemMiB = math.Max(res.NodeCores, n.Cores), math.Max(res.NodeMemMiB, n.MemMiB)
+			res.NodeCPUStall, res.NodeMemStall = math.Max(res.NodeCPUStall, n.CPUStall), math.Max(res.NodeMemStall, n.MemStall)
+		}
+	}
+	if e.external || e.place.Spread {
+		res.PodNodes = e.podNodes()
 	}
 	res.PodsChanged = len(pods0) != len(pods1)
 	for p, r := range pods1 {
@@ -798,7 +1024,13 @@ func (e *env) phase(name string, extra float64) phaseResult {
 	if d := lg.MeanMs - st.EntryMeanMs; math.Abs(d) > maxGapMs {
 		bad("the load generator measured %.2f ms but the entry spans %.2f ms: %.2f ms outside the services", lg.MeanMs, st.EntryMeanMs, d)
 	}
-	if res.NodeMemStall > maxMemStall {
+	if e.external {
+		for _, n := range res.Nodes {
+			if n.MemStall > maxMemStall {
+				bad("memory pressure on node %s: some task waited for memory %.2f%% of the window", n.Name, 100*n.MemStall)
+			}
+		}
+	} else if res.NodeMemStall > maxMemStall {
 		bad("memory pressure in the node: some task waited for memory %.2f%% of the window", 100*res.NodeMemStall)
 	}
 	if res.NodeOOMKills > 0 {
@@ -819,13 +1051,68 @@ func (e *env) phase(name string, extra float64) phaseResult {
 	sort.Strings(shares)
 	e.t.Logf("%-8s extra %gms: load generator %.2f ms (%d req, %d err, lag %.0f ms, worst 10-s x%.2f); traces: entry %.2f ms over %d spans, api %s",
 		name, extra, lg.MeanMs, lg.Requests, lg.Errors, lg.MaxLagMs, res.WorstWindow, st.EntryMeanMs, st.EntrySpans, strings.Join(shares, ", "))
-	e.t.Logf("%-8s node: %s cores, %s MiB, stall cpu %s mem %s, oom kills %s; host stall cpu %s mem %s; largest log %.1f MiB; restarts %d",
-		name, orNA("%.2f", res.NodeCores), orNA("%.0f", res.NodeMemMiB), pct(res.NodeCPUStall), pct(res.NodeMemStall), orNA("%.0f", res.NodeOOMKills),
-		pct(res.HostCPUStall), pct(res.HostMemStall), float64(res.LogBytesMax)/(1<<20), res.Restarts)
+	if e.external {
+		for _, n := range res.Nodes {
+			e.t.Logf("%-8s node %s: %s cores, %s MiB, stall cpu %s mem %s", name, n.Name, orNA("%.2f", n.Cores),
+				orNA("%.0f", n.MemMiB), pct(n.CPUStall), pct(n.MemStall))
+		}
+		e.t.Logf("%-8s largest log %.1f MiB; restarts %d", name, float64(res.LogBytesMax)/(1<<20), res.Restarts)
+	} else {
+		e.t.Logf("%-8s node: %s cores, %s MiB, stall cpu %s mem %s, oom kills %s; host stall cpu %s mem %s; largest log %.1f MiB; restarts %d",
+			name, orNA("%.2f", res.NodeCores), orNA("%.0f", res.NodeMemMiB), pct(res.NodeCPUStall), pct(res.NodeMemStall), orNA("%.0f", res.NodeOOMKills),
+			pct(res.HostCPUStall), pct(res.HostMemStall), float64(res.LogBytesMax)/(1<<20), res.Restarts)
+	}
+	if len(res.PodNodes) > 0 {
+		e.t.Logf("%-8s placement: %s", name, placementLine(res.PodNodes))
+	}
 	for _, u := range res.Unstable {
 		e.t.Logf("  unstable: %s", u)
 	}
 	return res
+}
+
+// podNodes maps each serving demo pod (not being deleted) to its node; nil if the pods cannot be listed.
+func (e *env) podNodes() map[string]string {
+	names := make([]string, len(services))
+	for i, s := range services {
+		names[i] = s.Name
+	}
+	out, err := e.try("kubectl", "-n", ns, "get", "pods", "-l", "app in ("+strings.Join(names, ",")+")", "-o",
+		`jsonpath={range .items[*]}{.metadata.name}{" "}{.spec.nodeName}{" "}{.metadata.deletionTimestamp}{"\n"}{end}`)
+	if err != nil {
+		e.t.Logf("listing the pods' nodes: %v", err)
+		return nil
+	}
+	m := map[string]string{}
+	for _, l := range strings.Split(out, "\n") {
+		if f := strings.Fields(l); len(f) == 2 {
+			m[f[0]] = f[1]
+		}
+	}
+	return m
+}
+
+// placementLine lists the pods per node, and how many nodes the demo and api's replicas use.
+func placementLine(pods map[string]string) string {
+	by := map[string][]string{}
+	apiNodes := map[string]bool{}
+	for p, n := range pods {
+		by[n] = append(by[n], p)
+		if strings.HasPrefix(p, "api-") {
+			apiNodes[n] = true
+		}
+	}
+	nodes := make([]string, 0, len(by))
+	for n := range by {
+		nodes = append(nodes, n)
+	}
+	sort.Strings(nodes)
+	parts := make([]string, len(nodes))
+	for i, n := range nodes {
+		sort.Strings(by[n])
+		parts[i] = n + ": " + strings.Join(by[n], " ")
+	}
+	return fmt.Sprintf("%s (%d pods on %d nodes, api's replicas on %d)", strings.Join(parts, "; "), len(pods), len(nodes), len(apiNodes))
 }
 
 // orNA formats a reading, or "n/a" for one that could not be taken (-1).
@@ -838,20 +1125,25 @@ func orNA(format string, x float64) string {
 
 func pct(x float64) string { return orNA("%.2f%%", 100*x) }
 
-func (e *env) predict(capture string, extra ...string) map[string]any {
-	e.t.Helper()
+// predict runs rhobound predict --json on a capture, with --max-rho when RHOBOUND_E2E_MAX_RHO is set. An error
+// carries the CLI's message: a refusal (a load above the limit, before or after the change) is a result of the
+// run, not a failure of the test's machinery, so the caller records it.
+func (e *env) predict(capture string, extra ...string) (map[string]any, error) {
 	args := append([]string{"predict", capture, "--json"}, extra...)
+	if e.maxRho != "" {
+		args = append(args, "--max-rho", e.maxRho)
+	}
 	cmd := exec.Command(filepath.Join(e.root, "bin", "rhobound"), args...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
-		e.t.Fatalf("rhobound %v: %v\n%s", args, err, errb.String())
+		return nil, fmt.Errorf("rhobound %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
 	}
 	var rep map[string]any
 	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
-		e.t.Fatalf("report: %v", err)
+		return nil, fmt.Errorf("rhobound %s: the report: %v", strings.Join(args, " "), err)
 	}
-	return rep
+	return rep, nil
 }
 
 func row(rep map[string]any, name string) map[string]any {
@@ -869,7 +1161,7 @@ func num(m map[string]any, k string) float64 {
 	return v
 }
 
-// workFolder is RHOBOUND_E2E_WORK, or a new folder under $HOME/.cache/rb-e2e-work. Not t.TempDir(): that is
+// workFolder is RHOBOUND_E2E_WORK, or a new folder under rb-e2e-work in the user cache folder (os.UserCacheDir). Not t.TempDir(): that is
 // removed even when the test fails, and a failed run's captures are the only evidence of what happened (kind
 // run 3's were lost that way). A pass removes the bulky parts of a folder the test made and keeps result.json.
 func workFolder(t *testing.T) string {
@@ -880,11 +1172,11 @@ func workFolder(t *testing.T) string {
 		t.Logf("work folder %s (RHOBOUND_E2E_WORK, always kept)", d)
 		return d
 	}
-	home, err := os.UserHomeDir()
+	cache, err := os.UserCacheDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent := filepath.Join(home, ".cache", "rb-e2e-work")
+	parent := filepath.Join(cache, "rb-e2e-work")
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -908,15 +1200,102 @@ func workFolder(t *testing.T) string {
 	return d
 }
 
+// settings reads the settings beyond the kind test's own (see the package comment); a bad value fails the test.
+func (e *env) settings() {
+	t := e.t
+	num := func(name string, def float64, ok func(float64) bool, want string) float64 {
+		v := os.Getenv(name)
+		if v == "" {
+			return def
+		}
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil || !ok(f) {
+			t.Fatalf("%s=%q: want %s", name, v, want)
+		}
+		return f
+	}
+	e.rps = num("RHOBOUND_E2E_RPS", defaultRPS, func(f float64) bool { return f > 0 && f <= 10000 }, "a rate in (0, 10000] requests/s")
+	e.extraMs = num("RHOBOUND_E2E_EXTRA_MS", defaultExtraMs, func(f float64) bool { return f > 0 && f <= 10000 }, "a time in (0, 10000] ms")
+	if v := os.Getenv("RHOBOUND_E2E_MAX_RHO"); v != "" {
+		num("RHOBOUND_E2E_MAX_RHO", 0, func(f float64) bool { return f > 0 && f <= 0.95 }, "a utilization in (0, 0.95] (the CLI's --max-rho)")
+		e.maxRho = v
+	}
+	var err error
+	if e.place.AppSelector, err = parseSelector(os.Getenv("RHOBOUND_E2E_APP_SELECTOR")); err != nil {
+		t.Fatalf("RHOBOUND_E2E_APP_SELECTOR: %v", err)
+	}
+	if e.place.LoadSelector, err = parseSelector(os.Getenv("RHOBOUND_E2E_LOAD_SELECTOR")); err != nil {
+		t.Fatalf("RHOBOUND_E2E_LOAD_SELECTOR: %v", err)
+	}
+	e.place.Spread = os.Getenv("RHOBOUND_E2E_SPREAD") == "1"
+	if kc := os.Getenv("RHOBOUND_E2E_KUBECONFIG"); kc != "" {
+		abs, err := filepath.Abs(kc)
+		if err == nil {
+			_, err = os.Stat(abs)
+		}
+		if err != nil {
+			t.Fatalf("RHOBOUND_E2E_KUBECONFIG=%s: %v", kc, err)
+		}
+		e.kube, e.external = abs, true
+		if os.Getenv("RHOBOUND_E2E_IMAGE_LOADED") != "1" {
+			t.Fatalf("RHOBOUND_E2E_KUBECONFIG needs RHOBOUND_E2E_IMAGE_LOADED=1: the test does not load an image into a cluster "+
+				"it did not make. Put %s on every node first (go run ./e2e/imagetar -arch amd64 -o FILE.tar writes it; "+
+				"import it with ctr images import)", image)
+		}
+	}
+	if e.rps != defaultRPS || e.extraMs != defaultExtraMs || e.maxRho != "" || e.external || e.place.AppSelector != nil ||
+		e.place.LoadSelector != nil || e.place.Spread {
+		t.Logf("settings: load %g requests/s; change api +%g ms; --max-rho %s; external cluster %v; app nodes %s; load nodes %s; spread %v",
+			e.rps, e.extraMs, orDefault(e.maxRho), e.external, orDefault(selectorArg(e.place.AppSelector)),
+			orDefault(selectorArg(e.place.LoadSelector)), e.place.Spread)
+	}
+}
+
+func orDefault(s string) string {
+	if s == "" {
+		return "(default)"
+	}
+	return s
+}
+
+// useExternal reads an external cluster's nodes and returns the ones that can run the demo's pods. It fails when a
+// selector matches no node.
+func (e *env) useExternal() []string {
+	t := e.t
+	ctx := strings.TrimSpace(e.run("kubectl", "config", "current-context"))
+	e.nodes = e.nodeNames("")
+	if len(e.nodes) == 0 {
+		t.Fatalf("the cluster of %s (context %s) lists no nodes", e.kube, ctx)
+	}
+	app, load := e.nodes, e.nodes
+	if e.place.AppSelector != nil {
+		app = e.nodeNames(selectorArg(e.place.AppSelector))
+	}
+	if e.place.LoadSelector != nil {
+		load = e.nodeNames(selectorArg(e.place.LoadSelector))
+	}
+	if len(app) == 0 || len(load) == 0 {
+		t.Fatalf("no node matches the app selector %q (%d nodes) or the load selector %q (%d nodes); the nodes: %v",
+			selectorArg(e.place.AppSelector), len(app), selectorArg(e.place.LoadSelector), len(load), e.nodes)
+	}
+	t.Logf("external cluster: %s, context %s; %d nodes %v; the demo can run on %v, the load generator on %v",
+		e.kube, ctx, len(e.nodes), e.nodes, app, load)
+	if e.place.Spread && len(app) < 2 {
+		t.Logf("warning: RHOBOUND_E2E_SPREAD=1 with one app node: every call stays on that node")
+	}
+	return app
+}
+
 func TestClusterEndToEnd(t *testing.T) {
 	if os.Getenv("RHOBOUND_E2E") != "1" {
-		t.Skip("set RHOBOUND_E2E=1 (needs docker, kind and kubectl)")
+		t.Skip("set RHOBOUND_E2E=1 (needs docker, kind and kubectl; or kubectl and RHOBOUND_E2E_KUBECONFIG)")
 	}
 	root, _ := filepath.Abs("..")
 	work := workFolder(t)
 	os.MkdirAll(filepath.Join(work, "img"), 0o755)
 	e := &env{t: t, root: root, work: work, kube: filepath.Join(work, "kubeconfig"),
 		runID: time.Now().Format("20060102-150405"), keepAlive: os.Getenv("RHOBOUND_E2E_KEEPALIVE") == "1"}
+	e.settings()
 
 	// the CLI under test
 	build := exec.Command("go", "build", "-o", filepath.Join(root, "bin", "rhobound"), "./cmd/rhobound")
@@ -926,22 +1305,24 @@ func TestClusterEndToEnd(t *testing.T) {
 	}
 	ctxBefore, _ := exec.Command("kubectl", "config", "current-context").CombinedOutput()
 
-	if _, err := e.try("kind", "get", "kubeconfig", "--name", cluster); err != nil {
-		kc := filepath.Join(work, "kind.yaml")
-		os.WriteFile(kc, []byte(kindConfig), 0o644)
-		if _, err := e.try("kind", "create", "cluster", "--name", cluster, "--kubeconfig", e.kube, "--config", kc, "--wait", "180s"); err != nil {
-			// the config only raises the log size limit; without it the check below warns about the default
-			t.Logf("kind create with %s failed (%v); creating the cluster without it", kc, err)
-			e.try("kind", "delete", "cluster", "--name", cluster)
-			e.run("kind", "create", "cluster", "--name", cluster, "--kubeconfig", e.kube, "--wait", "180s")
+	if !e.external {
+		if _, err := e.try("kind", "get", "kubeconfig", "--name", cluster); err != nil {
+			kc := filepath.Join(work, "kind.yaml")
+			os.WriteFile(kc, []byte(kindConfig), 0o644)
+			if _, err := e.try("kind", "create", "cluster", "--name", cluster, "--kubeconfig", e.kube, "--config", kc, "--wait", "180s"); err != nil {
+				// the config only raises the log size limit; without it the check below warns about the default
+				t.Logf("kind create with %s failed (%v); creating the cluster without it", kc, err)
+				e.try("kind", "delete", "cluster", "--name", cluster)
+				e.run("kind", "create", "cluster", "--name", cluster, "--kubeconfig", e.kube, "--wait", "180s")
+			}
+		} else {
+			out, _ := e.try("kind", "get", "kubeconfig", "--name", cluster)
+			os.WriteFile(e.kube, []byte(out), 0o600)
+			t.Logf("reusing the kind cluster %s", cluster)
 		}
-	} else {
-		out, _ := e.try("kind", "get", "kubeconfig", "--name", cluster)
-		os.WriteFile(e.kube, []byte(out), 0o600)
-		t.Logf("reusing the kind cluster %s", cluster)
-	}
-	if os.Getenv("RHOBOUND_E2E_KEEP") != "1" {
-		t.Cleanup(func() { e.try("kind", "delete", "cluster", "--name", cluster) })
+		if os.Getenv("RHOBOUND_E2E_KEEP") != "1" {
+			t.Cleanup(func() { e.try("kind", "delete", "cluster", "--name", cluster) })
+		}
 	}
 	t.Cleanup(func() {
 		ctxAfter, _ := exec.Command("kubectl", "config", "current-context").CombinedOutput()
@@ -949,25 +1330,35 @@ func TestClusterEndToEnd(t *testing.T) {
 			t.Errorf("the default kubectl context changed: %q -> %q", ctxBefore, ctxAfter)
 		}
 	})
-	e.node = e.nodeName()
-	e.try("docker", "update", "--memory", "3g", "--memory-swap", "3g", e.node)
-	var limit string
-	e.logMax, limit = e.kubeletLogMax()
-	perWindow := int64(rps * (runSecs + skipSecs) * lineBytes)
+	var limit, fix string
+	if e.external {
+		e.logMax, limit = e.minLogMax(e.useExternal())
+		fix = "give the kubelets container-log-max-size=100Mi (k3s: --kubelet-arg=container-log-max-size=100Mi)"
+	} else {
+		e.node = e.nodeName()
+		e.try("docker", "update", "--memory", "3g", "--memory-swap", "3g", e.node)
+		e.logMax, limit = e.kubeletLogMax(e.node)
+		fix = fmt.Sprintf("recreate the cluster to get %q", "containerLogMaxSize: 100Mi")
+	}
+	perWindow := int64(e.rps * (runSecs + skipSecs) * lineBytes)
 	t.Logf("kubelet containerLogMaxSize %s; the frontend writes about %.1f MiB per window", limit, float64(perWindow)/(1<<20))
 	if e.logMax > 0 && e.logMax < 2*perWindow {
-		t.Logf("warning: the kubelet rotates logs at %s, less than twice a window's frontend log: spans may be lost (recreate the cluster to get %q)",
-			limit, "containerLogMaxSize: 100Mi")
+		t.Logf("warning: the kubelet rotates logs at %.1f MiB, less than twice a window's frontend log: spans may be lost (%s)",
+			float64(e.logMax)/(1<<20), fix)
 	}
 
-	e.build()
+	if os.Getenv("RHOBOUND_E2E_IMAGE_LOADED") == "1" {
+		t.Logf("RHOBOUND_E2E_IMAGE_LOADED=1: %s is on the nodes already; not building or loading it", image)
+	} else {
+		e.build()
+	}
 	keepAlive := "false"
 	if e.keepAlive {
 		keepAlive = "true"
 		t.Logf("RHOBOUND_E2E_KEEPALIVE=1: frontend and api reuse connections, so the api split is per connection; expect the share gate to mark the run UNSTABLE")
 	}
 	var m bytes.Buffer
-	if err := manifest.Execute(&m, map[string]any{"Services": services, "KeepAlive": keepAlive}); err != nil {
+	if err := manifest.Execute(&m, map[string]any{"Services": services, "KeepAlive": keepAlive, "Place": e.place}); err != nil {
 		t.Fatal(err)
 	}
 	mp := filepath.Join(work, "app.yaml")
@@ -985,16 +1376,37 @@ func TestClusterEndToEnd(t *testing.T) {
 	rounds = max(rounds, 1)
 	var before, after []phaseResult
 	var reps []map[string]any
+	var refused []string // the CLI's refusals, by window
+	// save writes result.json: after every window (marked partial, so that a run cut short keeps what it measured)
+	// and at the end
+	save := func(fields map[string]any) {
+		res := map[string]any{"rounds": rounds, "keepalive": e.keepAlive, "kubelet_log_max": limit,
+			"windows": append(append([]phaseResult{}, before...), after...), "model_refused": refused,
+			"settings": map[string]any{"rps": e.rps, "extra_ms": e.extraMs, "max_rho": e.maxRho, "external": e.external,
+				"app_selector": e.place.AppSelector, "load_selector": e.place.LoadSelector, "spread": e.place.Spread, "nodes": e.nodes}}
+		for k, v := range fields {
+			res[k] = v
+		}
+		b, _ := json.MarshalIndent(res, "", "  ")
+		os.WriteFile(filepath.Join(work, "result.json"), b, 0o644)
+	}
 	for r := 1; r <= rounds; r++ {
 		b := e.phase(fmt.Sprintf("before%d", r), 0)
-		rep := e.predict(b.Capture, "--patch", fmt.Sprintf("api=+%gms", extraMs))
-		fe, api := row(rep, "frontend"), row(rep, "api")
-		b.ModelMs, b.ModelChangeMs = num(fe, "model_ms"), num(fe, "change_ms")
-		t.Logf("before%d model: entry %.2f ms, change %+.2f ms; api wait: model %.2f ms, traces %.2f ms",
-			r, b.ModelMs, b.ModelChangeMs, num(api, "model_wait_ms"), num(api, "observed_wait_ms"))
-		reps = append(reps, rep)
+		if rep, err := e.predict(b.Capture, "--patch", fmt.Sprintf("api=+%gms", e.extraMs)); err != nil {
+			b.Refused = err.Error()
+			refused = append(refused, b.Name+": "+err.Error())
+			t.Logf("before%d model: %v", r, err)
+		} else {
+			fe, api := row(rep, "frontend"), row(rep, "api")
+			b.ModelMs, b.ModelChangeMs = num(fe, "model_ms"), num(fe, "change_ms")
+			t.Logf("before%d model: entry %.2f ms, change %+.2f ms; api wait: model %.2f ms, traces %.2f ms",
+				r, b.ModelMs, b.ModelChangeMs, num(api, "model_wait_ms"), num(api, "observed_wait_ms"))
+			reps = append(reps, rep)
+		}
 		before = append(before, b)
-		after = append(after, e.phase(fmt.Sprintf("after%d", r), extraMs))
+		save(map[string]any{"partial": true})
+		after = append(after, e.phase(fmt.Sprintf("after%d", r), e.extraMs))
+		save(map[string]any{"partial": true})
 	}
 	mean := func(ps []phaseResult) float64 {
 		m := 0.0
@@ -1005,37 +1417,49 @@ func TestClusterEndToEnd(t *testing.T) {
 	}
 	obsBefore, obsAfter := mean(before), mean(after)
 
-	// structure, from the first window
-	rep := reps[0]
-	fe, api, db, cache := row(rep, "frontend"), row(rep, "api"), row(rep, "db"), row(rep, "cache")
-	if fe == nil || api == nil || db == nil || cache == nil {
-		t.Fatalf("services missing from the report: %v", rep["services"])
-	}
-	if fe["entry"] != true || fe["parallel"] != true {
-		t.Errorf("frontend should be the entry and a parallel fan-out: %v", fe)
-	}
-	if num(api, "replicas") != 2 {
-		t.Errorf("api has 2 replicas, the report says %v", api["replicas"])
-	}
-	for name, want := range map[string]float64{"db": 8, "cache": 5, "api": 20, "frontend": 3} {
-		if got := num(row(rep, name), "own_ms"); math.Abs(got-want) > 0.15*want+0.4 {
-			t.Errorf("%s: service time %.2f ms, the true value is %v", name, got, want)
+	// structure, from the first window the CLI read
+	if len(reps) > 0 {
+		rep := reps[0]
+		fe, api, db, cache := row(rep, "frontend"), row(rep, "api"), row(rep, "db"), row(rep, "cache")
+		if fe == nil || api == nil || db == nil || cache == nil {
+			t.Fatalf("services missing from the report: %v", rep["services"])
+		}
+		if fe["entry"] != true || fe["parallel"] != true {
+			t.Errorf("frontend should be the entry and a parallel fan-out: %v", fe)
+		}
+		if num(api, "replicas") != 2 {
+			t.Errorf("api has 2 replicas, the report says %v", api["replicas"])
+		}
+		for name, want := range map[string]float64{"db": 8, "cache": 5, "api": 20, "frontend": 3} {
+			if got := num(row(rep, name), "own_ms"); math.Abs(got-want) > 0.15*want+0.4 {
+				t.Errorf("%s: service time %.2f ms, the true value is %v", name, got, want)
+			}
 		}
 	}
-	repAfter := e.predict(after[0].Capture)
-	if got := num(row(repAfter, "api"), "own_ms"); math.Abs(got-(20+extraMs)) > 0.15*(20+extraMs)+0.4 {
-		t.Errorf("after the change the traces show api at %.2f ms, expected about %v", got, 20+extraMs)
+	if repAfter, err := e.predict(after[0].Capture); err != nil {
+		after[0].Refused = err.Error()
+		refused = append(refused, after[0].Name+": "+err.Error())
+		t.Logf("%s model: %v", after[0].Name, err)
+	} else if got := num(row(repAfter, "api"), "own_ms"); math.Abs(got-(20+e.extraMs)) > 0.15*(20+e.extraMs)+0.4 {
+		t.Errorf("after the change the traces show api at %.2f ms, expected about %v", got, 20+e.extraMs)
 	}
 
-	// the model, averaged over the before windows' captures
-	modelBefore, predicted := 0.0, 0.0
+	// the model, averaged over the before windows' captures that the CLI did not refuse
+	modelBefore, predicted, nModel := 0.0, 0.0, 0
 	for _, b := range before {
-		modelBefore += b.ModelMs / float64(len(before))
-		predicted += b.ModelChangeMs / float64(len(before))
+		if b.Refused == "" {
+			modelBefore += b.ModelMs
+			predicted += b.ModelChangeMs
+			nModel++
+		}
+	}
+	if nModel > 0 {
+		modelBefore /= float64(nModel)
+		predicted /= float64(nModel)
 	}
 	observed := obsAfter - obsBefore
-	t.Logf("before: measured %.2f ms (%d windows), model %.2f ms; change in api of +%g ms: predicted %+.2f ms, measured %+.2f ms",
-		obsBefore, len(before), modelBefore, extraMs, predicted, observed)
+	t.Logf("before: measured %.2f ms (%d windows), model %.2f ms (%d windows); change in api of +%g ms: predicted %+.2f ms, measured %+.2f ms",
+		obsBefore, len(before), modelBefore, nModel, e.extraMs, predicted, observed)
 
 	// is the measurement steady enough to judge the model by?
 	var unstable []string
@@ -1056,21 +1480,22 @@ func TestClusterEndToEnd(t *testing.T) {
 		}
 	}
 	var wrong []string
-	if math.Abs(modelBefore-obsBefore) > levelTol*obsBefore {
+	if nModel > 0 && math.Abs(modelBefore-obsBefore) > levelTol*obsBefore {
 		wrong = append(wrong, fmt.Sprintf("entry latency: model %.2f ms, measured %.2f ms (more than %.0f%% apart)",
 			modelBefore, obsBefore, 100*levelTol))
 	}
-	if math.Abs(predicted-observed) > changeRel*math.Abs(observed)+changeAbs {
+	if nModel > 0 && math.Abs(predicted-observed) > changeRel*math.Abs(observed)+changeAbs {
 		wrong = append(wrong, fmt.Sprintf("predicted change %+.2f ms, measured %+.2f ms", predicted, observed))
 	}
-	res := map[string]any{"before_measured_ms": obsBefore, "after_measured_ms": obsAfter, "predicted_change_ms": predicted,
-		"observed_change_ms": observed, "model_before_ms": modelBefore, "rounds": rounds, "keepalive": e.keepAlive,
-		"kubelet_log_max": limit, "windows": append(before, after...), "unstable": unstable, "model_wrong": wrong,
+	for _, r := range refused {
+		wrong = append(wrong, "the CLI refused "+r)
+	}
+	save(map[string]any{"before_measured_ms": obsBefore, "after_measured_ms": obsAfter, "predicted_change_ms": predicted,
+		"observed_change_ms": observed, "model_before_ms": modelBefore, "model_windows": nModel,
+		"unstable": unstable, "model_wrong": wrong,
 		"gates": map[string]float64{"max_share": maxShare, "repeat_tol": repeatTol, "max_worst_10s": maxWorst,
 			"max_lag_ms": maxLagMs, "min_kept": minKept, "max_gap_ms": maxGapMs, "max_mem_stall": maxMemStall,
-			"level_tol": levelTol, "change_rel": changeRel, "change_abs_ms": changeAbs}}
-	b, _ := json.MarshalIndent(res, "", "  ")
-	os.WriteFile(filepath.Join(work, "result.json"), b, 0o644)
+			"level_tol": levelTol, "change_rel": changeRel, "change_abs_ms": changeAbs}})
 	if len(unstable) > 0 {
 		for _, u := range unstable {
 			t.Logf("UNSTABLE: %s", u)

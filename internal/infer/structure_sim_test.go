@@ -249,9 +249,12 @@ func TestConditionalCalls(t *testing.T) {
 	within(t, "entry latency with conditional calls", base.L[topo.Index("a")], mean(out.totalMs), 0.05)
 }
 
-// TestShapesRefused: shapes the model has no form for are refused by name, as the reference does, not
-// rounded to the nearest shape.
-func TestShapesRefused(t *testing.T) {
+// TestShapesFormerlyRefused: shapes that the model had no form for until calls per visit that vary and visits that take
+// several call shapes were ported (counts.go): a conditional parallel branch (c on 60% of visits), a call count spread
+// over 1, 2 and 3 calls, and calls that overlap on half the visits. They are read as the mean count and as a mixture of
+// shapes, and the entry's latency is the simulation's within 6%; what is still refused is in counts_test.go
+// (TestTooManyShapesAreStillRefused).
+func TestShapesFormerlyRefused(t *testing.T) {
 	leaf := func(n string) *node { return &node{name: n, c: 2, pods: 1, mean: 5} }
 	// a conditional parallel branch (c on 60% of visits): it used to be called on every visit
 	par := &node{name: "a", c: 4, pods: 1, mean: 3, parallel: true, children: []*node{leaf("b"), leaf("c")}, p: []float64{1, 0.6}}
@@ -261,34 +264,22 @@ func TestShapesRefused(t *testing.T) {
 		what string
 		root *node
 		want string
-	}{{"conditional parallel branch", par, "only on some visits"}, {"call count spread", cnt, "calls per visit vary"}} {
+	}{{"conditional parallel branch", par, "modelled as a mixture"}, {"call count spread", cnt, "only their mean"}} {
 		out := run(c.root, 30, 100, 3, false)
-		if _, err := inferErr(t, out.spans); err == nil || !strings.Contains(err.Error(), c.want) {
-			t.Errorf("%s: want a refusal (%q), got %v", c.what, c.want, err)
+		inf, err := inferErr(t, out.spans)
+		if err != nil {
+			t.Errorf("%s: %v", c.what, err)
+			continue
 		}
-	}
-	// half the visits call b and c together, the other half one after the other: overlap 50%
-	var spans []span
-	id := 0
-	nid := func() string { id++; return fmt.Sprintf("%016x", id) }
-	for tr := 1; tr <= 400; tr++ {
-		t0 := float64(tr) * 50
-		root := nid()
-		spans = append(spans, span{svc: "a", pod: "a-0", id: root, kind: 2, start: t0, end: t0 + 12, trace: tr})
-		calls := [][2]float64{{1, 5}, {2, 6}}
-		if tr%2 == 0 {
-			calls = [][2]float64{{1, 5}, {6, 10}}
+		if !hasWarning(inf, c.want) {
+			t.Errorf("%s: no warning with %q: %v", c.what, c.want, inf.Warnings)
 		}
-		for k, cl := range calls {
-			callee := []string{"b", "c"}[k]
-			cid := nid()
-			spans = append(spans, span{svc: "a", pod: "a-0", id: cid, parent: root, kind: 3, start: t0 + cl[0], end: t0 + cl[1], trace: tr, peer: callee},
-				span{svc: callee, pod: callee + "-0", id: nid(), parent: cid, kind: 2, start: t0 + cl[0] + 0.1, end: t0 + cl[1] - 0.1, trace: tr})
+		base, err := model.AnalyticWith(inf.Topology, inf.LamExtPerMs, nil, model.Default)
+		if err != nil || !base.Stable {
+			t.Fatalf("%s: model: %v", c.what, err)
 		}
-	}
-	if _, err := inferErr(t, spans); err == nil || !strings.Contains(err.Error(), "overlap in 50%") ||
-		!strings.Contains(err.Error(), "neither all at once") {
-		t.Errorf("half-overlapping calls: want a refusal, got %v", err)
+		within(t, c.what+": entry latency", base.L[inf.Topology.Index("a")], mean(out.totalMs), 0.06)
+		parallelNodesCertain(t, inf.Topology)
 	}
 }
 

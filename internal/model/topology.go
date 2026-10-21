@@ -19,6 +19,22 @@ type Call struct {
 	// latency path, so neither the child's latency nor a change of it reaches
 	// the caller. It takes no part in a parallel fan-out.
 	Async bool
+	// Hop, when HasHop is set, is the network time of this call, ms; otherwise the child service's Hop applies. The
+	// same service can be called over links of different speeds (a Go caller, a Node caller), so the time belongs to
+	// the call as well as to the callee. The latency of a caller adds the call's hop; the callee's own Hop is what
+	// a report adds to the callee's latency to compare it with what its callers saw (for a callee with several
+	// callers, the mean of its calls' hops by the calls observed).
+	Hop    float64
+	HasHop bool
+}
+
+// CallHop is the network time added to call c of a service of this topology: the call's own when it has one, else
+// its child's.
+func (t *Topology) CallHop(c Call) float64 {
+	if c.HasHop {
+		return c.Hop
+	}
+	return t.Services[c.Child].Hop
 }
 
 // SyncCalls returns the calls the service waits for: its calls without the
@@ -53,7 +69,7 @@ type Service struct {
 	CS2      float64 // squared coefficient of variation of the service time
 	Routing  string  // Pooled or Random
 	Delay    bool    // a pure delay: infinite servers, no queue
-	Hop      float64 // network time added to every call into this service, ms
+	Hop      float64 // network time added to every call into this service, ms (unless the call has its own, Call.Hop)
 	// BranchCorr is the correlation between the latencies of this service's
 	// parallel branches (0 = independent). Only the matched-maximum model reads it.
 	BranchCorr float64
@@ -159,6 +175,9 @@ func (t *Topology) Finish() error {
 			}
 			if !(c.P > 0 && c.P <= 1) {
 				return fmt.Errorf("%s: call probability must be in (0, 1], got %v", s.Name, c.P)
+			}
+			if c.HasHop && (!(c.Hop >= 0) || math.IsInf(c.Hop, 0)) {
+				return fmt.Errorf("%s: a call's hop must be a finite non-negative number of ms, got %v", s.Name, c.Hop)
 			}
 		}
 		if sc := s.SyncCalls(); s.Parallel && len(sc) > 1 {
@@ -324,25 +343,30 @@ func ParseTopology(data []byte) (*Topology, error) {
 		for _, raw := range fs.Children {
 			var name string
 			p, async := 1.0, false
+			hop, hasHop := 0.0, false
 			if err := json.Unmarshal(raw, &name); err != nil {
 				var obj struct {
 					Name  string   `json:"name"`
 					P     *float64 `json:"p"`
 					Async bool     `json:"async"`
+					Hop   *float64 `json:"hop"`
 				}
 				if err := json.Unmarshal(raw, &obj); err != nil {
-					return nil, fmt.Errorf("%s: a child must be a name or {name, p, async}", fs.Name)
+					return nil, fmt.Errorf("%s: a child must be a name or {name, p, async, hop}", fs.Name)
 				}
 				name, async = obj.Name, obj.Async
 				if obj.P != nil {
 					p = *obj.P
+				}
+				if obj.Hop != nil {
+					hop, hasHop = *obj.Hop, true
 				}
 			}
 			ci, ok := idx[name]
 			if !ok {
 				return nil, fmt.Errorf("%s: unknown child %q", fs.Name, name)
 			}
-			s.Calls = append(s.Calls, Call{Child: ci, P: p, Async: async})
+			s.Calls = append(s.Calls, Call{Child: ci, P: p, Async: async, Hop: hop, HasHop: hasHop})
 		}
 		t.Services = append(t.Services, s)
 	}
@@ -371,9 +395,10 @@ func LoadTopology(path string) (*Topology, error) {
 // MarshalTopology writes a topology in the JSON form ParseTopology reads.
 func MarshalTopology(t *Topology) ([]byte, error) {
 	type child struct {
-		Name  string  `json:"name"`
-		P     float64 `json:"p"`
-		Async bool    `json:"async,omitempty"`
+		Name  string   `json:"name"`
+		P     float64  `json:"p"`
+		Async bool     `json:"async,omitempty"`
+		Hop   *float64 `json:"hop,omitempty"`
 	}
 	type svc struct {
 		Name       string    `json:"name"`
@@ -404,10 +429,15 @@ func MarshalTopology(t *Topology) ([]byte, error) {
 			o.Workers = 0
 		}
 		for _, c := range s.Calls {
-			if c.P == 1 && !c.Async {
+			if c.P == 1 && !c.Async && !c.HasHop {
 				o.Children = append(o.Children, t.Services[c.Child].Name)
 			} else {
-				o.Children = append(o.Children, child{t.Services[c.Child].Name, c.P, c.Async})
+				ch := child{Name: t.Services[c.Child].Name, P: c.P, Async: c.Async}
+				if c.HasHop {
+					h := c.Hop
+					ch.Hop = &h
+				}
+				o.Children = append(o.Children, ch)
 			}
 		}
 		doc.Services = append(doc.Services, o)

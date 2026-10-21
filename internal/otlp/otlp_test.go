@@ -215,3 +215,51 @@ func TestProbeChildrenAreRoots(t *testing.T) {
 		}
 	}
 }
+
+// A span carries the instrumentation scope that emitted it (1 + an index into Data.Scopes; 0 when the scope has no name),
+// across requests that name the same scope in a different order, and the names of the SERVER spans that last a second or
+// more are kept.
+func TestScopesAndLongNames(t *testing.T) {
+	span := func(id string, kind int, startNs, endNs int64, name string) string {
+		return fmt.Sprintf(`{"traceId":"0102030405060708090a0b0c0d0e0f10","spanId":"%s","name":%q,"kind":%d,`+
+			`"startTimeUnixNano":"%d","endTimeUnixNano":"%d"}`, id, name, kind, startNs, endNs)
+	}
+	line := func(spans ...string) string {
+		return `{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"svc"}}]},"scopeSpans":[` +
+			strings.Join(spans, ",") + `]}]}`
+	}
+	scoped := func(scope string, spans ...string) string {
+		s := `{"scope":{"name":"` + scope + `"},"spans":[` + strings.Join(spans, ",") + `]}`
+		return s
+	}
+	const t0 = 1_700_000_000_000_000_000
+	body := line(scoped("http", span("1111111111111111", 2, t0, t0+5_000_000, "GET /a")), scoped("next.js", span("2222222222222222", 2, t0+1, t0+4_000_000, "GET /a"))) + "\n" +
+		line(scoped("next.js", span("3333333333333333", 2, t0, t0+3_000_000_000, "flag.Service/EventStream"))) + "\n" +
+		line(`{"spans":[`+span("4444444444444444", 2, t0, t0+999_999_999, "short")+`]}`) + "\n"
+	dir := t.TempDir()
+	write(t, dir, "a.jsonl", body)
+	d, err := ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(d.Scopes) != "[http next.js]" {
+		t.Fatalf("scopes %v, want [http next.js]", d.Scopes)
+	}
+	got := map[uint64]string{}
+	for _, sp := range d.Spans {
+		sc := "-"
+		if sp.Scope > 0 {
+			sc = d.Scopes[sp.Scope-1]
+		}
+		got[sp.ID] = sc
+	}
+	want := map[uint64]string{0x1111111111111111: "http", 0x2222222222222222: "next.js", 0x3333333333333333: "next.js", 0x4444444444444444: "-"}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("span %x: scope %q, want %q", id, got[id], w)
+		}
+	}
+	if len(d.LongNames) != 1 || d.LongNames[SpanKey{[2]uint64{0x0102030405060708, 0x090a0b0c0d0e0f10}, 0x3333333333333333}] != "flag.Service/EventStream" {
+		t.Errorf("long names %v, want only the 3-s span's", d.LongNames)
+	}
+}

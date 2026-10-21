@@ -1,9 +1,9 @@
 # Kind end-to-end test, run 5 (the hardened design), 2026-10-19 13:58-14:10 UTC, at rhobound-cli 29a7ed9:
 #   RHOBOUND_E2E=1 go test -tags e2e -v -count=1 -timeout 40m ./e2e   (2 rounds, keep-alive off, the default)
-# The test's log lines, then the per-window numbers from its result.json ($HOME/.cache/rb-e2e-work/<run>).
+# The test's log lines, then the per-window numbers from its result.json (<user cache folder>/rb-e2e-work/<run>).
 
 === RUN   TestClusterEndToEnd
-    e2e_test.go:895: work folder $HOME/.cache/rb-e2e-work/<run>
+    e2e_test.go:895: work folder <user cache folder>/rb-e2e-work/<run>
     e2e_test.go:957: kubelet containerLogMaxSize 100Mi; the frontend writes about 4.9 MiB per window
     e2e_test.go:989: before1  extra 0ms: load generator 45.24 ms (4215 req, 0 err, lag 1 ms, worst 10-s x1.19); traces: entry 45.02 ms over 4365 spans, api 775qh 50.3% wait 9.22 ms, cpv6t 49.7% wait 8.89 ms
     e2e_test.go:989: before1  node: 0.23 cores, 797 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.35% mem 0.00%; largest log 4.3 MiB; restarts 0
@@ -16,7 +16,7 @@
     e2e_test.go:997: after2   extra 8ms: load generator 57.71 ms (4330 req, 0 err, lag 2 ms, worst 10-s x1.15); traces: entry 57.47 ms over 4486 spans, api 44pgb 48.7% wait 14.31 ms, 7xs8x 51.3% wait 15.32 ms
     e2e_test.go:997: after2   node: 0.22 cores, 897 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.36% mem 0.00%; largest log 4.5 MiB; restarts 0
     e2e_test.go:1037: before: measured 45.66 ms (2 windows), model 45.89 ms; change in api of +8 ms: predicted +14.59 ms, measured +13.39 ms
-    e2e_test.go:906: passed: removed the captures and the image from $HOME/.cache/rb-e2e-work/<run>; result.json and the load generator outputs are kept
+    e2e_test.go:906: passed: removed the captures and the image from <user cache folder>/rb-e2e-work/<run>; result.json and the load generator outputs are kept
 --- PASS: TestClusterEndToEnd (705.11s)
 PASS
 ok  	github.com/Sharvil2704/rhobound-cli/e2e	705.113s
@@ -55,8 +55,8 @@ mode=random rounds=2 offset=1 share>0.55 repeat>10%: model 44.40 / +14.80, 4000 
 ## two-round change sqrt((0.93^2 + 1.23^2) / 2) = 1.09 ms; simulated true change 56.18 - 42.34 = +13.84 ms; run 5's
 ## predicted change +14.59 ms is +0.75 above it, the simulation's model value +14.80 is +0.96 above it.
 
-## run 6, 2026-10-19 19:05-19:17 UTC, code 53b5068 (the test's own log, unchanged)
-    e2e_test.go:895: work folder $HOME/.cache/rb-e2e-work/<run>
+## run 6, 2026-10-19 19:05-19:17 UTC, code 53b5068 (the test's own log, unchanged but for the work-folder path)
+    e2e_test.go:895: work folder <user cache folder>/rb-e2e-work/<run>
     e2e_test.go:957: kubelet containerLogMaxSize 100Mi; the frontend writes about 4.9 MiB per window
     e2e_test.go:989: before1  extra 0ms: load generator 46.06 ms (4367 req, 0 err, lag 1 ms, worst 10-s x1.06); traces: entry 45.84 ms over 4512 spans, api 8zxd4 49.5% wait 9.54 ms, rm2xz 50.5% wait 9.35 ms
     e2e_test.go:989: before1  node: 0.21 cores, 760 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.36% mem 0.00%; largest log 4.5 MiB; restarts 0
@@ -69,16 +69,16 @@ mode=random rounds=2 offset=1 share>0.55 repeat>10%: model 44.40 / +14.80, 4000 
     e2e_test.go:997: after2   extra 8ms: load generator 60.89 ms (4315 req, 0 err, lag 1 ms, worst 10-s x1.16); traces: entry 60.67 ms over 4476 spans, api 8wwqn 49.8% wait 16.15 ms, dm27p 50.2% wait 17.43 ms
     e2e_test.go:997: after2   node: 0.23 cores, 807 MiB, stall cpu 0.23% mem 0.00%, oom kills 0; host stall cpu 0.35% mem 0.00%; largest log 4.4 MiB; restarts 0
     e2e_test.go:1037: before: measured 46.10 ms (2 windows), model 46.15 ms; change in api of +8 ms: predicted +14.93 ms, measured +13.56 ms
-    e2e_test.go:906: passed: removed the captures and the image from $HOME/.cache/rb-e2e-work/<run>; result.json and the load generator outputs are kept
+    e2e_test.go:906: passed: removed the captures and the image from <user cache folder>/rb-e2e-work/<run>; result.json and the load generator outputs are kept
 
-## the doc check's skew probe (validation round 3, the review of ed44f6a..d13cde7; its output kept outside the repository; a scratch test on a copy of 31e164c; unchanged by 53b5068, whose rules only touch calls timed on the caller's own clock)
+## the doc check's skew probe (check round 3, the review of ed44f6a..d13cde7; its output kept outside the repository; a scratch test on a copy of 31e164c; unchanged by 53b5068, whose rules only touch calls timed on the caller's own clock)
     probe: be  -0 ms ahead: fe S 1.007 glue 1.000 | model 6.05 ms, observed server 6.05 ms (-0.0%)
     probe: be   2 ms ahead: fe S 2.892 glue 0.000 | model 6.94 ms, observed server 6.05 ms (+14.7%)
     probe: be   5 ms ahead: fe S 4.556 glue 0.000 | model 8.60 ms, observed server 6.05 ms (+42.1%)
     probe: be  10 ms ahead: fe S 5.591 glue 0.000 | model 9.63 ms, observed server 6.05 ms (+59.3%)
     probe: be  30 ms ahead: fe S 6.042 glue 0.000 | model 6.05 ms, observed server 6.05 ms (-0.1%)
 
-## 53b5068 on the captures of validation round 3's code review (captures and their truths kept outside the repository), fe row of predict --patch fe=+3ms, old = 31e164c
+## 53b5068 on the captures of check round 3's code review (captures and their truths kept outside the repository), fe row of predict --patch fe=+3ms, old = 31e164c
 ff-pre-0.05 old:  fe * 60.7 1 x 1 10.05 1.00 61% 15.70 16.43 83.37 26.49 +214.7 110.19 +26.82 +32.2
 ff-pre-0.05 new:  fe * 60.7 1 x 1 10.05 1.00 61% 15.73 16.44 25.78 26.49 -2.7 52.68 +26.90 +104.3
 ff-pre-3 old:  fe * 60.7 1 x 2 15.74 0.77 48% 4.13 9.93 77.50 26.49 +192.6 83.30 +5.80 +7.5

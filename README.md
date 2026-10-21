@@ -11,9 +11,15 @@ Apache-2.0 license, and a port of an unpublished Python prototype (called "the r
 
 It does:
 - read traces (OTLP/JSON files) and infer the call graph, each service's own time, its worker count and its replicas;
+- read the traces of real software, not only of services built for it: a framework's nested spans of one kind (Next.js, flagd's handler, .NET's gRPC
+  client) are one visit or one call, a service that makes a different number of calls on different requests (a cart service that calls its
+  cache 1, 2 or 3 times) enters with its mean count and a service of many endpoints as a mixture of up to 12 call shapes, a caller whose
+  SDK stamps span starts on whole milliseconds (Node.js) is read by where its callees' spans are, and lost spans are named, not only counted
+  ([REAL_CLUSTER.md](docs/REAL_CLUSTER.md) tells how that was found);
 - predict the mean latency of every service, and compare it with what the traces measured;
 - predict the effect of a change you specify (`--patch svc=+3ms` or `svc=-10%`) on every service above it;
-- refuse, with a reason, when the data or the load is outside what it can model.
+- refuse, with a reason, when the data or the load is outside what it can model: also a capture whose server spans are gRPC streams or long
+  polls (it asks for a window cut by the time its traces started).
 
 It does not:
 - predict tails (p95, p99), only the mean;
@@ -22,6 +28,8 @@ It does not:
 - measure a change for you: you say how much a service's time changes;
 - tell round-robin or least-request balancing from a random split (it assumes random; the predicted wait is then too
   high).
+- model queueing on real software, as yet **untested**: the OpenTelemetry Demo run (about 25 services) was at 1-2% utilization, so what it checked is the
+  reading of real spans, and its agreement with the callers' latencies is partly fitted, not predicted ([REAL_CLUSTER.md](docs/REAL_CLUSTER.md)).
 
 ## Quick start
 
@@ -82,6 +90,7 @@ Common flags: `--workers svc=N`, `--kept-share F`, `--max-rho R`, `--plain`, `--
   services.
 - `service.name` and `k8s.pod.name` (or `service.instance.id`) on each span's resource.
 - Every request, or a known head-sampling share (`--kept-share`).
+- A window cut by the time its traces started (not by the time its spans ended), so that it holds no stream or long poll that began earlier.
 - Clocks in step (NTP), or CLIENT spans for every call.
 - One steady window of at least 100 entry requests; a few minutes at 20 or more requests/s is a good start.
 - OTLP/JSON files, as the OpenTelemetry Collector's file exporter writes them, in `CAPTURE/traces/`.
@@ -93,8 +102,9 @@ item matters, what is refused, and has an example Collector configuration.
 
 1. **Read** the trace files in parallel, keeping only ids, kinds, times and a few resource attributes.
 2. **Infer the call graph**: which service calls which, how often per visit, and whether the calls run one after
-   another, in parallel or in stages. Health probes are dropped; calls sent after the response are kept off the
-   caller's latency path.
+   another, in parallel or in stages (a service whose calls vary by request type is a mean count or a mixture of
+   shapes). Health probes are dropped, a framework's nested spans of one kind are made one, and calls sent after the response are
+   kept off the caller's latency path.
 3. **Rebuild each pod's queue** from the spans, first come first served, to read its worker count and its service time
    without the wait. A count is reported as a lower bound (`2+`) when too few requests waited to pin it.
 4. **Model** each service as an M/G/c queue (Erlang C with the Allen-Cunneen correction). The burstiness of arrivals is
@@ -102,7 +112,7 @@ item matters, what is refused, and has an example Collector configuration.
    gamma-distributed branches. `--plain` switches both refinements off.
 5. **Apply the change** (`+N ms` of work that holds the worker, or `+N%` of the service's own time) and solve again.
 6. **Refuse** what it cannot model: a service above `--max-rho`, fewer than 100 requests, more than 5% broken traces,
-   or call shapes it has no form for.
+   server spans that are streams, a call graph with a cycle, or call shapes it has no form for.
 
 [ACCURACY.md section 6](docs/ACCURACY.md#6-how-a-capture-is-read) gives the rules of steps 2 and 3 in full.
 
@@ -118,6 +128,10 @@ Measured, with failures stated first, in [ACCURACY.md](docs/ACCURACY.md):
   +14.93 ms against +13.56 ms measured. That gap is about one standard deviation of the measurement; with run 5 it
   suggests the predicted change runs about 1 ms high on that demo.
 - **Real Python services at 55-57%** (five captures): the entry latency within -0.8% to +1.4% of the traces.
+- **The OpenTelemetry Demo on a real cluster** (about 25 services, 1-1.4% utilization): the tool **refused both load mixes** as first captured and was
+  wrong by 20-31% (browse mix) and up to 48% (shipped mix) once they were read; both are fixed, and it now reads them, within 2.3% of what the callers measured. That agreement is partly fitted: the model
+  fitted on one window is as far from another window as the windows are from each other, so do not read it as a prediction accuracy, and queueing was not
+  tested ([REAL_CLUSTER.md](docs/REAL_CLUSTER.md)). The repository's own demo on the same cluster: two of three loads passed, the third (72% busy) was unstable.
 - The simulated studies' truth is our own simulator, and the cluster demo's services are queues of the kind the model
   describes, so none of this is a claim about your system. [VALIDATION.md](docs/VALIDATION.md) lists every check.
 
@@ -131,6 +145,8 @@ Measured, with failures stated first, in [ACCURACY.md](docs/ACCURACY.md):
 | [DEMO.md](docs/DEMO.md) | what a result looks like: the example capture line by line, and the Kubernetes demo's result |
 | [ACCURACY.md](docs/ACCURACY.md) | the full accuracy study: method, tables, where it is still wrong |
 | [VALIDATION.md](docs/VALIDATION.md) | every check that has been run, failures first |
+| [REAL_CLUSTER.md](docs/REAL_CLUSTER.md) | the run on a real cluster: the OpenTelemetry Demo and the repository's demo, what failed, the causes, the fixes, before and after, what is still open |
+| [validation/cluster/](validation/cluster/README.md) | the scripts of the real-cluster runs (Phase A and Phase B); how to run them on your own cluster is in [REAL_CLUSTER.md](docs/REAL_CLUSTER.md#2-how-to-reproduce-it) |
 
 Example topologies for `rhobound model` are in [examples/](examples/).
 
@@ -143,6 +159,17 @@ binary on linux/arm64 on every input compared (2,677 comparisons), and about 6-7
 for many what-ifs at once. The Go binary stays the reference: where the two disagree, the Go binary is right.
 Other architectures than linux/arm64 were not tested. [rust/README.md](rust/README.md) has the build, the tests,
 the parity runs and the benchmarks.
+
+**Those figures are for the Go code of the first release (commit 6841f9f of this repository). rbfast has not been
+updated since and does not have what the Go binary now does:** nested spans of one kind in one pod, calls per visit
+that vary and visits of several call shapes, the named lost spans, the network time of a call per edge (the mean on a
+quiet callee, where rbfast takes the quietest tenth per callee), the refusal of streams, the reading of callers that
+stamp whole milliseconds, and the warnings and `--plain` handling that came with them. So its output differs from the
+Go binary's wherever those apply: it refuses a capture with nested spans or varying counts (the OpenTelemetry Demo's),
+and on any capture with a callee at most 30% busy and an edge of 50 calls or more, which is most captures, its
+latencies differ (by under 0.1% on the older test-bed captures, by 2.6-3.8% on the repository's demo's cache row, by
+20-31% on the Demo's browse mix once its nested spans are made one before the file is read). Use the Go binary
+when it matters; byte parity holds only against the first release's code.
 
 ## License
 

@@ -5,6 +5,12 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
 The Go module contains no third-party code: the Go standard library is its only dependency.
 
+It does contain third-party data: internal/infer/testdata/counts/, internal/infer/testdata/hops/browse-45s/ and
+internal/infer/testdata/nested/ hold cut-down excerpts of traces produced by the OpenTelemetry Demo
+(https://github.com/open-telemetry/opentelemetry-demo, release 2.2.0, whose Kubernetes manifest runs the Demo's 2.1.3
+service images), Copyright The OpenTelemetry Authors, licensed under the Apache License, Version 2.0; internal/infer/testdata/README.md says what was kept. validation/cluster/
+downloads the Demo's Kubernetes manifest when it runs and does not contain it.
+
 rust/ (rbfast, an optional Rust port of the Go binary) contains code derived from the Go standard library,
 Copyright The Go Authors, under the BSD-3-Clause licence in rust/LICENSE-GO; each such file names the Go file it is
 derived from. Some of it (Exp, Log, Lgamma, Erfc) comes through Go from FreeBSD's msun, Copyright (C) 1993 and 2004

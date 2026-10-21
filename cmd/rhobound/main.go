@@ -142,6 +142,18 @@ func splitList(s string) []string {
 // work on every visit, added to the service time (it holds the worker); +N%
 // scales the service's whole own time per visit, the service time and the
 // glue (the time after its first call out, which holds no worker) alike.
+// patchTargets are the services a patch can name: the topology's names without the zero-time nodes the inference adds
+// for the call structure (stage:S:n and shape:S:n), which are not services.
+func patchTargets(topo *model.Topology) []string {
+	var out []string
+	for _, n := range topo.Names() {
+		if !strings.HasPrefix(n, "stage:") && !strings.HasPrefix(n, "shape:") {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 func parsePatch(s string, topo *model.Topology) (model.Patch, []report.Change, error) {
 	if s == "" {
 		return model.Patch{}, nil, nil
@@ -154,7 +166,7 @@ func parsePatch(s string, topo *model.Topology) (model.Patch, []report.Change, e
 		name, val = strings.TrimSpace(name), strings.TrimSpace(val)
 		i := topo.Index(name)
 		if !ok || i < 0 {
-			return model.Patch{}, nil, fmt.Errorf("--patch: unknown service in %q (services: %s)", kv, strings.Join(topo.Names(), ", "))
+			return model.Patch{}, nil, fmt.Errorf("--patch: unknown service in %q (services: %s)", kv, strings.Join(patchTargets(topo), ", "))
 		}
 		var delta, glue float64
 		var err error
@@ -196,7 +208,7 @@ func load(path string, c *common) (*infer.Inferred, error) {
 	if err != nil {
 		return nil, err
 	}
-	return infer.Run(d, infer.Options{KeptShare: *c.keptShare, Workers: w})
+	return infer.Run(d, infer.Options{KeptShare: *c.keptShare, Workers: w, Plain: *c.plain})
 }
 
 func cmdInfer(args []string, out, errw io.Writer) error {

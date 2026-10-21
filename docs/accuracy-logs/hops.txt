@@ -1,0 +1,232 @@
+# Measured with the code of this release (network time of a call per edge: hops.go) against the code before that rule (a254221,
+# a commit of the development history that is not published: see docs/BUILD.md), Go 1.27.2 linux/arm64, 8-core machine, GOMAXPROCS=3 under a 2500M memory cap (GOMEMLIMIT; 4G cgroup cap), ACC_TRUTH_REPS 64 (the default), 2026-10-21 UTC.
+# TestEndToEndAccuracy with the structure family, seeds 305-307, each in both span modes. Command per seed and mode:
+#   ACC_SEED=<s> ACC_WORST=1 ACC_STRUCT=1 [ACC_SPANQ=1] [ACC_HOPJIT=0.1] go test -tags accuracy -run '^TestEndToEndAccuracy$' -v ./internal/infer
+# ACC_HOPJIT (new, test-only; default 0 = the constant network time of the older logs) makes each network leg take hopMs
+# plus that much extra on average (gamma, shape 0.7), in the capture and in the truth alike, from a random stream of its own.
+# Only the summary lines are copied. The whole logs (summary lines, the LARGE rows with inferred and true parameters)
+# were also compared line by line with diff: the only lines that differ between before and after are the timing lines.
+# Section 3 was taken before the whole-millisecond rule (item 25 of ACCURACY.md section 1), which moves the shipped-mix frontend and frontend-proxy rows
+# (the columns after the bar) from -0.1% / -0.1% to +2.3% / +2.2% (4.287 and 4.435 ms against 4.192 and 4.340 seen); the other 11 shipped-mix rows are the same with it, to three decimals (docs/REAL_CLUSTER.md, section 6).
+# The rows of this harness have their busiest service at 70-80% utilization and every callee more than 30% busy (seed 305: 91
+# edges, the least busy callee at 31%), so the rule does not engage on any edge and no number moves. They show that the rule
+# leaves such rows alone; the cases it changes (callees of a millisecond or two at low load) are in sections 3 and 4.
+
+##### 1. TestEndToEndAccuracy, constant network time (the harness as it was), before and after
+## seed 305, spans start at service, structure family on
+# before (a254221):
+  ALL               basic    level  3.9 / 10.5 / 27.1   change  7.8 / 21.0 / 24.9   change error as % of latency 0.37 / 1.96 / 3.32  |z|>3: level 13.9% change 41.7% (n=36)
+  ALL               refined  level  2.1 /  5.1 / 12.5   change  4.9 / 12.5 / 16.8   change error as % of latency 0.31 / 2.00 / 2.59  |z|>3: level  2.8% change 25.0% (n=36)
+  ALL struct        basic    level  2.3 /  5.1 / 10.5   change 12.8 / 18.0 / 92.6   change error as % of latency 0.37 / 0.49 / 1.20  |z|>3: level  0.0% change 33.3% (n=12)
+  ALL struct        refined  level  2.6 /  4.3 / 10.4   change  3.6 / 10.1 / 71.1   change error as % of latency 0.28 / 0.43 / 1.05  |z|>3: level  8.3% change 25.0% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 305, spans include the wait, structure family on
+# before (a254221):
+  ALL               basic    level  3.9 / 10.5 / 27.1   change  7.8 / 21.0 / 25.0   change error as % of latency 0.37 / 1.95 / 3.32  |z|>3: level 13.9% change 41.7% (n=36)
+  ALL               refined  level  2.1 /  5.1 / 12.5   change  4.9 / 12.5 / 16.8   change error as % of latency 0.31 / 2.00 / 2.59  |z|>3: level  2.8% change 25.0% (n=36)
+  ALL struct        basic    level  2.3 /  5.1 / 10.5   change 12.8 / 18.0 / 92.6   change error as % of latency 0.37 / 0.49 / 1.20  |z|>3: level  0.0% change 33.3% (n=12)
+  ALL struct        refined  level  2.6 /  4.3 / 10.4   change  3.6 / 10.1 / 71.1   change error as % of latency 0.28 / 0.43 / 1.05  |z|>3: level  8.3% change 25.0% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 306, spans start at service, structure family on
+# before (a254221):
+  ALL               basic    level  3.2 / 11.0 / 19.3   change  9.4 / 25.2 / 43.6   change error as % of latency 0.79 / 2.50 / 7.08  |z|>3: level 11.1% change 33.3% (n=36)
+  ALL               refined  level  2.4 /  4.9 /  9.8   change  7.6 / 17.6 / 27.4   change error as % of latency 0.58 / 2.40 / 7.52  |z|>3: level  2.8% change 19.4% (n=36)
+  ALL struct        basic    level  2.4 /  5.7 /  9.2   change 20.8 / 31.0 / 80.5   change error as % of latency 0.77 / 2.20 / 2.90  |z|>3: level  8.3% change 58.3% (n=12)
+  ALL struct        refined  level  2.8 /  7.2 /  8.0   change  8.2 / 20.9 / 79.9   change error as % of latency 0.13 / 0.81 / 2.70  |z|>3: level  8.3% change 41.7% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 306, spans include the wait, structure family on
+# before (a254221):
+  ALL               basic    level  3.2 / 11.0 / 19.3   change  9.4 / 25.2 / 43.6   change error as % of latency 0.79 / 2.54 / 7.08  |z|>3: level 11.1% change 33.3% (n=36)
+  ALL               refined  level  2.4 /  4.9 /  9.8   change  7.7 / 17.6 / 27.4   change error as % of latency 0.58 / 2.41 / 7.52  |z|>3: level  2.8% change 19.4% (n=36)
+  ALL struct        basic    level  2.4 /  5.7 /  9.2   change 20.8 / 31.0 / 80.5   change error as % of latency 0.77 / 2.20 / 2.90  |z|>3: level  8.3% change 58.3% (n=12)
+  ALL struct        refined  level  2.8 /  7.2 /  8.0   change  8.2 / 20.9 / 79.9   change error as % of latency 0.13 / 0.81 / 2.70  |z|>3: level  8.3% change 41.7% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 307, spans start at service, structure family on
+# before (a254221):
+  ALL               basic    level  3.3 / 10.4 / 29.7   change  8.4 / 23.1 / 30.2   change error as % of latency 0.67 / 2.76 / 5.25  |z|>3: level 13.9% change 30.6% (n=36)
+  ALL               refined  level  2.7 /  8.7 / 12.2   change  6.2 / 16.8 / 21.6   change error as % of latency 0.67 / 2.10 / 6.38  |z|>3: level 11.1% change 19.4% (n=36)
+  ALL struct        basic    level  2.5 /  9.4 / 12.8   change  9.3 / 17.1 / 23.5   change error as % of latency 0.25 / 1.59 / 3.62  |z|>3: level 16.7% change 41.7% (n=12)
+  ALL struct        refined  level  4.3 /  9.0 /  9.4   change  7.5 / 11.0 / 15.8   change error as % of latency 0.27 / 1.16 / 2.05  |z|>3: level  8.3% change 16.7% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 307, spans include the wait, structure family on
+# before (a254221):
+  ALL               basic    level  3.3 / 10.4 / 29.7   change  8.4 / 23.1 / 30.2   change error as % of latency 0.67 / 2.76 / 5.25  |z|>3: level 13.9% change 30.6% (n=36)
+  ALL               refined  level  2.7 /  8.7 / 12.2   change  6.2 / 16.8 / 21.6   change error as % of latency 0.67 / 2.10 / 6.38  |z|>3: level 11.1% change 19.4% (n=36)
+  ALL struct        basic    level  2.5 /  9.4 / 12.8   change  9.3 / 17.1 / 23.5   change error as % of latency 0.25 / 1.59 / 3.62  |z|>3: level 16.7% change 41.7% (n=12)
+  ALL struct        refined  level  4.3 /  9.0 /  9.4   change  7.5 / 11.0 / 15.8   change error as % of latency 0.27 / 1.16 / 2.05  |z|>3: level  8.3% change 16.7% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+##### 2. TestEndToEndAccuracy with ACC_HOPJIT=0.1 (each network leg takes 0.1 ms more on average, gamma shape 0.7), before and after
+## seed 305, spans start at service, structure family on
+# before (a254221):
+  ALL               basic    level  3.9 / 10.3 / 26.8   change  7.8 / 20.1 / 24.9   change error as % of latency 0.41 / 1.95 / 3.32  |z|>3: level 13.9% change 41.7% (n=36)
+  ALL               refined  level  2.1 /  5.1 / 12.6   change  4.9 / 13.9 / 18.0   change error as % of latency 0.30 / 2.02 / 2.58  |z|>3: level  2.8% change 22.2% (n=36)
+  ALL struct        basic    level  2.4 /  4.9 / 10.5   change 12.7 / 18.0 / 92.7   change error as % of latency 0.37 / 0.49 / 1.20  |z|>3: level  0.0% change 33.3% (n=12)
+  ALL struct        refined  level  2.3 /  4.4 / 10.3   change  3.6 / 10.1 / 71.1   change error as % of latency 0.28 / 0.44 / 1.05  |z|>3: level  8.3% change 25.0% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 305, spans include the wait, structure family on
+# before (a254221):
+  ALL               basic    level  4.0 / 10.2 / 26.7   change  7.8 / 20.1 / 25.0   change error as % of latency 0.41 / 1.95 / 3.32  |z|>3: level 13.9% change 41.7% (n=36)
+  ALL               refined  level  2.1 /  5.1 / 12.6   change  4.9 / 14.0 / 18.0   change error as % of latency 0.30 / 2.02 / 2.58  |z|>3: level  2.8% change 22.2% (n=36)
+  ALL struct        basic    level  2.4 /  4.9 / 10.5   change 12.7 / 18.0 / 92.7   change error as % of latency 0.37 / 0.49 / 1.20  |z|>3: level  0.0% change 33.3% (n=12)
+  ALL struct        refined  level  2.3 /  4.4 / 10.3   change  3.6 / 10.1 / 71.1   change error as % of latency 0.28 / 0.44 / 1.05  |z|>3: level  8.3% change 25.0% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 306, spans start at service, structure family on
+# before (a254221):
+  ALL               basic    level  3.2 / 11.0 / 19.1   change  9.4 / 25.2 / 43.6   change error as % of latency 0.77 / 2.55 / 7.06  |z|>3: level 11.1% change 33.3% (n=36)
+  ALL               refined  level  2.3 /  4.9 /  9.8   change  7.6 / 17.6 / 27.4   change error as % of latency 0.58 / 2.40 / 7.50  |z|>3: level  2.8% change 22.2% (n=36)
+  ALL struct        basic    level  2.5 /  5.3 /  9.1   change 20.9 / 31.1 / 80.4   change error as % of latency 0.76 / 2.19 / 2.90  |z|>3: level  8.3% change 58.3% (n=12)
+  ALL struct        refined  level  2.9 /  7.1 /  8.0   change  8.2 / 20.8 / 79.7   change error as % of latency 0.13 / 0.81 / 2.70  |z|>3: level  8.3% change 41.7% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 306, spans include the wait, structure family on
+# before (a254221):
+  ALL               basic    level  3.2 / 11.1 / 19.0   change  9.4 / 25.2 / 43.6   change error as % of latency 0.77 / 2.58 / 7.06  |z|>3: level 11.1% change 33.3% (n=36)
+  ALL               refined  level  2.3 /  5.0 /  9.9   change  7.7 / 17.6 / 27.4   change error as % of latency 0.58 / 2.41 / 7.50  |z|>3: level  2.8% change 22.2% (n=36)
+  ALL struct        basic    level  2.5 /  5.3 /  9.1   change 20.9 / 31.1 / 80.4   change error as % of latency 0.76 / 2.19 / 2.90  |z|>3: level  8.3% change 58.3% (n=12)
+  ALL struct        refined  level  2.9 /  7.1 /  8.0   change  8.2 / 20.8 / 79.7   change error as % of latency 0.13 / 0.81 / 2.70  |z|>3: level  8.3% change 41.7% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 307, spans start at service, structure family on
+# before (a254221):
+  ALL               basic    level  3.4 / 10.3 / 29.4   change  8.4 / 23.1 / 30.2   change error as % of latency 0.67 / 2.76 / 5.23  |z|>3: level 13.9% change 27.8% (n=36)
+  ALL               refined  level  2.6 /  8.7 / 12.1   change  6.2 / 16.8 / 22.8   change error as % of latency 0.68 / 2.09 / 6.37  |z|>3: level 11.1% change 16.7% (n=36)
+  ALL struct        basic    level  2.1 /  9.2 / 12.8   change  9.3 / 17.1 / 23.4   change error as % of latency 0.24 / 1.58 / 3.60  |z|>3: level 16.7% change 41.7% (n=12)
+  ALL struct        refined  level  4.1 /  9.0 /  9.2   change  7.5 / 11.0 / 15.8   change error as % of latency 0.27 / 1.15 / 2.05  |z|>3: level  8.3% change 16.7% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+## seed 307, spans include the wait, structure family on
+# before (a254221):
+  ALL               basic    level  3.4 / 10.2 / 29.3   change  8.4 / 23.1 / 30.2   change error as % of latency 0.67 / 2.76 / 5.23  |z|>3: level 13.9% change 27.8% (n=36)
+  ALL               refined  level  2.5 /  8.6 / 12.0   change  6.2 / 16.8 / 22.8   change error as % of latency 0.67 / 2.09 / 6.36  |z|>3: level 11.1% change 16.7% (n=36)
+  ALL struct        basic    level  2.1 /  9.2 / 12.8   change  9.3 / 17.1 / 23.4   change error as % of latency 0.24 / 1.58 / 3.60  |z|>3: level 16.7% change 41.7% (n=12)
+  ALL struct        refined  level  4.1 /  9.0 /  9.2   change  7.5 / 11.0 / 15.8   change error as % of latency 0.27 / 1.15 / 2.05  |z|>3: level  8.3% change 16.7% (n=12)
+# after: every line identical to the above (and the whole log, but its timing lines)
+
+##### 3. The model against what the callers' client spans measured, per service, before (hop = quietest tenth per callee) and after
+# real captures of the OpenTelemetry Demo 2.2.0 and of the repository's demo services, AWS, k3s on 5 machines, 2026-10-21;
+# `rhobound predict CAPTURE`. model/seen in ms, err = (model - seen)/seen. hop b / hop n: the service's hop (before / after). fm: after the
+# change the hop is the mean gap less the model's wait. seen wait before -> after. util: the model's. L1-L3 are the three levels of the
+# real validation, before1/before2 the windows before the +ms change of api. The shipped mix was refused before nested spans and call counts;
+# "before" here is the code at a254221 (those rules in, this one not).
+== L1-before1  (150 s, 5205 requests)
+service                         model     seen    err% |    model    err%  hop b  hop n  fm  seenwait b->n  util
+api                            45.866   45.334    +1.2 |   45.866    +1.2  1.296  1.296      10.62->10.62  35%
+cache                           6.741    6.947    -3.0 |    6.947    -0.0  1.004  1.211   Y   0.26-> 0.05  10%
+db                             12.876   12.973    -0.8 |   12.876    -0.8  1.033  1.033       3.42-> 3.42  30%
+frontend                       49.655   49.051    +1.2 |   49.666    +1.3  0.000  0.000       0.01-> 0.01  6%
+== L1-before2  (150 s, 5134 requests)
+service                         model     seen    err% |    model    err%  hop b  hop n  fm  seenwait b->n  util
+api                            46.433   46.041    +0.9 |   46.433    +0.9  1.096  1.096      11.02->11.02  35%
+cache                           6.782    7.026    -3.5 |    7.026    +0.0  1.201  1.445   Y   0.29-> 0.05  9%
+db                             13.304   13.239    +0.5 |   13.304    +0.5  1.081  1.081       3.54-> 3.54  30%
+frontend                       50.249   49.784    +0.9 |   50.261    +1.0  0.000  0.000       0.00-> 0.00  4%
+== L2-before1  (150 s, 8677 requests)
+service                         model     seen    err% |    model    err%  hop b  hop n  fm  seenwait b->n  util
+api                            70.565   70.222    +0.5 |   70.565    +0.5  1.249  1.249      30.79->30.79  60%
+cache                           6.806    7.031    -3.2 |    7.031    -0.0  1.148  1.373   Y   0.35-> 0.13  16%
+db                             17.767   17.495    +1.6 |   17.767    +1.6  1.192  1.192       7.71-> 7.71  50%
+frontend                       74.268   73.877    +0.5 |   74.275    +0.5  0.000  0.000       0.00-> 0.00  7%
+== L2-before2  (150 s, 8512 requests)
+service                         model     seen    err% |    model    err%  hop b  hop n  fm  seenwait b->n  util
+api                            67.746   68.806    -1.5 |   67.746    -1.5  1.231  1.231      29.71->29.71  58%
+cache                           6.971    7.191    -3.1 |    7.191    +0.0  1.142  1.362   Y   0.36-> 0.14  16%
+db                             17.239   17.313    -0.4 |   17.239    -0.4  1.036  1.036       7.72-> 7.72  49%
+frontend                       71.459   72.446    -1.4 |   71.467    -1.4  0.000  0.000       0.00-> 0.00  7%
+== L3-before1  (150 s, 10688 requests)
+service                         model     seen    err% |    model    err%  hop b  hop n  fm  seenwait b->n  util
+api                            97.927   93.580    +4.6 |   97.927    +4.6  1.192  1.192      49.84->49.84  73%
+cache                           7.011    7.274    -3.6 |    7.274    +0.0  1.147  1.410   Y   0.48-> 0.22  20%
+db                             22.194   22.158    +0.2 |   22.194    +0.2  1.207  1.207      12.39->12.39  61%
+frontend                      101.563   97.175    +4.5 |  101.569    +4.5  0.000  0.000       0.00-> 0.00  8%
+== L3-before2  (150 s, 10882 requests)
+service                         model     seen    err% |    model    err%  hop b  hop n  fm  seenwait b->n  util
+api                           105.921  108.493    -2.4 |  105.921    -2.4  1.274  1.274      63.19->63.19  75%
+cache                           6.981    7.216    -3.3 |    7.216    +0.0  1.138  1.373   Y   0.45-> 0.22  20%
+db                             23.172   23.425    -1.1 |   23.172    -1.1  1.202  1.202      13.61->13.61  62%
+frontend                      109.544  112.068    -2.3 |  109.549    -2.2  0.000  0.000       0.00-> 0.00  8%
+== browse-v-captured  (420 s, 7683 requests)
+service                         model     seen    err% |    model    err%  hop b  hop n  fm  seenwait b->n  util
+frontend                        1.948    2.482   -21.5 |    2.525    +1.7  0.182  0.437   Y   0.26-> 0.01  1%
+frontend-proxy                  2.108    2.642   -20.2 |    2.684    +1.6  0.000  0.000       0.00-> 0.00  0%
+product-catalog                 0.712    1.034   -31.1 |    1.034    -0.0  0.614  0.935   Y   0.32-> 0.00  0%
+== shipped-v-captured  (420 s, 11890 requests)
+service                         model     seen    err% |    model    err%  hop b  hop n  fm  seenwait b->n  util
+ad                              1.593    1.780   -10.5 |    1.775    -0.3  0.579  0.761   Y   0.19-> 0.01  0%
+cart                            1.115    1.399   -20.3 |    1.401    +0.1  0.403  0.678   Y   0.27-> 0.00  0%
+checkout                       17.295   18.797    -8.0 |   18.367    -2.3  0.807  1.064   Y   0.26-> 0.00  0%
+currency                        1.596    1.683    -5.2 |    1.683    +0.0  0.716  0.803   Y   0.21-> 0.13  0%
+email                           4.075    4.206    -3.1 |    4.178    -0.7  0.752  0.855   Y   0.14-> 0.04  0%
+flagd                           0.086    0.086    -0.1 |    0.086    -0.1  0.645  0.753   Y   0.11-> 0.00  0%
+frontend                        3.374    4.192   -19.5 |    4.187    -0.1  0.167  0.384   Y   0.22-> 0.00  1%
+frontend-proxy                  3.523    4.340   -18.8 |    4.336    -0.1  0.000  0.000       0.00-> 0.00  0%
+payment                         1.327    1.514   -12.3 |    1.514    +0.0  0.832  1.018   Y   0.19-> 0.00  0%
+product-catalog                 0.579    1.115   -48.1 |    1.113    -0.2  0.492  1.026   Y   0.54-> 0.00  0%
+quote                           1.672    1.864   -10.3 |    1.864    +0.0  1.367  1.559   Y   0.19-> 0.00  0%
+recommendation                  2.598    3.537   -26.6 |    3.538    +0.0  1.407  1.758   Y   0.35-> 0.00  0%
+shipping                        1.194    1.395   -14.4 |    1.395    +0.0  0.282  0.386   Y   0.10-> 0.00  0%
+
+##### 4. A chain a -> b -> c of services under a millisecond, 3% busy, 60 requests/s, 300 s, hop jitter per network leg (TestHopSpreadOfQuietEdges)
+# before (a254221) then after, per setting; the true hop is 2 x (0.15 + jitter) ms
+before SWEEP jitter 0.00 ms/leg spans_at_arrival false: root level 2.522 vs simulation 2.521 (+0.0%); hop b 0.300 c 0.300 (true 0.300); rho c 0.030
+after  SWEEP jitter 0.00 ms/leg spans_at_arrival false: root level 2.522 vs simulation 2.521 (+0.0%); hop b 0.300 c 0.300 (true 0.300); rho c 0.030
+before SWEEP jitter 0.00 ms/leg spans_at_arrival true: root level 2.522 vs simulation 2.521 (+0.0%); hop b 0.300 c 0.300 (true 0.300); rho c 0.030
+after  SWEEP jitter 0.00 ms/leg spans_at_arrival true: root level 2.522 vs simulation 2.521 (+0.0%); hop b 0.300 c 0.300 (true 0.300); rho c 0.030
+before SWEEP jitter 0.05 ms/leg spans_at_arrival false: root level 2.558 vs simulation 2.722 (-6.0%); hop b 0.318 c 0.318 (true 0.400); rho c 0.030
+after  SWEEP jitter 0.05 ms/leg spans_at_arrival false: root level 2.722 vs simulation 2.722 (+0.0%); hop b 0.401 c 0.399 (true 0.400); rho c 0.030
+before SWEEP jitter 0.05 ms/leg spans_at_arrival true: root level 2.558 vs simulation 2.722 (-6.0%); hop b 0.318 c 0.317 (true 0.400); rho c 0.030
+after  SWEEP jitter 0.05 ms/leg spans_at_arrival true: root level 2.722 vs simulation 2.722 (+0.0%); hop b 0.401 c 0.399 (true 0.400); rho c 0.030
+before SWEEP jitter 0.10 ms/leg spans_at_arrival false: root level 2.594 vs simulation 2.922 (-11.2%); hop b 0.336 c 0.336 (true 0.500); rho c 0.030
+after  SWEEP jitter 0.10 ms/leg spans_at_arrival false: root level 2.923 vs simulation 2.922 (+0.0%); hop b 0.502 c 0.498 (true 0.500); rho c 0.030
+before SWEEP jitter 0.10 ms/leg spans_at_arrival true: root level 2.593 vs simulation 2.922 (-11.3%); hop b 0.336 c 0.335 (true 0.500); rho c 0.030
+after  SWEEP jitter 0.10 ms/leg spans_at_arrival true: root level 2.923 vs simulation 2.922 (+0.0%); hop b 0.502 c 0.498 (true 0.500); rho c 0.030
+before SWEEP jitter 0.20 ms/leg spans_at_arrival false: root level 2.666 vs simulation 3.324 (-19.8%); hop b 0.372 c 0.371 (true 0.700); rho c 0.030
+after  SWEEP jitter 0.20 ms/leg spans_at_arrival false: root level 3.324 vs simulation 3.324 (+0.0%); hop b 0.703 c 0.698 (true 0.700); rho c 0.030
+before SWEEP jitter 0.20 ms/leg spans_at_arrival true: root level 2.664 vs simulation 3.324 (-19.8%); hop b 0.372 c 0.370 (true 0.700); rho c 0.030
+after  SWEEP jitter 0.20 ms/leg spans_at_arrival true: root level 3.324 vs simulation 3.324 (+0.0%); hop b 0.703 c 0.698 (true 0.700); rho c 0.030
+
+##### 5. Without the 30% limit (a variant, not shipped): TestEndToEndAccuracy, same seeds, constant network time
+## seed 305, spans start at service
+# shipped:   ALL               basic    level  3.9 / 10.5 / 27.1   change  7.8 / 21.0 / 24.9   change error as % of latency 0.37 / 1.96 / 3.32  |z|>3: level 13.9% change 41.7% (n=36)
+# no limit:  ALL               basic    level  3.9 / 10.0 / 27.1   change  7.8 / 21.0 / 24.9   change error as % of latency 0.37 / 1.96 / 3.32  |z|>3: level 13.9% change 41.7% (n=36)
+# shipped:   ALL               refined  level  2.1 /  5.1 / 12.5   change  4.9 / 12.5 / 16.8   change error as % of latency 0.31 / 2.00 / 2.59  |z|>3: level  2.8% change 25.0% (n=36)
+# no limit:  ALL               refined  level  2.1 /  5.1 /  6.8   change  4.9 / 12.5 / 16.8   change error as % of latency 0.31 / 2.00 / 2.59  |z|>3: level  2.8% change 25.0% (n=36)
+## seed 305, spans include the wait
+# every summary line identical to the shipped rule
+## seed 306, spans start at service
+# shipped:   ALL               basic    level  3.2 / 11.0 / 19.3   change  9.4 / 25.2 / 43.6   change error as % of latency 0.79 / 2.50 / 7.08  |z|>3: level 11.1% change 33.3% (n=36)
+# no limit:  ALL               basic    level  3.4 / 11.0 / 19.3   change  9.4 / 25.2 / 43.6   change error as % of latency 0.79 / 2.50 / 7.08  |z|>3: level 11.1% change 33.3% (n=36)
+# shipped:   ALL               refined  level  2.4 /  4.9 /  9.8   change  7.6 / 17.6 / 27.4   change error as % of latency 0.58 / 2.40 / 7.52  |z|>3: level  2.8% change 19.4% (n=36)
+# no limit:  ALL               refined  level  2.5 /  5.3 /  9.8   change  7.6 / 17.6 / 27.4   change error as % of latency 0.58 / 2.40 / 7.52  |z|>3: level  2.8% change 19.4% (n=36)
+# shipped:   ALL struct        refined  level  2.8 /  7.2 /  8.0   change  8.2 / 20.9 / 79.9   change error as % of latency 0.13 / 0.81 / 2.70  |z|>3: level  8.3% change 41.7% (n=12)
+# no limit:  ALL struct        refined  level  2.8 /  6.0 /  7.8   change  8.2 / 25.2 / 79.9   change error as % of latency 0.13 / 0.81 / 2.70  |z|>3: level  0.0% change 50.0% (n=12)
+## seed 306, spans include the wait
+# shipped:   ALL struct        refined  level  2.8 /  7.2 /  8.0   change  8.2 / 20.9 / 79.9   change error as % of latency 0.13 / 0.81 / 2.70  |z|>3: level  8.3% change 41.7% (n=12)
+# no limit:  ALL struct        refined  level  2.8 /  6.0 /  7.8   change  8.2 / 25.2 / 79.9   change error as % of latency 0.13 / 0.81 / 2.70  |z|>3: level  0.0% change 50.0% (n=12)
+## seed 307, spans start at service
+# shipped:   ALL               refined  level  2.7 /  8.7 / 12.2   change  6.2 / 16.8 / 21.6   change error as % of latency 0.67 / 2.10 / 6.38  |z|>3: level 11.1% change 19.4% (n=36)
+# no limit:  ALL               refined  level  2.7 /  8.2 / 12.2   change  6.2 / 16.8 / 21.6   change error as % of latency 0.67 / 2.10 / 6.38  |z|>3: level 11.1% change 19.4% (n=36)
+# shipped:   ALL struct        basic    level  2.5 /  9.4 / 12.8   change  9.3 / 17.1 / 23.5   change error as % of latency 0.25 / 1.59 / 3.62  |z|>3: level 16.7% change 41.7% (n=12)
+# no limit:  ALL struct        basic    level  2.5 /  9.4 / 12.8   change  9.3 / 17.1 / 28.8   change error as % of latency 0.25 / 1.59 / 3.62  |z|>3: level 16.7% change 41.7% (n=12)
+# shipped:   ALL struct        refined  level  4.3 /  9.0 /  9.4   change  7.5 / 11.0 / 15.8   change error as % of latency 0.27 / 1.16 / 2.05  |z|>3: level  8.3% change 16.7% (n=12)
+# no limit:  ALL struct        refined  level  4.3 /  8.8 /  9.4   change  7.5 / 11.0 / 15.8   change error as % of latency 0.27 / 1.16 / 2.05  |z|>3: level  8.3% change 16.7% (n=12)
+## seed 307, spans include the wait
+# shipped:   ALL struct        basic    level  2.5 /  9.4 / 12.8   change  9.3 / 17.1 / 23.5   change error as % of latency 0.25 / 1.59 / 3.62  |z|>3: level 16.7% change 41.7% (n=12)
+# no limit:  ALL struct        basic    level  2.5 /  9.4 / 12.8   change  9.3 / 17.1 / 28.8   change error as % of latency 0.25 / 1.59 / 3.62  |z|>3: level 16.7% change 41.7% (n=12)
+# shipped:   ALL struct        refined  level  4.3 /  9.0 /  9.4   change  7.5 / 11.0 / 15.8   change error as % of latency 0.27 / 1.16 / 2.05  |z|>3: level  8.3% change 16.7% (n=12)
+# no limit:  ALL struct        refined  level  4.3 /  8.8 /  9.4   change  7.5 / 11.0 / 15.8   change error as % of latency 0.27 / 1.16 / 2.05  |z|>3: level  8.3% change 16.7% (n=12)
+
+# inferences (48 per log) in which an edge into a callee more than 30% busy took the mean-based hop, with the limit left out:
+# s305-q0: 6 engaged, 1 with a hop more than 1 ms above the quietest tenth, largest hop 17.7 ms (the true network time is 0.3 ms)
+# s305-q1: 23 engaged, 0 with a hop more than 1 ms above the quietest tenth, largest hop 0.3 ms (the true network time is 0.3 ms)
+# s306-q0: 4 engaged, 3 with a hop more than 1 ms above the quietest tenth, largest hop 12.9 ms (the true network time is 0.3 ms)
+# s306-q1: 24 engaged, 1 with a hop more than 1 ms above the quietest tenth, largest hop 7.9 ms (the true network time is 0.3 ms)
+# s307-q0: 3 engaged, 2 with a hop more than 1 ms above the quietest tenth, largest hop 9.1 ms (the true network time is 0.3 ms)
+# s307-q1: 25 engaged, 1 with a hop more than 1 ms above the quietest tenth, largest hop 2.4 ms (the true network time is 0.3 ms)

@@ -11,6 +11,8 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -438,6 +440,71 @@ func TestWorkersForAServiceTooRareToRebuild(t *testing.T) {
 	}
 }
 
+// A framework that opens a SERVER span inside the HTTP instrumentation's (Next.js, flagd's handler) and a client that
+// opens a CLIENT span around the HTTP client's (.NET's gRPC client): fe -> be, each request with both. They are read
+// as one request and one call, and the report says how many spans were merged, in the text, in the JSON and in
+// infer's warning. Before, fe was a service calling itself and the capture was refused as a cycle.
+func TestNestedSpansAreMergedAndReported(t *testing.T) {
+	rng := rand.New(rand.NewSource(8))
+	var spans []tspan
+	at := 0.0
+	const n = 1500
+	for i := 1; i <= n; i++ {
+		at += rng.ExpFloat64() * 1000 / 30
+		x := 1 + 3*rng.ExpFloat64()
+		id := func(k int) string { return fmt.Sprintf("%016x", 10*i+k) }
+		spans = append(spans,
+			tspan{"fe", "fe-0", id(1), "", 2, at, at + x + 6, i, ""},              // the HTTP instrumentation's SERVER span
+			tspan{"fe", "fe-0", id(2), id(1), 2, at + 0.02, at + x + 5.98, i, ""}, // the framework's, inside it
+			tspan{"fe", "fe-0", id(3), id(2), 3, at + x, at + x + 5, i, "be"},     // the gRPC client's CLIENT span
+			tspan{"fe", "fe-0", id(4), id(3), 3, at + x + 0.03, at + x + 4.95, i, "be"},
+			tspan{"be", "be-0", id(5), id(4), 2, at + x + 1, at + x + 4, i, ""})
+	}
+	capture := writeCapture(t, spans)
+	out, errw, code := exec(t, "predict", capture, "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errw)
+	}
+	var rep struct {
+		Broken int64 `json:"broken_traces"`
+		Nested []struct {
+			Service string `json:"service"`
+			Server  int64  `json:"server_spans"`
+			Client  int64  `json:"client_spans"`
+		} `json:"nested_spans_merged"`
+		Services []struct {
+			Name string `json:"name"`
+		} `json:"services"`
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Nested) != 1 || rep.Nested[0].Service != "fe" || rep.Nested[0].Server != n || rep.Nested[0].Client != n {
+		t.Errorf("nested_spans_merged: %+v, want fe with %d SERVER and %d CLIENT spans", rep.Nested, n, n)
+	}
+	if rep.Broken != 0 || len(rep.Services) != 2 {
+		t.Errorf("%d broken traces, %d services (want 0 and 2: fe and be, no ext:be)", rep.Broken, len(rep.Services))
+	}
+	want := fmt.Sprintf("fe %d SERVER (the outer span kept), fe %d CLIENT (the span the callee's SERVER span is under kept, else the outermost)", n, n)
+	if !slices.ContainsFunc(rep.Warnings, func(w string) bool { return strings.Contains(w, want) }) {
+		t.Errorf("no warning with %q: %q", want, rep.Warnings)
+	}
+	text, _, _ := exec(t, "predict", capture)
+	if !strings.Contains(text, "nested spans of one kind in one pod") || !strings.Contains(text, want) {
+		t.Errorf("the text report does not name the merged spans:\n%s", text)
+	}
+	_, errw, code = exec(t, "infer", capture)
+	if code != 0 || !strings.Contains(errw, "warning: nested spans of one kind in one pod") {
+		t.Errorf("infer: exit %d, standard error %q", code, errw)
+	}
+	// a capture without nested spans has no field and no warning
+	out, _, _ = exec(t, "predict", fixture, "--json")
+	if strings.Contains(out, "nested_spans_merged") || strings.Contains(out, "nested spans") {
+		t.Errorf("the example capture reports nested spans")
+	}
+}
+
 type failWriter struct{}
 
 func (failWriter) Write([]byte) (int, error) { return 0, errors.New("no space left on device") }
@@ -463,5 +530,335 @@ func TestTextReportWriteErrors(t *testing.T) {
 		if code := run([]string{"predict", fixture}, f, &errw); code != 1 {
 			t.Errorf("predict > /dev/full: exit %d, %q", code, errw.String())
 		}
+	}
+}
+
+// shipped20s is the first 20 s of the OpenTelemetry Demo on a real cluster under its shipped load mix (see
+// internal/infer/counts_real_test.go): the cart calls its Redis 1, 2 or 3 times per visit, the frontend serves endpoints
+// of different call shapes.
+const shipped20s = "../../internal/infer/testdata/counts/shipped-20s"
+
+// Calls per visit that vary are accepted: the report carries the visits by calls and how the model takes them (the mean
+// count; a mixture of call shapes), in the text, in the JSON and in the warnings, and infer's topology runs under
+// `model`.
+func TestVariableCallsInTheReport(t *testing.T) {
+	out, errw, code := exec(t, "predict", shipped20s, "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errw)
+	}
+	var rep struct {
+		Services []struct {
+			Name          string `json:"name"`
+			VariableCalls []struct {
+				Callee        string  `json:"callee"`
+				MeanPerVisit  float64 `json:"mean_per_visit"`
+				VisitsByCalls []struct {
+					Calls  int   `json:"calls"`
+					Visits int64 `json:"visits"`
+				} `json:"visits_by_calls"`
+				ModelledAs string `json:"modelled_as"`
+			} `json:"variable_calls"`
+			CallShapes []struct {
+				Shape string  `json:"shape"`
+				Share float64 `json:"share"`
+			} `json:"call_shapes"`
+		} `json:"services"`
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, s := range rep.Services {
+		for _, v := range s.VariableCalls {
+			seen[s.Name+" -> "+v.Callee+" "+v.ModelledAs] = true
+			if s.Name == "cart" && (len(v.VisitsByCalls) != 3 || v.VisitsByCalls[2].Calls != 3 || math.Abs(v.MeanPerVisit-1.7246) > 1e-3) {
+				t.Errorf("cart: %+v", v)
+			}
+		}
+		if s.Name == "frontend" {
+			// the front end stamps its spans on whole milliseconds: two cart calls that follow one another within a
+			// millisecond are "cart then cart", not "cart x2" (at once); a recommendation and then four lookups likewise
+			share := map[string]float64{}
+			for _, sh := range s.CallShapes {
+				share[sh.Shape] = sh.Share
+			}
+			if len(s.CallShapes) < 8 || s.CallShapes[0].Shape != "product-catalog" || share["cart then cart"] < 0.13 || share["cart x2"] > 0.01 ||
+				share["recommendation then product-catalog x4"] < 0.095 || share["product-catalog x4 + recommendation"] > 0.01 {
+				t.Errorf("frontend call shapes: %+v", s.CallShapes)
+			}
+		}
+		if s.Name != "frontend" && len(s.CallShapes) != 0 {
+			t.Errorf("%s has call shapes %+v", s.Name, s.CallShapes)
+		}
+	}
+	for _, k := range []string{"cart -> ext:valkey-cart mean count", "checkout -> currency mean count", "frontend -> cart mixture of call shapes"} {
+		if !seen[k] {
+			t.Errorf("no %q in the variable calls of the JSON report: %v", k, seen)
+		}
+	}
+	if !slices.ContainsFunc(rep.Warnings, func(w string) bool {
+		return strings.HasPrefix(w, "cart -> ext:valkey-cart: calls per visit vary as {1: 122, 2: 20, 3: 65}; only their mean (1.72 per visit)")
+	}) {
+		t.Errorf("no warning for the cart's counts: %q", rep.Warnings)
+	}
+	text, _, code := exec(t, "predict", shipped20s)
+	if code != 0 {
+		t.Fatalf("text: exit %d", code)
+	}
+	for _, want := range []string{"calls per visit that vary (", "cart -> ext:valkey-cart 1.72 per visit (mean count)",
+		"frontend -> cart 0.363 per visit (mixture of call shapes)", "shape:S:j", "shape:frontend:2"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the text report lacks %q", want)
+		}
+	}
+	// a capture whose counts are fixed carries none of it
+	plain, _, _ := exec(t, "predict", fixture, "--json")
+	if strings.Contains(plain, "variable_calls") || strings.Contains(plain, "call_shapes") {
+		t.Errorf("the example capture reports variable calls")
+	}
+	// the inferred topology, with its zero-time shape and stage nodes, runs under `model` and keeps the load
+	topo, _, code := exec(t, "infer", shipped20s)
+	if code != 0 {
+		t.Fatalf("infer: exit %d", code)
+	}
+	path := filepath.Join(t.TempDir(), "topo.json")
+	if err := os.WriteFile(path, []byte(topo), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	js, errw, code := exec(t, "model", path, "--rps", "27", "--patch", "cart=+1ms", "--json")
+	if code != 0 {
+		t.Fatalf("model: exit %d: %s", code, errw)
+	}
+	var m struct {
+		Services []struct {
+			Name      string   `json:"name"`
+			RateRPS   float64  `json:"rate_rps"`
+			ChangeMs  *float64 `json:"change_ms"`
+			ModelMs   float64  `json:"model_ms"`
+			AfterMs   *float64 `json:"after_ms"`
+			ChangePct *float64 `json:"change_pct"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal([]byte(js), &m); err != nil {
+		t.Fatal(err)
+	}
+	rate := map[string]float64{}
+	change := map[string]float64{}
+	for _, s := range m.Services {
+		rate[s.Name] = s.RateRPS
+		if s.ChangeMs != nil {
+			change[s.Name] = *s.ChangeMs
+		}
+	}
+	if r := rate["ext:valkey-cart"] / rate["cart"]; math.Abs(r-1.7246) > 1e-3 {
+		t.Errorf("model: valkey per cart visit %.4f, want 1.7246", r)
+	}
+	// +1 ms on the cart's own time: the frontend's mean rises by 1 ms for each cart call of a visit, one after another
+	// (0.363 per visit: 'cart' 8.0%, 'cart then cart' 13.9% of the visits, 'cart x2' 0.2%) and the cart calls of its checkouts
+	// (a GetCart and an EmptyCart for each of the 4.5% of visits that check out: 0.09): 0.45 ms. (A front end whose
+	// "cart then cart" read as "cart x2" would show a bit less.)
+	if c := change["frontend"]; math.Abs(c-0.45) > 0.02 {
+		t.Errorf("model: +1 ms on the cart changes the frontend by %.3f ms, want 0.45", c)
+	}
+}
+
+// A chain a -> b -> c in which c's SERVER span is missing from every 50th trace (2%, below the limit of 5%): the capture is
+// used, the warning names the edge, the row of c carries the visits it lost in the JSON and a "!" in the text with
+// its legend, and the other rows are not marked. At 8% the refusal names the edge.
+func TestLostSpansAreMarkedInTheReport(t *testing.T) {
+	build := func(every int) (string, int) {
+		rng := rand.New(rand.NewSource(21))
+		var spans []tspan
+		at, lost := 0.0, 0
+		const n = 1500
+		for i := 1; i <= n; i++ {
+			at += rng.ExpFloat64() * 1000 / 30
+			x := 1 + 3*rng.ExpFloat64()
+			id := func(k int) string { return fmt.Sprintf("%016x", 10*i+k) }
+			spans = append(spans,
+				tspan{"a", "a-0", id(1), "", 2, at, at + x + 9, i, ""},
+				tspan{"a", "a-0", id(2), id(1), 3, at + 0.5, at + x + 8, i, "b"},
+				tspan{"b", "b-0", id(3), id(2), 2, at + 0.6, at + x + 7.9, i, ""},
+				tspan{"b", "b-0", id(4), id(3), 3, at + 1, at + x + 6, i, "c"})
+			if i%every == 0 {
+				lost++
+				continue
+			}
+			spans = append(spans, tspan{"c", "c-0", id(5), id(4), 2, at + 1.2, at + x + 5.8, i, ""})
+		}
+		return writeCapture(t, spans), lost
+	}
+	capture, lost := build(50)
+	out, errw, code := exec(t, "predict", capture, "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errw)
+	}
+	var rep struct {
+		Broken   int64 `json:"broken_traces"`
+		Services []struct {
+			Name       string  `json:"name"`
+			LostVisits int64   `json:"lost_visits"`
+			LostShare  float64 `json:"lost_share"`
+		} `json:"services"`
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Broken != int64(lost) {
+		t.Errorf("%d broken traces, want %d", rep.Broken, lost)
+	}
+	for _, s := range rep.Services {
+		switch {
+		case s.Name == "c" && (s.LostVisits != int64(lost) || s.LostShare < 0.019 || s.LostShare > 0.021):
+			t.Errorf("c: %d lost visits (share %.4f), want %d (2%%)", s.LostVisits, s.LostShare, lost)
+		case s.Name != "c" && s.LostVisits != 0:
+			t.Errorf("%s is marked with %d lost visits", s.Name, s.LostVisits)
+		}
+	}
+	want := fmt.Sprintf("b -> c: %d of 1500 calls (2.0%%)", lost)
+	if !slices.ContainsFunc(rep.Warnings, func(w string) bool { return strings.Contains(w, want) }) {
+		t.Errorf("no warning with %q: %q", want, rep.Warnings)
+	}
+	text, _, _ := exec(t, "predict", capture)
+	if !regexp.MustCompile(`(?m)^\s+c !\s`).MatchString(text) ||
+		!strings.Contains(text, fmt.Sprintf("! lost spans, calls to this service had no span of it under them (visits lost, share of its visits: c %d (2.0%%))", lost)) {
+		t.Errorf("the text report does not mark c:\n%s", text)
+	}
+	if regexp.MustCompile(`(?m)^\s+[ab] !`).MatchString(text) {
+		t.Errorf("a or b is marked:\n%s", text)
+	}
+	_, errw, code = exec(t, "infer", capture)
+	if code != 0 || !strings.Contains(errw, want) {
+		t.Errorf("infer: exit %d, standard error %q", code, errw)
+	}
+	capture, lost = build(12)
+	_, errw, code = exec(t, "predict", capture)
+	want = fmt.Sprintf("have a call to a service with no span of that service under it (b -> c: %d of 1500 calls (8.3%%))", lost)
+	if code != 1 || !strings.Contains(errw, want) {
+		t.Errorf("8%%: exit %d, want a refusal with %q, got %q", code, want, errw)
+	}
+	// a capture that lost nothing has no mark and no field
+	out, _, _ = exec(t, "predict", fixture, "--json")
+	text, _, _ = exec(t, "predict", fixture)
+	if strings.Contains(out, "lost_visits") || strings.Contains(text, "lost spans") {
+		t.Errorf("the example capture reports lost spans")
+	}
+}
+
+// Broken traces that are all of one kind of request: a calls d on 3% of the requests, d calls e, and e's span is missing on four
+// of five of those. That is 2.4% of the traces (a warning, no refusal) and 80% of d's visits: d's row is marked, the legend
+// says so and the JSON has the share. The other rows are not marked.
+func TestVisitsInBrokenTracesAreMarkedInTheReport(t *testing.T) {
+	rng := rand.New(rand.NewSource(33))
+	var spans []tspan
+	at := 0.0
+	const n = 3000
+	for i := 1; i <= n; i++ {
+		at += rng.ExpFloat64() * 1000 / 40
+		x := 1 + 2*rng.ExpFloat64()
+		id := func(k int) string { return fmt.Sprintf("%016x", 20*i+k) }
+		spans = append(spans,
+			tspan{"a", "a-0", id(1), "", 2, at, at + x + 12, i, ""},
+			tspan{"a", "a-0", id(2), id(1), 3, at + 0.5, at + x + 4, i, "b"},
+			tspan{"b", "b-0", id(3), id(2), 2, at + 0.6, at + x + 3.9, i, ""})
+		if i%30 != 0 {
+			continue
+		}
+		spans = append(spans,
+			tspan{"a", "a-0", id(4), id(1), 3, at + x + 5, at + x + 11, i, "d"},
+			tspan{"d", "d-0", id(5), id(4), 2, at + x + 5.1, at + x + 10.9, i, ""},
+			tspan{"d", "d-0", id(6), id(5), 3, at + x + 5.5, at + x + 10, i, "e"})
+		if i%150 == 0 {
+			spans = append(spans, tspan{"e", "e-0", id(7), id(6), 2, at + x + 5.6, at + x + 9.9, i, ""})
+		}
+	}
+	capture := writeCapture(t, spans)
+	out, errw, code := exec(t, "predict", capture, "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errw)
+	}
+	var rep struct {
+		Broken   int64 `json:"broken_traces"`
+		Services []struct {
+			Name             string  `json:"name"`
+			BrokenVisitShare float64 `json:"broken_visit_share"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Broken != 80 {
+		t.Errorf("%d broken traces, want 80", rep.Broken)
+	}
+	for _, s := range rep.Services {
+		switch {
+		case s.Name == "d" && (s.BrokenVisitShare < 0.79 || s.BrokenVisitShare > 0.81):
+			t.Errorf("d: %.3f of its visits in broken traces, want 0.8", s.BrokenVisitShare)
+		case s.Name != "d" && s.BrokenVisitShare != 0:
+			t.Errorf("%s is marked (%.3f)", s.Name, s.BrokenVisitShare)
+		}
+	}
+	text, _, _ := exec(t, "predict", capture)
+	if !regexp.MustCompile(`(?m)^\s+d !\s`).MatchString(text) || !strings.Contains(text, "! many visits in traces that miss a span (share of its visits: d 80%)") ||
+		!strings.Contains(text, "d: 80% of its 100 visits are in traces that miss a span") {
+		t.Errorf("the text report does not mark d:\n%s", text)
+	}
+}
+
+// The error for an unknown --patch service lists the services, not the zero-time nodes the inference adds for the call
+// structure (stage:S:n, shape:S:n), which are not services.
+func TestPatchErrorListsServicesNotStageNodes(t *testing.T) {
+	_, errw, code := exec(t, "predict", shipped20s, "--patch", "nosuch=+1ms")
+	if code == 0 || !strings.Contains(errw, "unknown service") || !strings.Contains(errw, "frontend") {
+		t.Fatalf("exit %d: %s", code, errw)
+	}
+	if strings.Contains(errw, "stage:") || strings.Contains(errw, "shape:") {
+		t.Errorf("the list of services holds the zero-time nodes: %s", errw)
+	}
+	// ... which a patch can still name, as before
+	if _, errw, code := exec(t, "predict", shipped20s, "--patch", "frontend=+1ms"); code != 0 {
+		t.Fatalf("patching frontend: exit %d: %s", code, errw)
+	}
+}
+
+// --plain reads the wait that the network time of a call is cut against with the basic model too: the hops differ from the
+// refined ones, a little where the callees are quiet, and only the hops.
+func TestPlainReadsTheHopWaitWithTheBasicModel(t *testing.T) {
+	read := func(args ...string) []struct {
+		Name string  `json:"name"`
+		Hop  float64 `json:"hop"`
+	} {
+		out, errw, code := exec(t, append([]string{"infer", shipped20s}, args...)...)
+		if code != 0 {
+			t.Fatalf("exit %d: %s", code, errw)
+		}
+		var topo struct {
+			Services []struct {
+				Name string  `json:"name"`
+				Hop  float64 `json:"hop"`
+			} `json:"services"`
+		}
+		if err := json.Unmarshal([]byte(out), &topo); err != nil {
+			t.Fatal(err)
+		}
+		return topo.Services
+	}
+	a, b := read(), read("--plain")
+	if len(a) != len(b) {
+		t.Fatalf("%d and %d services", len(a), len(b))
+	}
+	differ := 0
+	for i := range a {
+		if a[i].Name != b[i].Name || math.Abs(a[i].Hop-b[i].Hop) > 1e-3*math.Max(a[i].Hop, 0.01) {
+			t.Errorf("%s: hop %v refined, %v plain, want the same to 0.1%% (quiet callees)", a[i].Name, a[i].Hop, b[i].Hop)
+		}
+		if a[i].Hop != b[i].Hop {
+			differ++
+		}
+	}
+	if differ == 0 {
+		t.Error("no hop differs between the refined and the basic model: --plain is not passed to the inference")
 	}
 }
