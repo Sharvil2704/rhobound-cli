@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/config.v1.json",
+  "title": "rhobound-mcp.config/v1",
+  "description": "The server's configuration (DEPLOY_AWS.md 14): names to locations. Tools take names, never paths, buckets or prefixes. The engine is run by absolute path after its sha256 is checked (server.engine_mismatch).",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound-mcp.config/v1"},
+    "engine": {
+      "type": "object",
+      "properties": {
+        "path": {"type": "string", "minLength": 1, "description": "absolute path of the rhobound binary"},
+        "sha256": {"$ref": "defs.v1.json#/$defs/Sha256Hex"}
+      },
+      "required": ["path", "sha256"],
+      "additionalProperties": false
+    },
+    "state_dir": {"type": "string", "minLength": 1},
+    "envs": {
+      "type": "object",
+      "propertyNames": {"$ref": "defs.v1.json#/$defs/Env"},
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "store": {"enum": ["dir", "s3"]},
+          "root": {"type": "string", "minLength": 1, "description": "dir: the folder laid out as the S3 exporter writes"},
+          "prefix": {"type": "string", "pattern": "/$", "description": "s3: the prefix, ending in /; held here only, recorded as a digest"},
+          "retry_s": {"type": "number", "minimum": 0},
+          "batch_s": {"type": "number", "minimum": 0},
+          "sdk_delay_s": {"type": "number", "minimum": 0},
+          "max_listed_bytes": {"type": "integer", "minimum": 1}
+        },
+        "required": ["store"],
+        "additionalProperties": false
+      }
+    },
+    "captures": {"type": "object", "propertyNames": {"$ref": "defs.v1.json#/$defs/Name"},
+                 "additionalProperties": {"type": "string", "minLength": 1},
+                 "description": "capture names (stdio mode, and A/B arms) to local folders. A name is also what the server passes to the engine as a fit's --name, so beyond Name it has no empty, . or .. path segment, ext: starts no word of it but the first, and it holds no arn: (at its start, after a character that is not a letter or a digit, or before an AWS partition); a configuration with another name does not load"},
+    "policies": {"type": "object", "propertyNames": {"$ref": "defs.v1.json#/$defs/Name"},
+                 "additionalProperties": {"type": "string", "minLength": 1},
+                 "description": "policy names to policy files, under the rule of capture names"},
+    "profile": {"enum": ["default", "bench"]},
+    "fit_ttl_h": {"type": "integer", "minimum": 1, "maximum": 8760, "default": 168,
+                  "description": "hours that fit and A/B handles live, and the most an environment's baseline fit may age past the end of its window before it is refused (fit.expired)"}
+  },
+  "required": ["schema", "engine", "state_dir"],
+  "additionalProperties": false
+}

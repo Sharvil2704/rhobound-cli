@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/ab-record.v1.json",
+  "title": "rhobound.ab-record/v1",
+  "description": "What `rhobound diff-fit --baseline A --candidate B --loadgen-log L` writes (DATA.md 8): per service, the difference between the two arms of a concurrent A/B run, with standard errors by batch means, and the checks that decide whether the own-time difference may be applied alone. Only the CLI or server that computed a record mints measured-ab from it; a measured item enters a change set as delta +-2 standard errors.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound.ab-record/v1"},
+    "tool": {"$ref": "defs.v1.json#/$defs/Tool"},
+    "arms": {
+      "type": "object",
+      "properties": {
+        "baseline": {"$ref": "#/$defs/arm"},
+        "candidate": {"$ref": "#/$defs/arm"}
+      },
+      "required": ["baseline", "candidate"],
+      "additionalProperties": false
+    },
+    "overlap_share": {"type": "number", "minimum": 0, "maximum": 1,
+                      "description": "share of the windows that overlap; below 0.9 is ab.not_concurrent"},
+    "se_method": {"type": "string", "pattern": "^batch-means/[0-9]+$", "description": "for example batch-means/30"},
+    "loadgen": {
+      "type": "object",
+      "properties": {
+        "log_sha256": {"$ref": "defs.v1.json#/$defs/Sha256Hex"},
+        "requests": {"$ref": "#/$defs/pairInt"},
+        "client_latency_ms": {"$ref": "#/$defs/delta"}
+      },
+      "required": ["log_sha256", "requests", "client_latency_ms"],
+      "additionalProperties": false,
+      "description": "the load generator's own measurement of each arm, from outside the system under test"
+    },
+    "self_report_consistent": {"type": "boolean",
+                               "description": "the client-side latency difference agrees with the span-derived one (profile.self_report_mismatch otherwise)"},
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "service": {"type": "string", "minLength": 1},
+          "visits": {"$ref": "#/$defs/pairInt"},
+          "visits_needed": {"type": "integer", "minimum": 0,
+                            "description": "visits per arm the sizing rule needs for the gate's margin (ab.too_few_visits below it)"},
+          "own_ms": {"$ref": "#/$defs/delta"},
+          "glue_ms": {"$ref": "#/$defs/delta"},
+          "own_cs2": {"$ref": "#/$defs/delta"},
+          "calls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "callee": {"type": "string", "minLength": 1},
+                "baseline": {"type": "number", "minimum": 0},
+                "candidate": {"type": "number", "minimum": 0}
+              },
+              "required": ["callee", "baseline", "candidate"],
+              "additionalProperties": false
+            },
+            "description": "calls per visit to each callee, per arm"
+          },
+          "calls_changed": {"type": "boolean", "description": "profile.structure_changed: the own-time difference is never applied alone"},
+          "variance_changed": {"type": "boolean", "description": "profile.variance_changed: the own time's variance differs beyond 2 standard errors (batch means). The variance, not the cs2: an own-time difference applied as a shift keeps the variance and lowers the cs2, so a pure shift is no variance change"},
+          "error_share": {"$ref": "#/$defs/pair"}
+        },
+        "required": ["service", "visits", "own_ms", "glue_ms", "own_cs2", "calls", "calls_changed", "variance_changed",
+                     "error_share"],
+        "additionalProperties": false
+      }
+    },
+    "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"}}
+  },
+  "required": ["schema", "tool", "arms", "overlap_share", "se_method", "loadgen", "self_report_consistent", "services",
+               "findings"],
+  "additionalProperties": false,
+  "$defs": {
+    "arm": {
+      "type": "object",
+      "properties": {
+        "capture": {"type": "string", "minLength": 1, "description": "the --baseline-name or --candidate-name given to `diff-fit`, else the arm's folder as given"},
+        "manifest_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "fit_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "window": {
+          "type": "object",
+          "properties": {"start": {"$ref": "defs.v1.json#/$defs/Time"}, "end": {"$ref": "defs.v1.json#/$defs/Time"}},
+          "required": ["start", "end"],
+          "additionalProperties": false
+        },
+        "images": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}},
+                   "description": "image digests by service, from pod metadata in the spans"},
+        "kept_share": {"$ref": "defs.v1.json#/$defs/KeptShare"}
+      },
+      "required": ["capture", "manifest_digest", "window", "images", "kept_share"],
+      "additionalProperties": false
+    },
+    "pair": {
+      "type": "object",
+      "properties": {"baseline": {"type": "number"}, "candidate": {"type": "number"}},
+      "required": ["baseline", "candidate"],
+      "additionalProperties": false
+    },
+    "pairInt": {
+      "type": "object",
+      "properties": {"baseline": {"type": "integer", "minimum": 0}, "candidate": {"type": "integer", "minimum": 0}},
+      "required": ["baseline", "candidate"],
+      "additionalProperties": false
+    },
+    "delta": {
+      "type": "object",
+      "properties": {
+        "baseline": {"type": "number"},
+        "candidate": {"type": "number"},
+        "delta": {"type": "number", "description": "candidate minus baseline"},
+        "se": {"type": "number", "minimum": 0, "description": "standard error of the delta, by the record's se_method"}
+      },
+      "required": ["baseline", "candidate", "delta", "se"],
+      "additionalProperties": false
+    }
+  }
+}

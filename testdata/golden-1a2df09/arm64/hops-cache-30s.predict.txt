@@ -1,0 +1,21 @@
+rhobound-cli: mean latency from traces
+capture   internal/infer/testdata/hops/cache-30s
+window    30 s, 1121 entry requests (37.4 /s), 7847 spans
+busiest   api at 39% utilization
+model     refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas
+scope     Mean latency only, for steady load below the utilization limit, assuming Poisson arrivals. No tail (p95/p99), burst, retry or timeout modelling. Worker counts marked + are lower bounds.
+
+        service   rps  pods x w  own ms   cs2  util  wait ms  seen wait  model ms  seen ms  err %
+            api  37.4    2 x 1+   20.63  1.00   39%    12.93      11.03     48.28    45.90   +5.2
+          cache  37.4    1 x 2+    5.45  1.00   10%     0.06       0.06      6.73     6.73   -0.0
+             db  37.4    1 x 1+    8.47  1.00   32%     3.92       3.44     13.42    12.94   +3.7
+  frontend * ||  37.4    1 x 2+    3.59  0.68    7%     0.01       0.01     52.16    49.65   +5.1
+
+* entry service   || parallel fan-out   w+ = workers per pod, a lower bound (too few requests waited, or too briefly, to read it from)
+own ms: service time per visit (up to its first call out), without the wait for a worker inside the span. seen wait: queueing the traces show (in-span plus between client and server span).
+seen ms: the mean the callers' client spans measured (entries: the server span).
+hop from the mean: the network time of the calls into cache is the mean client-minus-server span time less the model's wait (not its quietest tenth, which lies below the mean by the spread of the network time). Their seen wait, and the hop's part of their seen ms, are set by it, so they do not check it.
+
+warnings:
+  - frontend: 0.18% of reconstructed service times are negative (clock or ordering jitter)
+  - no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: api 1+ (0 waited; up to 2 in a pod at once), cache 2+ (0 waited; up to 2 in a pod at once), db 1+ (0 waited; up to 2 in a pod at once), frontend 2+ (7 waited; up to 4 in a pod at once)

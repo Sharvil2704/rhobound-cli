@@ -1,0 +1,359 @@
+{
+  "schema": "rhobound.golden-sweep/v1",
+  "commit": "1a2df09",
+  "tool_version": "0.1.0-dev",
+  "binary_sha256": "fdbca5174cd1e1bb73e5064d776e9240f1877b8753f0ff87e06224ae36948889",
+  "go": "go1.27.2",
+  "goos": "linux",
+  "goarch": "arm64",
+  "env": {
+    "RHOBOUND_ESTIMATOR": "unset"
+  },
+  "cwd": "the repository root",
+  "cases": [
+    {
+      "name": "capture-chain.predict",
+      "capture": "testdata/capture-chain",
+      "args": [
+        "predict",
+        "testdata/capture-chain"
+      ],
+      "exit": 0,
+      "stdout": "capture-chain.predict.txt",
+      "stdout_sha256": "09a40639fd1459a65fcbfa265ad01cf47b9ef479445f22f94ca479c746e28364",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "capture-chain.predict-json",
+      "capture": "testdata/capture-chain",
+      "args": [
+        "predict",
+        "testdata/capture-chain",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "capture-chain.predict-json.json",
+      "stdout_sha256": "f8c014b1f870e7b2ef828842020123e74f84276e0f59caf5e7722996774dc397",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "capture-chain.predict-patch-json",
+      "capture": "testdata/capture-chain",
+      "args": [
+        "predict",
+        "testdata/capture-chain",
+        "--patch",
+        "b=+1ms",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "capture-chain.predict-patch-json.json",
+      "stdout_sha256": "bb44ae690d005b349b37c67cf14dd3780cff91df65f8cc169030cd5b6101206a",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "counts-shipped-20s.predict",
+      "capture": "internal/infer/testdata/counts/shipped-20s",
+      "args": [
+        "predict",
+        "internal/infer/testdata/counts/shipped-20s"
+      ],
+      "exit": 0,
+      "stdout": "counts-shipped-20s.predict.txt",
+      "stdout_sha256": "d8913933095fc834b5fc37b72ddede4a72afee97e3ca391ecf4a025c7baaf3ba",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "counts-shipped-20s.predict-json",
+      "capture": "internal/infer/testdata/counts/shipped-20s",
+      "args": [
+        "predict",
+        "internal/infer/testdata/counts/shipped-20s",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "counts-shipped-20s.predict-json.json",
+      "stdout_sha256": "11b691caaac16f68dde8dc7a77290288edb806a73727b90f770c92ea1b2d4e06",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "counts-shipped-20s.predict-patch-json",
+      "capture": "internal/infer/testdata/counts/shipped-20s",
+      "args": [
+        "predict",
+        "internal/infer/testdata/counts/shipped-20s",
+        "--patch",
+        "cart=+1ms",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "counts-shipped-20s.predict-patch-json.json",
+      "stdout_sha256": "f2458be042b46f84375e3a6c2a1f950f92515682423170d6415691475be87095",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "hops-browse-45s.predict",
+      "capture": "internal/infer/testdata/hops/browse-45s",
+      "args": [
+        "predict",
+        "internal/infer/testdata/hops/browse-45s"
+      ],
+      "exit": 0,
+      "stdout": "hops-browse-45s.predict.txt",
+      "stdout_sha256": "d79bf084cffe7f476d106b605ca4b26a54a4a5e02b2ab5a893d4e537bff1bab7",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "hops-browse-45s.predict-json",
+      "capture": "internal/infer/testdata/hops/browse-45s",
+      "args": [
+        "predict",
+        "internal/infer/testdata/hops/browse-45s",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "hops-browse-45s.predict-json.json",
+      "stdout_sha256": "4d57a2a023476d3c06397f019b47bf5e26865d8b0e515fb8fb9197ace2de40e3",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "hops-browse-45s.predict-patch-json",
+      "capture": "internal/infer/testdata/hops/browse-45s",
+      "args": [
+        "predict",
+        "internal/infer/testdata/hops/browse-45s",
+        "--patch",
+        "frontend=+20%",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "hops-browse-45s.predict-patch-json.json",
+      "stdout_sha256": "315c70e14bd822cf1ea313b2848d555ab6018af67f6a6a1fd1e9391958ed8b3d",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "hops-cache-30s.predict",
+      "capture": "internal/infer/testdata/hops/cache-30s",
+      "args": [
+        "predict",
+        "internal/infer/testdata/hops/cache-30s"
+      ],
+      "exit": 0,
+      "stdout": "hops-cache-30s.predict.txt",
+      "stdout_sha256": "b73d48c3c32c72dd672d43c2d4551785a1326ac93e87041893dbcebf9fdb0c7f",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "hops-cache-30s.predict-json",
+      "capture": "internal/infer/testdata/hops/cache-30s",
+      "args": [
+        "predict",
+        "internal/infer/testdata/hops/cache-30s",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "hops-cache-30s.predict-json.json",
+      "stdout_sha256": "6b11db7f1539ca585765c3009509211785a49b3e63617ce447e6a579a584d1fe",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "hops-cache-30s.predict-patch-json",
+      "capture": "internal/infer/testdata/hops/cache-30s",
+      "args": [
+        "predict",
+        "internal/infer/testdata/hops/cache-30s",
+        "--patch",
+        "api=+2ms",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "hops-cache-30s.predict-patch-json.json",
+      "stdout_sha256": "e7aa4de6115f0d3ebf31fe6e908cedb554bb5f6e876ae93fbebf7410f2d4d200",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "nested-cart-client-in-client.predict",
+      "capture": "internal/infer/testdata/nested/cart-client-in-client",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/cart-client-in-client"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: only 2 entry requests in the capture; need at least 100\n",
+      "stderr_sha256": "b87c49005da2a5fb6fb45768956719edcec670d09553d7d1405d931c64b799e7"
+    },
+    {
+      "name": "nested-cart-client-in-client.predict-json",
+      "capture": "internal/infer/testdata/nested/cart-client-in-client",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/cart-client-in-client",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: only 2 entry requests in the capture; need at least 100\n",
+      "stderr_sha256": "b87c49005da2a5fb6fb45768956719edcec670d09553d7d1405d931c64b799e7"
+    },
+    {
+      "name": "nested-cart-client-in-client.predict-patch-json",
+      "capture": "internal/infer/testdata/nested/cart-client-in-client",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/cart-client-in-client",
+        "--patch",
+        "cart=+1ms",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: only 2 entry requests in the capture; need at least 100\n",
+      "stderr_sha256": "b87c49005da2a5fb6fb45768956719edcec670d09553d7d1405d931c64b799e7"
+    },
+    {
+      "name": "nested-flagd-server-in-server.predict",
+      "capture": "internal/infer/testdata/nested/flagd-server-in-server",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/flagd-server-in-server"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: only 2 entry requests in the capture; need at least 100\n",
+      "stderr_sha256": "b87c49005da2a5fb6fb45768956719edcec670d09553d7d1405d931c64b799e7"
+    },
+    {
+      "name": "nested-flagd-server-in-server.predict-json",
+      "capture": "internal/infer/testdata/nested/flagd-server-in-server",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/flagd-server-in-server",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: only 2 entry requests in the capture; need at least 100\n",
+      "stderr_sha256": "b87c49005da2a5fb6fb45768956719edcec670d09553d7d1405d931c64b799e7"
+    },
+    {
+      "name": "nested-flagd-server-in-server.predict-patch-json",
+      "capture": "internal/infer/testdata/nested/flagd-server-in-server",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/flagd-server-in-server",
+        "--patch",
+        "flagd=+1ms",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: only 2 entry requests in the capture; need at least 100\n",
+      "stderr_sha256": "b87c49005da2a5fb6fb45768956719edcec670d09553d7d1405d931c64b799e7"
+    },
+    {
+      "name": "nested-fraud-detection-consumer-in-consumer.predict",
+      "capture": "internal/infer/testdata/nested/fraud-detection-consumer-in-consumer",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/fraud-detection-consumer-in-consumer"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: the capture holds no SERVER spans: nothing to infer\n",
+      "stderr_sha256": "1a6d491eed2aa963218ff0ca0cba002f1361b004a38fecfd9a02440522a730a3"
+    },
+    {
+      "name": "nested-fraud-detection-consumer-in-consumer.predict-json",
+      "capture": "internal/infer/testdata/nested/fraud-detection-consumer-in-consumer",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/fraud-detection-consumer-in-consumer",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: the capture holds no SERVER spans: nothing to infer\n",
+      "stderr_sha256": "1a6d491eed2aa963218ff0ca0cba002f1361b004a38fecfd9a02440522a730a3"
+    },
+    {
+      "name": "nested-fraud-detection-consumer-in-consumer.predict-patch-json",
+      "capture": "internal/infer/testdata/nested/fraud-detection-consumer-in-consumer",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/fraud-detection-consumer-in-consumer",
+        "--patch",
+        "fraud-detection=+1ms",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: the capture holds no SERVER spans: nothing to infer\n",
+      "stderr_sha256": "1a6d491eed2aa963218ff0ca0cba002f1361b004a38fecfd9a02440522a730a3"
+    },
+    {
+      "name": "nested-frontend-server-in-server.predict",
+      "capture": "internal/infer/testdata/nested/frontend-server-in-server",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/frontend-server-in-server"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: only 4 entry requests in the capture; need at least 100\n",
+      "stderr_sha256": "9cd86a9f73f5219d8837512add78fd512006164944b337767ca8100150f54089"
+    },
+    {
+      "name": "nested-frontend-server-in-server.predict-json",
+      "capture": "internal/infer/testdata/nested/frontend-server-in-server",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/frontend-server-in-server",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: only 4 entry requests in the capture; need at least 100\n",
+      "stderr_sha256": "9cd86a9f73f5219d8837512add78fd512006164944b337767ca8100150f54089"
+    },
+    {
+      "name": "nested-frontend-server-in-server.predict-patch-json",
+      "capture": "internal/infer/testdata/nested/frontend-server-in-server",
+      "args": [
+        "predict",
+        "internal/infer/testdata/nested/frontend-server-in-server",
+        "--patch",
+        "frontend=+1ms",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "rhobound: only 4 entry requests in the capture; need at least 100\n",
+      "stderr_sha256": "9cd86a9f73f5219d8837512add78fd512006164944b337767ca8100150f54089"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# The same server for Codex: add this to ~/.codex/config.toml, with the path of your configuration file.
+[mcp_servers.rhobound]
+command = "rhobound-mcp"
+args = ["stdio", "--config", "/path/to/rhobound-mcp/config.json"]

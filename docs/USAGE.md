@@ -11,7 +11,10 @@ The commands at a glance:
 | `rhobound predict CAPTURE` | reads the traces, infers the call graph, and prints the model's mean latency per service; with `--patch`, also the latency after a change |
 | `rhobound infer CAPTURE` | prints the inferred call graph as a topology JSON (no prediction) |
 | `rhobound model TOPOLOGY.json --rps N` | evaluates a topology you wrote or edited, at N requests/s |
-| `rhobound version` | prints the version |
+| `rhobound version [--json]` | prints the version; with `--json`, `{"name", "version", "go", "goarch", "vcs"}`, where `vcs` (`revision`, `time`, `modified`) is the source the binary was built from, absent when the go command recorded none ([mcp/schemas/version.v1.json](mcp/schemas/version.v1.json)) |
+
+The branch `rhobound-mcp` adds the commands an MCP server and a deploy gate run (`check`, `fit`, `predict --fit`,
+`budget`, `context`, `preview`, `gate`, `diff-fit`, `explain`, `judge-packet`, `judge-check`): section 11.
 
 `rhobound help` (or `-h`, `--help`) prints the usage text. Flags may come before or after the capture path, and both
 `--flag value` and `--flag=value` work (one dash works too).
@@ -354,7 +357,13 @@ is the "hop from the mean" line naming `b` and the warning under it: a call take
 quietest tenth, and the model's wait explains almost none of the difference. After a `--workers` override, read those two
 too. ([ACCURACY.md](ACCURACY.md#1-where-it-is-still-wrong-read-this-first), item 22, gives the limit: at or below 30% busy a wait
 the model does not show lands in the hop.) The entry `a` is further from its seen time (+3.8%) because its own wait, which the
-model counts and `a`'s seen time leaves out, is no longer offset by `b`'s missing one. A name that is not a service is ignored.
+model counts and `a`'s seen time leaves out, is no longer offset by `b`'s missing one. A name that is not a service is
+refused (on the `rhobound-mcp` branch; rhobound-cli ignored it):
+
+```
+$ bin/rhobound predict testdata/capture-chain --workers nope=3
+rhobound: --workers: unknown service "nope" (services with SERVER spans: a, b, c)
+```
 
 ### `--kept-share F`: when the traces are sampled
 
@@ -551,6 +560,19 @@ calling `a`.)
 | 1 | an error or a refusal: one line on standard error, starting with `rhobound:` |
 | 2 | no command, or an unknown command: the usage text on standard error |
 
+With `--json`, a refusal of `predict`, `infer` or `model` (and of `fit` and `diff-fit`, section 11) also prints one
+JSON object on standard output, with a stable code from the data contract and its fix; standard error keeps the
+message unchanged. The object's `reason` is that message without its `rhobound: ` prefix, cut to 600 characters
+ending in `...` when it is longer. A usage or tool error prints nothing on standard output.
+
+```
+$ bin/rhobound predict testdata/capture-chain --workers nope=3 --json
+rhobound: --workers: unknown service "nope" (services with SERVER spans: a, b, c)
+{"error":{"code":"change.unknown_service","fix":"name a service of the fit","reason":"--workers: unknown service \"nope\" (services with SERVER spans: a, b, c)","subject":"nope"}}
+```
+
+Every code, with its level and fix, is in [mcp/DATA.md](mcp/DATA.md) (sections 3.14 and 19).
+
 A refusal means the tool will not give a number it cannot stand behind. Each message says why. The common ones, as
 the tool prints them, and what to do:
 
@@ -729,3 +751,97 @@ The others, from the source:
 | `X: N of its server spans last up to T (name, trace ID) against a median of M ms, and hold P% of its busy time. They are read as visits ...` | streams or other long server spans that hold under 5% of a busy service's time: they are in its mean time as the visits they are; drop them and run again if they are not requests (at 5% or more the capture is refused: section 9) |
 | `N client calls to services without server spans were treated as external delays` | outside peers (a managed database, an external API): their mean time is added, with no queue |
 | `N client calls made under message consumers ..., to services without server spans, are on no request's path and were left out` | a consumer's calls to outside peers |
+
+## 11. The rhobound-mcp commands
+
+The branch `rhobound-mcp` adds these commands. Each is what one tool of the MCP server runs (the server adds only its
+handles to the JSON), so a CI step or a bash-only agent gets the same answers without the server. They read and write
+the documents of [mcp/schemas/](mcp/schemas/README.md); every JSON view is canonical (sorted keys, no spaces) with a
+newline. The examples run on `testdata/mcp/loop`, the capture-chain with image digests and its request count
+([testdata/mcp/README.md](../testdata/mcp/README.md)).
+
+| command | what it does | exit codes |
+|---|---|---|
+| `rhobound check CAPTURE\|--manifest M [--request-count F] [--kept-share S] [--sampler svc=NAME]... [--probe-route R]... [--pod-identity host] [--write-manifest] [--window START,END --cut entry-start --out DIR] [--json]` | the data contract: every finding with its code and fix; `--cut` writes the canonical capture of a window, and a `--request-count` given with it counts that window. Some refusals of a capture (`trace.broken_traces`, the inference's) are raised only when `fit` reads the traces, so judge a fit by its own exit status, not by `check`'s | 0 admitted (doubts listed), 4 refused, 2 tool error |
+| `rhobound fit CAPTURE\|--manifest M --out DIR [--workers svc=N,...] [--kept-share F] [--pod-identity host] [--request-count F] [--sampler svc=NAME]... [--probe-route R]... [--name NAME] [--plain] [--json]` | `check`, then the fit record `DIR/fit.json` (`rhobound.fit/v1`); prints its digest | 0, 1 refused |
+| `rhobound predict --fit F [--patch P \| --changes C] [--report v1] [--json]` | predict from a fit: report v2, or with `--report v1` the same bytes as `predict CAPTURE` given the same options, except the `capture` field when the fit was made with `--name` (it then holds that name). The fit's kept share is one of those options: a fit derives it from a constant `th` of the entry spans or from a request count (DATA.md 3.8), where `predict CAPTURE` takes 1 unless given `--kept-share`, so pass the fit's `kept_share.value` as `--kept-share` to compare the two | 0, 1 refused |
+| `rhobound budget --fit F [--policy P] [--service=S] [--kinds=own_ms,load_scale] --json` | how much a service may add per visit: the largest change under the threshold, and the safe one with the model's band; without `--policy` only the utilization limits bind, and the view carries the doubt `budget.no_policy` | 0, 1, 2 usage |
+| `rhobound context --fit F [--detail summary\|full] [--policy P] --json` | where latency is tight: entries, utilization, leverage, findings | 0, 1, 2 |
+| `rhobound preview --fit F --changes C --policy P [--now T] [--detail summary\|full] --json` | the agent's preview: the prediction with an advisory verdict | 0 for every verdict, 1, 2 |
+| `rhobound gate PREDICTION.json --policy P [--readiness R] [--now T] --out DIR [--json]` | the deploy gate: writes `verdict.txt`, `gate.json`, `summary.md` | 0 pass, 1 block, 3 inconclusive, 2 tool error |
+| `rhobound diff-fit --baseline A --candidate B --out DIR [--loadgen-log L] [--workers svc=N] [--margin-ms M] [--batches N] [--baseline-name NAME] [--candidate-name NAME] [--json]` | the A/B record of two concurrent arms (`DIR/ab-record.json`), kept in the record store so that a change set can cite it as `measured-ab`; `--batches N` (30 by default, at least 2) is how many batches of each arm the standard errors are computed from (batch means; the record's `se_method`) | 0, 1 refused |
+| `rhobound explain [--target FILE] --section S [--max-chars N] [--policy P [--policy-name N] [--now T] [--fit F]] --json` | one section of a fit, an A/B record or a prediction; `assumptions`, `rules` and `judge_packet` need a prediction, and `data_contract` and `scope` no target | 0, 1, 2 |
+| `rhobound judge-packet PREDICTION.json --policy P [--policy-name N] [--fit F] [--now T] --json` | the bounded, sanitized packet for a second model's review | 0, 1, 2 |
+| `rhobound judge-check ANSWER.json --packet PACKET.json --json` | checks a judge's answer and prints only its typed fields | 0, 1 refused, 2 not an answer |
+
+The fit stores the capture name exactly as given, or the `--name` given instead, and a fit's digest is the sha256 of its
+bytes: every command that reads a fit refuses one whose bytes are not those `fit` wrote (a record serialized again by
+another tool) with `fit.version`, so store a fit as `fit` wrote it. `fit` and `diff-fit` refuse to run under a build
+whose version a record may not hold (docs/BUILD.md, "With version information"). `predict` refuses `--fit`, `--changes`
+and `--report` given with an empty value, as it refuses them with a capture (exit 1, nothing on standard output, this
+build's usage message on standard error, where 1a2df09, which did not have them, printed its own usage line). `diff-fit`
+names its arms the way `fit` names its capture (`--baseline-name`, `--candidate-name`). A name is 1 to 128 characters
+from `[A-Za-z0-9._:/@-]`, does not start with `/`, has no empty, `.` or `..` path segment, has `ext:` (the prefix of a
+peer's node) at the start of no word but the first, and holds no `arn:` (an AWS resource name, which names an account:
+`arn:` at the start, after a character that is not a letter or a digit, or before an AWS partition); the MCP server's
+configuration takes the same names. A change set's items, `budget --service` and `fit --workers` (not `predict CAPTURE
+--workers`) name a service as the traces wrote it or as the views show it: the views show a fit's services one to one, a
+name the name rule replaces as `svc_<hash8>` or an ARN's last element, and an ARN whose last element another service is
+shown by as `svc_<hash8>` of the whole name, but for a service whose name as the traces wrote it is another's shown name
+(named `svc_<hash8>` like another's hash), which the views show as written beside the other; a name the views show for
+two services means the one named so as the traces wrote it, and is refused with `change.ambiguous_service` only when
+none is. The A/B records live in `$RHOBOUND_STATE/ab/` (default `$XDG_STATE_HOME/rhobound`, then
+`~/.local/state/rhobound`). The gate and the preview read the clock only when `--now` is absent; the examples pin it,
+because the loop capture is from 2023 and a fit older than the policy's `max_fit_age_h` (24 h) holds every verdict that
+does not block at `inconclusive` (rule 3).
+
+A request count given as `--request-count F` together with `--window S,E --cut entry-start --out DIR` counts the window
+cut, not the capture as fetched. `check` reads the capture without it, cuts it, and checks the cut with it
+([mcp/DATA.md](mcp/DATA.md) 4.3). It copies `F` to `DIR/request-count.json` and writes `DIR/manifest.json` with the
+count's digest, so `fit --manifest DIR/manifest.json` reads the count and records the check's `manifest_sha256` as its
+`manifest_digest`. A cut the count refuses leaves `DIR` empty. A `request-count.json` in the capture's own folder
+counts the capture as read, cut or not.
+
+```
+$ bin/rhobound check testdata/mcp/loop
+check: admitted (rhobound.contract/v1.0)
+kept share 1 (counted); capture manifest sha256:bc9f3708dd8272149e117a531ca97aab664bd6507d79076b06be28f000c039cc
+$ bin/rhobound fit testdata/mcp/loop --workers a=1,b=2,c=1 --out out/fit
+wrote out/fit/fit.json (admitted, 0 findings)
+sha256:454a6fe1c26da494086bc5abaf82ede667f95b36e67b2797c4e9b9156437a960
+$ bin/rhobound budget --fit out/fit/fit.json --policy testdata/mcp/loop/policy.json --service=b --json
+{"assumes":["monotone entry mean in the added quantity (untested)"],"fit_digest":"sha256:454a6fe1c26da494086bc5abaf82ede667f95b36e67b2797c4e9b9156437a960","items":[{"at_limit":{"entry_change_ms":2.261,"utilization_after":0.2827},"binding_constraint":"max_entry_mean_change_pct","binding_entry":"a","kind":"own_ms","max_value":1.9494,"per":"visit","safe_value":1.0701,"service":"b"}],"schema":"rhobound-mcp.budget/v1","scope":"mean-only/v1","truncated":false}
+```
+
+`b` may add 1.95 ms per visit before the entry `a` moves by the 5% threshold (2.261 ms), and 1.07 ms while the change
+plus the model's band stays under it. Without `--policy` no entry threshold applies, and only the utilization limits
+bind: the same command gives `b` 42.01 ms per visit (`max_utilization_after`, no `safe_value`), over 20 times as much,
+and the view carries the doubt `budget.no_policy`, whose fix is to name a policy. The MCP server's `budget` never
+answers that way: with no policy named and none named `default` it refuses (`policy.not_named`). A first draft that
+adds 3.5 to 6 ms per visit of `b` blocks:
+
+```
+$ cat draft1.json
+{"schema":"rhobound.change/v1","fit":"","items":[{"op":"own_ms","service":"b","value":{"lo":3.5,"hi":6},"label":"declared"}]}
+$ bin/rhobound predict --fit out/fit/fit.json --changes draft1.json --json > prediction.json
+$ bin/rhobound gate prediction.json --policy testdata/mcp/loop/policy.json --now 2023-11-14T23:15:20Z --out out/gate
+block (advisory)
+  rule 10: mean_change: band low end 3.073 ms above threshold 2.261 ms at a
+  rule 11: unmeasured_delta: change items without a trusted label: 1
+  decide with: an A/B of b (diff-fit): a measured delta passes if the band at a stays at or under 2.261 ms
+```
+
+A declared number never passes (rule 11): +0.4 ms declared previews as `inconclusive` even though its band is under
+the threshold. The A/B pair of the fixture measures it, and a change set that cites the record passes:
+
+```
+$ bin/rhobound diff-fit --baseline testdata/mcp/loop/ab/baseline --candidate testdata/mcp/loop/ab/candidate --out out/ab
+wrote out/ab/ab-record.json (3 services, 0 findings) and minted it in the record store
+sha256:6912326331463ec56eb3abde03bae97314b58cf8b728b128ad941926de5a7007
+```
+
+The record's digest includes the arms' names as given and the tool's version, so it differs between checkouts; cite
+the one `diff-fit` printed, with the item `{"op": "own_ms", "service": "b", "value": <b's own_ms.delta>, "label":
+"measured-ab", "evidence": ["sha256:..."]}`. The value must be the record's delta exactly; the CLI widens it by ±2
+standard errors from the record in its own store. [mcp/ARCHITECTURE.md](mcp/ARCHITECTURE.md) explains the gate's
+rules; [mcp/DATA.md](mcp/DATA.md) every input and code.

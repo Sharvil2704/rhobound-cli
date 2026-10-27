@@ -1,0 +1,20 @@
+{
+  "schema": "rhobound.policy/v1",
+  "max_entry_mean_change_pct": 5,
+  "max_entry_mean_change_ms": null,
+  "max_utilization_after": 0.80,
+  "max_utilization_validated": 0.58,
+  "model_band": {"change_frac": 0.163, "latency_frac": 0.0227, "source": "simulated-p90"},
+  "misfit_max_error_pct": 10,
+  "max_fit_age_h": 24,
+  "evaluate_at": "busiest_window_7d",
+  "trusted_labels": ["measured-ab", "measured-paired"],
+  "doubts_that_hold": ["trace.sampling_unverified", "fit.queue_rebuild_sampled", "trace.client_spans_missing",
+                       "trace.context_not_propagated", "trace.errors_present", "trace.retries", "trace.shedding",
+                       "trace.arrivals_unjudged", "trace.arrivals_overdispersed", "trace.load_trend",
+                       "model.batch_arrivals", "profile.variance_changed", "profile.structure_changed",
+                       "profile.self_report_mismatch"],
+  "max_preview_attempts": 5,
+  "enforce": false,
+  "exceptions": []
+}

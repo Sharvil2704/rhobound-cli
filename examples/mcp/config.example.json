@@ -1,0 +1,14 @@
+{
+  "schema": "rhobound-mcp.config/v1",
+  "engine": {"path": "/usr/local/bin/rhobound", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "state_dir": "~/.local/state/rhobound-mcp",
+  "envs": {"staging": {"store": "dir", "root": "captures/staging"}},
+  "captures": {
+    "loop": "../../testdata/mcp/loop",
+    "loop-a": "../../testdata/mcp/loop/ab/baseline",
+    "loop-b": "../../testdata/mcp/loop/ab/candidate",
+    "hostile": "../../testdata/mcp/hostile"
+  },
+  "policies": {"default": "policy.example.json"},
+  "profile": "default"
+}

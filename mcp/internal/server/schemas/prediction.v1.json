@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/prediction.v1.json",
+  "title": "rhobound-mcp.prediction/v1",
+  "description": "The `predict` tool (ARCHITECTURE.md 5.5, 6.5): the queueing consequence of a change, with an advisory preview verdict. The root validates the view `rhobound preview --fit F --changes C --policy P [--now T] --json` prints (canonical JSON, always advisory, no server keys); the server adds prediction_id, fit_id, fit_age_s, attempt, max_preview_attempts, escalate and links, and always sets prediction_id, fit_id and attempt. The preview applies every rule of 6.3, rule 11 included: a change made only of declared items previews as block or inconclusive (unmeasured_delta), never pass. $defs/input is the tool's input schema.",
+  "$ref": "#/$defs/output",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "fit_id": {"$ref": "defs.v1.json#/$defs/Handle"},
+        "env": {"$ref": "defs.v1.json#/$defs/Env", "description": "use the environment's baseline pointer"},
+        "changes": {"type": "array", "maxItems": 64, "items": {"$ref": "defs.v1.json#/$defs/ChangeItem"}},
+        "measured": {"type": "array", "maxItems": 16, "items": {"$ref": "defs.v1.json#/$defs/MeasuredRef"}},
+        "assumptions": {"type": "array", "maxItems": 16, "items": {
+          "type": "object",
+          "properties": {
+            "question": {"type": "string", "pattern": "^Q[0-9]{1,3}$"},
+            "range": {"$ref": "defs.v1.json#/$defs/Range"}
+          },
+          "required": ["question", "range"],
+          "additionalProperties": false},
+          "description": "structural ranges from a judge answer to this prediction's packet; labelled client-asserted"},
+        "policy": {"$ref": "defs.v1.json#/$defs/Name"},
+        "repo": {"$ref": "defs.v1.json#/$defs/Name"},
+        "branch": {"$ref": "defs.v1.json#/$defs/Name"},
+        "detail": {"enum": ["summary", "full"], "default": "summary"}
+      },
+      "allOf": [{"oneOf": [{"required": ["fit_id"]}, {"required": ["env"]}]},
+                {"anyOf": [{"required": ["changes"]}, {"required": ["measured"]}]}],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "schema": {"const": "rhobound-mcp.prediction/v1"},
+        "prediction_id": {"$ref": "defs.v1.json#/$defs/Handle", "description": "server"},
+        "fit_id": {"$ref": "defs.v1.json#/$defs/Handle", "description": "server"},
+        "fit_age_s": {"type": "integer", "description": "server"},
+        "fit_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "change_hash": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "evidence_class": {"type": "string"},
+        "load": {"type": "object", "properties": {
+          "evaluated_at": {"enum": ["fit_window", "busiest_window_7d", "what_if"]},
+          "extrapolated_load": {"type": "boolean"},
+          "max_utilization_before": {"type": "number"},
+          "max_utilization_after": {"$ref": "defs.v1.json#/$defs/Range"},
+          "validated_ceiling": {"type": "number"},
+          "beyond_validated": {"type": "boolean"}},
+          "additionalProperties": false},
+        "entries": {"type": "array", "maxItems": 20, "items": {
+          "type": "object",
+          "properties": {
+            "name": {"$ref": "defs.v1.json#/$defs/Name"},
+            "name_untrusted": {"type": "boolean"},
+            "before_ms": {"type": "number"},
+            "after_ms": {"$ref": "defs.v1.json#/$defs/Range"},
+            "change_ms": {"$ref": "defs.v1.json#/$defs/Range"},
+            "change_pct": {"$ref": "defs.v1.json#/$defs/Range"},
+            "model_band_ms": {"type": "number"},
+            "band_ms": {"$ref": "defs.v1.json#/$defs/Range", "description": "change range widened by the model band"},
+            "threshold_ms": {"type": ["number", "null"]}
+          },
+          "additionalProperties": false}},
+        "moved": {"type": "array", "maxItems": 10, "items": {
+          "type": "object",
+          "properties": {
+            "service": {"$ref": "defs.v1.json#/$defs/Name"},
+            "service_untrusted": {"type": "boolean"},
+            "utilization_before": {"type": "number"},
+            "utilization_after": {"$ref": "defs.v1.json#/$defs/Range"},
+            "change_ms": {"$ref": "defs.v1.json#/$defs/Range"}
+          },
+          "additionalProperties": false}},
+        "labels": {"type": "array", "items": {
+          "type": "object",
+          "properties": {
+            "item": {"type": "integer"},
+            "label": {"type": "string"},
+            "transfer_validated": {"type": "boolean"}
+          },
+          "additionalProperties": false}},
+        "weakest_label": {"type": "string"},
+        "preview": {"type": "object", "properties": {
+          "verdict": {"$ref": "defs.v1.json#/$defs/Verdict"},
+          "advisory": {"const": true},
+          "rules": {"type": "array", "maxItems": 8, "items": {
+            "type": "object",
+            "properties": {
+              "rule": {"type": "string"},
+              "entry": {"$ref": "defs.v1.json#/$defs/Name"},
+              "effect": {"$ref": "defs.v1.json#/$defs/RuleEffect"},
+              "value": {"type": ["number", "null"]},
+              "threshold": {"type": ["number", "null"]}
+            },
+            "additionalProperties": false}},
+          "decide_with": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 200}},
+          "sentence": {"const": "advisory: computed from inputs the caller supplied; CI decides with measured inputs and the repository's policy"}},
+          "additionalProperties": false},
+        "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"}},
+        "findings_omitted": {"type": "integer"},
+        "assumptions": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Assumption"}},
+        "truncated": {"type": "boolean"},
+        "attempt": {"type": "integer", "description": "server"},
+        "max_preview_attempts": {"type": "integer", "description": "server"},
+        "escalate": {"enum": ["ask_a_human", "bench_non_pass"], "description": "server"},
+        "scope": {"$ref": "defs.v1.json#/$defs/Scope"},
+        "links": {"$ref": "defs.v1.json#/$defs/ServerLinks"}
+      },
+      "required": ["schema", "fit_digest", "change_hash", "entries", "preview", "findings", "assumptions", "truncated",
+                   "scope"],
+      "additionalProperties": false
+    }
+  }
+}

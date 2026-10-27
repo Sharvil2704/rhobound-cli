@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/check.v1.json",
+  "title": "rhobound.check/v1",
+  "description": "What `rhobound check --json` prints: the data contract's verdict on one capture (DATA.md 3.14, 17, 19). Exit status 0 admitted (doubts listed), 4 refused, 2 tool error. With `--cut` and `--request-count F`, it is the verdict on the cut, checked with the count (DATA.md 6): `manifest_sha256` is the cut's manifest as that check completed it, and `ignored` is the read's, before the cut.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound.check/v1"},
+    "contract": {"type": "string", "pattern": "^rhobound\\.contract/v1\\.[0-9]+$",
+                 "description": "the registry version the codes come from"},
+    "verdict": {"enum": ["admitted", "admitted-with-doubts", "refused"]},
+    "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"},
+                 "description": "refusals first, then doubts, then notes"},
+    "counts": {"type": "object", "propertyNames": {"$ref": "defs.v1.json#/$defs/Code"},
+               "additionalProperties": {"type": "integer", "minimum": 0},
+               "description": "occurrences of every code raised, not only those listed in findings"},
+    "ignored": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0},
+                "description": "inputs declared ignored, by what (an attribute key, a file kind), with how many"},
+    "manifest_sha256": {"$ref": "defs.v1.json#/$defs/Digest",
+                        "description": "the digest of the capture manifest the check read or wrote"},
+    "kept_share": {"$ref": "defs.v1.json#/$defs/KeptShare"}
+  },
+  "required": ["schema", "contract", "verdict", "findings", "counts", "ignored", "manifest_sha256", "kept_share"],
+  "additionalProperties": false
+}

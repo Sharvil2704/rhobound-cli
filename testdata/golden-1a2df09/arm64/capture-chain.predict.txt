@@ -1,0 +1,18 @@
+rhobound-cli: mean latency from traces
+capture   testdata/capture-chain
+window    120 s, 3099 entry requests (25.8 /s), 15495 spans
+busiest   c at 26% utilization
+model     refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas
+scope     Mean latency only, for steady load below the utilization limit, assuming Poisson arrivals. No tail (p95/p99), burst, retry or timeout modelling. Worker counts marked + are lower bounds.
+
+  service   rps  pods x w  own ms   cs2  util  wait ms  seen wait  model ms  seen ms  err %
+      a *  25.8    1 x 1+    7.83  1.00   20%     1.99       0.00     45.22    43.74   +3.4
+        b  25.8    1 x 2+   19.94  1.00   26%     1.42       1.61     35.40    35.91   -1.4
+        c  25.8    1 x 1+    9.98  1.00   26%     3.47       3.78     13.75    14.06   -2.2
+
+* entry service   || parallel fan-out   w+ = workers per pod, a lower bound (too few requests waited, or too briefly, to read it from)
+own ms: service time per visit (up to its first call out), without the wait for a worker inside the span. seen wait: queueing the traces show (in-span plus between client and server span).
+seen ms: the mean the callers' client spans measured (entries: the server span).
+
+warnings:
+  - no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: a 1+ (0 waited; up to 1 in a pod at once), b 2+ (0 waited; up to 2 in a pod at once), c 1+ (0 waited; up to 1 in a pod at once)

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/fit.v1.json",
+  "title": "rhobound.fit/v1",
+  "description": "The fit record `rhobound fit` writes (ARCHITECTURE.md 4.1). This schema fixes the summary fields other components read (the server's fit age, baseline pointer and job results; the gate's fit checks). The rest of the record is the engine's lossless mirror of the inference (topology, per-service statistics with their lower-bound flags, observed values) and is open here: it is read only by the CLI that wrote it, so the object allows other keys. The record is canonical JSON; its id is the sha256 of those bytes. Floats that may be non-finite use defs Float.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound.fit/v1"},
+    "capture": {"type": "string", "minLength": 1,
+                "description": "the --name given to `fit`, else the capture argument (or the manifest's path) exactly as given; report v1's `capture` field is filled from it"},
+    "tool": {"$ref": "defs.v1.json#/$defs/Tool"},
+    "options": {
+      "type": "object",
+      "properties": {
+        "workers": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 1},
+                    "description": "pinned workers per pod by service (--workers)"},
+        "pod_identity": {"enum": ["default", "host"]},
+        "kept_share": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "a declared --kept-share"},
+        "plain": {"type": "boolean"},
+        "estimator": {"enum": ["fifo", "rise"]},
+        "probe_routes": {"type": "array", "items": {"type": "string"}},
+        "request_count": {"$ref": "defs.v1.json#/$defs/Digest", "description": "the request-count.v1 file used"}
+      },
+      "required": ["workers", "pod_identity", "plain", "estimator"],
+      "additionalProperties": false
+    },
+    "kept_share": {"$ref": "defs.v1.json#/$defs/KeptShare"},
+    "window": {
+      "type": "object",
+      "properties": {
+        "start": {"$ref": "defs.v1.json#/$defs/Time"},
+        "end": {"$ref": "defs.v1.json#/$defs/Time"},
+        "window_s": {"type": "number", "minimum": 0}
+      },
+      "required": ["start", "end", "window_s"],
+      "additionalProperties": false,
+      "description": "the capture's window; the fit's age is measured from its end"
+    },
+    "manifest_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+    "images": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}},
+               "description": "running image digests by service, as the resources reported them; two for one service is trace.mixed_images"},
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "entry": {"type": "boolean"},
+          "external": {"type": "boolean"},
+          "workers": {"type": "integer", "minimum": 0},
+          "workers_lower_bound": {"type": "boolean"},
+          "client_spans": {"type": "boolean", "description": "its callers' calls carry CLIENT spans (the gate's lower-bound worker rule needs them)"}
+        },
+        "required": ["name", "entry", "external", "workers", "workers_lower_bound"],
+        "additionalProperties": true
+      },
+      "description": "per service, the summary the server and the gate read; the full statistics are in the open part of the record"
+    },
+    "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"}}
+  },
+  "required": ["schema", "capture", "tool", "options", "kept_share", "window", "manifest_digest", "images", "services",
+               "findings"],
+  "additionalProperties": true
+}

@@ -1,0 +1,14 @@
+{
+  "entries": [
+    {
+      "count": 1533,
+      "entry": "a"
+    }
+  ],
+  "schema": "rhobound.request-count/v1",
+  "source": "loadgen",
+  "window": {
+    "end": "2023-11-14T22:14:20.066263936Z",
+    "start": "2023-11-14T22:13:20.032968448Z"
+  }
+}

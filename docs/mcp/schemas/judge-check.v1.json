@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/judge-check.v1.json",
+  "title": "rhobound judge-check output",
+  "description": "What `rhobound judge-check ANSWER.json --packet PACKET.json --json` prints when an answer passes (ARCHITECTURE.md 7.2): only the typed fields that may return to the coding agent (the decision, the reason codes, the structural assumptions, the expected operations without their notes, the measurements asked for), the digests of the packet and of the answer, and the answer's provenance. The commentary never appears here. A refused answer prints refusal.v1 instead (exit 1); a document that is not a judge answer is a tool error (exit 2).",
+  "type": "object",
+  "properties": {
+    "packet": {"$ref": "defs.v1.json#/$defs/Digest", "description": "sha256 of the canonical packet the answer cites"},
+    "answer": {"$ref": "defs.v1.json#/$defs/Digest", "description": "sha256 of the canonical answer"},
+    "provenance": {"enum": ["client-asserted", "ci-judge"], "description": "client-asserted from judge-check; only gate records ci-judge, with the model id and the request digest"},
+    "decision": {"enum": ["accept", "revise", "escalate"]},
+    "reasons": {"type": "array", "maxItems": 16, "items": {"type": "string", "pattern": "^[a-z_]{1,40}$"}},
+    "assumptions": {"type": "array", "maxItems": 16, "items": {
+      "type": "object",
+      "properties": {
+        "question": {"type": "string", "pattern": "^Q[0-9]{1,3}$"},
+        "range": {"$ref": "defs.v1.json#/$defs/Range"},
+        "evidence": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 100}},
+        "confidence": {"enum": ["low", "medium", "high"]}
+      },
+      "required": ["question", "range", "evidence", "confidence"],
+      "additionalProperties": false}},
+    "expected_ops": {"type": "array", "maxItems": 128, "items": {
+      "type": "object",
+      "properties": {
+        "op": {"$ref": "defs.v1.json#/$defs/ChangeItem/properties/op"},
+        "service": {"$ref": "defs.v1.json#/$defs/Name"},
+        "callee": {"$ref": "defs.v1.json#/$defs/Name"},
+        "value": {"$ref": "defs.v1.json#/$defs/Range", "description": "a point value is written as a range with lo = hi"}
+      },
+      "required": ["op", "service", "value"],
+      "additionalProperties": false},
+      "description": "every suggestion's expected operations, in rank order, without their notes"},
+    "measure": {"type": "array", "maxItems": 8, "items": {
+      "type": "object",
+      "properties": {
+        "service": {"$ref": "defs.v1.json#/$defs/Name"},
+        "kind": {"enum": ["ab", "profile"]},
+        "why_code": {"type": "string", "pattern": "^[a-z_]{1,40}$"}
+      },
+      "required": ["service", "kind", "why_code"],
+      "additionalProperties": false}}
+  },
+  "required": ["packet", "answer", "provenance", "decision", "reasons", "assumptions", "expected_ops", "measure"],
+  "additionalProperties": false
+}

@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/perf-profile.v0.1.json",
+  "title": "perf-profile/v0.1 statement",
+  "description": "An in-toto Statement v1 carrying an image performance profile (DATA.md 9.2) [later; the first build parses and checks it, and refuses every signature]. The schema states the field rules a schema can: variance (own_cs2, own_cs2_se) and structure (calls) required per arm and level, the outside measurement (client_latency_ms, cpu_ms_per_visit) required, statistic mean. Rules it cannot state are checked by the parser and the verifier (DATA.md 9.2, 9.5): no storage locations, account ids or cluster ARNs anywhere in the predicate, media types without parameters, subject and baseline bindings, freshness, hardware match.",
+  "type": "object",
+  "properties": {
+    "_type": {"const": "https://in-toto.io/Statement/v1"},
+    "subject": {"type": "array", "minItems": 1, "maxItems": 1, "items": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "digest": {"$ref": "#/$defs/digestSet"}
+      },
+      "required": ["name", "digest"],
+      "additionalProperties": false}},
+    "predicateType": {"const": "https://github.com/Sharvil2704/rhobound-cli/blob/perf-profile-v0.1/docs/mcp/DATA.md#perf-profile-v0.1"},
+    "predicate": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "object",
+          "properties": {
+            "statistic": {"const": "mean"},
+            "load": {"type": "string"},
+            "max_utilization": {"type": "number", "exclusiveMinimum": 0, "maximum": 0.85},
+            "not_covered": {"type": "array", "items": {"type": "string"}}
+          },
+          "required": ["statistic", "load", "max_utilization", "not_covered"],
+          "additionalProperties": false
+        },
+        "service": {"type": "string", "minLength": 1},
+        "arms": {"type": "array", "minItems": 2, "maxItems": 2, "items": {
+          "type": "object",
+          "properties": {
+            "role": {"enum": ["baseline", "candidate"]},
+            "digest": {"$ref": "#/$defs/digestSet"}
+          },
+          "required": ["role", "digest"],
+          "additionalProperties": false}},
+        "pairing": {
+          "type": "object",
+          "properties": {"mode": {"const": "concurrent"}, "run_id": {"type": "string", "minLength": 1}},
+          "required": ["mode", "run_id"],
+          "additionalProperties": false
+        },
+        "tool": {
+          "type": "object",
+          "properties": {
+            "name": {"const": "rhobound"},
+            "version": {"type": "string"},
+            "digest": {"$ref": "#/$defs/digestSet"},
+            "goarch": {"type": "string"}
+          },
+          "required": ["name", "version", "digest", "goarch"],
+          "additionalProperties": false
+        },
+        "harness": {
+          "type": "object",
+          "properties": {
+            "image": {"$ref": "#/$defs/digestSet"},
+            "config": {"$ref": "#/$defs/digestSet"},
+            "loadgen": {"$ref": "#/$defs/digestSet"},
+            "collector": {"$ref": "#/$defs/digestSet"},
+            "arrivals": {"const": "poisson-open-loop"},
+            "warmup_s": {"type": "number", "minimum": 0},
+            "dependencies": {"enum": ["stubbed", "real"]}
+          },
+          "required": ["image", "config", "loadgen", "collector", "arrivals", "warmup_s", "dependencies"],
+          "additionalProperties": false
+        },
+        "environment": {
+          "type": "object",
+          "properties": {
+            "platform": {"type": "string", "pattern": "^[a-z0-9]+/[a-z0-9]+(/[a-z0-9]+)?$"},
+            "instance_type": {"type": "string"},
+            "cpu_model": {"type": "string"},
+            "kernel": {"type": "string"},
+            "cpu_limit_millicores": {"type": "integer", "minimum": 1},
+            "memory_limit_mib": {"type": "integer", "minimum": 1},
+            "container_spec": {"$ref": "#/$defs/digestSet"}
+          },
+          "required": ["platform", "instance_type", "cpu_model", "kernel", "cpu_limit_millicores", "memory_limit_mib",
+                       "container_spec"],
+          "additionalProperties": false
+        },
+        "sizing": {
+          "type": "object",
+          "properties": {
+            "margin_ms": {"type": "number", "exclusiveMinimum": 0},
+            "rule": {"type": "string"},
+            "se_method": {"type": "string", "pattern": "^batch-means/[0-9]+$"}
+          },
+          "required": ["margin_ms", "rule", "se_method"],
+          "additionalProperties": false
+        },
+        "levels": {"type": "array", "minItems": 1, "items": {
+          "type": "object",
+          "properties": {
+            "pod_rps": {"type": "number", "exclusiveMinimum": 0},
+            "baseline": {"$ref": "#/$defs/armLevel"},
+            "candidate": {"$ref": "#/$defs/armLevel"},
+            "delta": {
+              "type": "object",
+              "properties": {
+                "own_ms": {"type": "number"}, "own_se_ms": {"type": "number", "minimum": 0},
+                "own_cs2": {"type": "number"}, "own_cs2_se": {"type": "number", "minimum": 0},
+                "glue_ms": {"type": "number"}, "glue_se_ms": {"type": "number", "minimum": 0},
+                "calls_changed": {"type": "boolean"}, "self_report_consistent": {"type": "boolean"}
+              },
+              "required": ["own_ms", "own_se_ms", "own_cs2", "own_cs2_se", "glue_ms", "glue_se_ms", "calls_changed",
+                           "self_report_consistent"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["pod_rps", "baseline", "candidate", "delta"],
+          "additionalProperties": false}},
+        "load_dependence": {
+          "type": "object",
+          "properties": {
+            "test": {"const": "TOST"},
+            "margin_pct_of_own": {"type": "number", "exclusiveMinimum": 0},
+            "flat_shown": {"type": "boolean"}
+          },
+          "required": ["test", "margin_pct_of_own", "flat_shown"],
+          "additionalProperties": false
+        },
+        "harness_aa": {
+          "type": "object",
+          "properties": {
+            "false_delta_q95_ms": {"type": "number", "minimum": 0},
+            "record": {"$ref": "#/$defs/digestSet"}
+          },
+          "required": ["false_delta_q95_ms", "record"],
+          "additionalProperties": false
+        },
+        "captures": {
+          "type": "object",
+          "properties": {"manifest": {"$ref": "#/$defs/digestSet"}},
+          "required": ["manifest"],
+          "additionalProperties": false
+        },
+        "measured_at": {"type": "string", "format": "date-time"},
+        "valid_for_days": {"type": "integer", "minimum": 1}
+      },
+      "required": ["scope", "service", "arms", "pairing", "tool", "harness", "environment", "sizing", "levels",
+                   "load_dependence", "harness_aa", "captures", "measured_at", "valid_for_days"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["_type", "subject", "predicateType", "predicate"],
+  "additionalProperties": false,
+  "$defs": {
+    "digestSet": {
+      "type": "object",
+      "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+      "required": ["sha256"],
+      "additionalProperties": false
+    },
+    "armLevel": {
+      "type": "object",
+      "properties": {
+        "visits": {"type": "integer", "minimum": 0},
+        "utilization": {"type": "number", "minimum": 0},
+        "utilization_is_upper_bound": {"type": "boolean"},
+        "own_ms": {"type": "number", "minimum": 0},
+        "own_se_ms": {"type": "number", "minimum": 0},
+        "own_cs2": {"type": "number", "minimum": 0},
+        "own_cs2_se": {"type": "number", "minimum": 0},
+        "glue_ms": {"type": "number", "minimum": 0},
+        "glue_se_ms": {"type": "number", "minimum": 0},
+        "calls": {"type": "array", "items": {
+          "type": "object",
+          "properties": {
+            "callee": {"type": "string", "minLength": 1},
+            "per_visit": {"type": "number", "minimum": 0},
+            "parallel": {"type": "boolean"},
+            "async": {"type": "boolean"}
+          },
+          "required": ["callee", "per_visit", "parallel", "async"],
+          "additionalProperties": false}},
+        "workers": {
+          "type": "object",
+          "properties": {"value": {"type": "integer", "minimum": 1}, "lower_bound": {"type": "boolean"}},
+          "required": ["value", "lower_bound"],
+          "additionalProperties": false
+        },
+        "error_share": {"type": "number", "minimum": 0, "maximum": 1},
+        "client_latency_ms": {"type": "number", "minimum": 0},
+        "client_latency_se_ms": {"type": "number", "minimum": 0},
+        "cpu_ms_per_visit": {"type": "number", "minimum": 0}
+      },
+      "required": ["visits", "utilization", "utilization_is_upper_bound", "own_ms", "own_se_ms", "own_cs2",
+                   "own_cs2_se", "glue_ms", "glue_se_ms", "calls", "workers", "error_share", "client_latency_ms",
+                   "client_latency_se_ms", "cpu_ms_per_visit"],
+      "additionalProperties": false
+    }
+  }
+}

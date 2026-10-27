@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/report.v2.json",
+  "title": "rhobound-cli.report/v2",
+  "description": "The report of `rhobound predict --fit F (--changes C | --patch P) --json` (ARCHITECTURE.md 4.1-4.8), written by the pure engine. Additive over report v1: every v1 key keeps its name, type and meaning, and `capture` is the capture name stored in the fit. The v1 projection (`--report v1`) removes every key that report.v1's base does not define, at the top level and in each service row, and sets `version` to rhobound-cli.report/v1. The report holds no policy: thresholds, verdicts and the policy's band fractions are the gate's (gate.v1).",
+  "allOf": [{"$ref": "report.v1.json#/$defs/base"}],
+  "properties": {
+    "version": {"const": "rhobound-cli.report/v2"},
+    "services": {"type": "array", "items": {"$ref": "#/$defs/row"}},
+    "fit_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+    "manifest_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+    "fit_window": {
+      "type": "object",
+      "properties": {
+        "start": {"$ref": "defs.v1.json#/$defs/Time"},
+        "end": {"$ref": "defs.v1.json#/$defs/Time"},
+        "window_s": {"type": "number", "minimum": 0}
+      },
+      "required": ["start", "end", "window_s"],
+      "additionalProperties": false,
+      "description": "the fit's window; the gate measures the fit's age from its end (rule 3, fit_stale)"
+    },
+    "change_hash": {"$ref": "defs.v1.json#/$defs/Digest",
+                    "description": "sha256 of the canonical change set (change.v1) that was applied"},
+    "record_digests": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Digest"},
+                       "description": "the A/B records (and, later, verified profiles) whose numbers entered as measured items"},
+    "tool": {"$ref": "defs.v1.json#/$defs/Tool"},
+    "evidence_class": {"$ref": "defs.v1.json#/$defs/EvidenceClass"},
+    "utilization_limit": {"type": "number", "description": "the --max-rho the engine solved under"},
+    "load": {
+      "type": "object",
+      "properties": {
+        "evaluated_at": {"enum": ["fit_window", "what_if"],
+                         "description": "the engine evaluates at the fit's window, or a what-if load_scale; the gate decides busiest-window questions"},
+        "load_scale": {"type": "number", "exclusiveMinimum": 0},
+        "max_utilization_before": {"type": "number"},
+        "max_utilization_after": {"$ref": "defs.v1.json#/$defs/Range"}
+      },
+      "required": ["evaluated_at", "load_scale", "max_utilization_before"],
+      "additionalProperties": false
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "properties": {
+          "op": {"enum": ["own_ms", "own_pct", "workers", "load_scale"]},
+          "service": {"type": "string"},
+          "callee": {"type": "string"},
+          "value": {"$ref": "defs.v1.json#/$defs/Range", "description": "a point is lo == hi; a measured item is its value +-2 standard errors"},
+          "label": {"$ref": "defs.v1.json#/$defs/Label"},
+          "evidence": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Digest"}},
+          "sign": {"enum": ["increasing", "decreasing", "unsigned"], "description": "ARCHITECTURE.md 4.5"}
+        },
+        "required": ["op", "service", "value", "label", "sign"],
+        "additionalProperties": false
+      },
+      "description": "the change items as applied, in the change set's order; `labels[].item` indexes this list"
+    },
+    "corners": {"type": "integer", "minimum": 0, "maximum": 128, "description": "solves made for the ranges' corners"},
+    "monotonicity": {"const": "assumed (untested)"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "before_ms": {"type": "number"},
+          "after_ms": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}]},
+          "change_ms": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}]},
+          "change_pct": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}]},
+          "model_band_ms": {"type": "number", "description": "max(change_frac x max|change|, latency_frac x before_ms) at the default fractions (model_band): the band at the larger end, for display"},
+          "band_ms": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}],
+                      "description": "change_ms with each end widened by the model band at that end's own change (lo - band(lo), hi + band(hi)), then by each biased construct on its side"},
+          "biased": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "construct": {"enum": ["second_sequential_call", "non_slowest_branch", "staged_calls", "regular_upstream"]},
+                "service": {"type": "string"},
+                "direction": {"enum": ["both", "over", "under"],
+                              "description": "the side the documented error lies on: over-predicted, under-predicted, or both"}
+              },
+              "required": ["construct", "service", "direction"],
+              "additionalProperties": false
+            },
+            "description": "constructs with a documented directional error on the path to this entry (ARCHITECTURE.md 4.5, item 3)"
+          }
+        },
+        "required": ["name", "before_ms", "after_ms", "change_ms", "change_pct", "model_band_ms", "band_ms", "biased"],
+        "additionalProperties": false
+      },
+      "description": "one row per entry service; the ranges are null when a corner saturates a service (no finite mean)"
+    },
+    "model_band": {
+      "type": "object",
+      "properties": {
+        "change_frac": {"type": "number", "minimum": 0},
+        "latency_frac": {"type": "number", "minimum": 0},
+        "source": {"const": "simulated-p90"},
+        "label": {"const": "simulated p90 floor; real software untested"},
+        "worst_case": {"type": "object", "properties": {
+            "change_frac": {"type": "number"}, "latency_frac": {"type": "number"}},
+          "required": ["change_frac", "latency_frac"], "additionalProperties": false}
+      },
+      "required": ["change_frac", "latency_frac", "source", "label", "worst_case"],
+      "additionalProperties": false,
+      "description": "the defaults used for display: 0.163 and 0.0227, worst case 0.355 and 0.0752 (ARCHITECTURE.md 4.5)"
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {"type": "integer", "minimum": 0},
+          "label": {"$ref": "defs.v1.json#/$defs/Label"},
+          "transfer_validated": {"type": "boolean"}
+        },
+        "required": ["item", "label"],
+        "additionalProperties": false
+      }
+    },
+    "weakest_label": {"$ref": "defs.v1.json#/$defs/Label"},
+    "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"}},
+    "assumptions": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Assumption"}}
+  },
+  "required": ["fit_digest", "manifest_digest", "fit_window", "change_hash", "tool", "evidence_class", "utilization_limit", "load",
+               "items", "corners", "monotonicity", "entries", "model_band", "labels", "findings", "assumptions"],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "row": {
+      "allOf": [{"$ref": "report.v1.json#/$defs/rowBase"}],
+      "properties": {
+        "utilization_after": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}],
+                              "description": "over the corners; null without a change. At or above 1 the service saturates"},
+        "change_range_ms": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}],
+                            "description": "the change of model_ms over the corners; absent when a corner leaves the service unsolved"}
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

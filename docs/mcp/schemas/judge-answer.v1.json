@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/judge-answer.v1.json",
+  "title": "rhobound-mcp.judge-answer/v1",
+  "description": "What a judge returns (ARCHITECTURE.md 7.2), checked by `rhobound judge-check ANSWER.json --packet PACKET.json --json`. The schema is the shape only: judge-check refuses with judge.ms_forbidden (a millisecond figure anywhere in a typed field, an own_ms or glue_ms op included), judge.loosening, judge.packet_mismatch, judge.evidence_unresolved and judge.answer_outside_question. Only decision, reasons[].code, assumptions, expected_ops and measure return to the coding agent; commentary goes to humans, wrapped as untrusted.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound-mcp.judge-answer/v1"},
+    "packet": {"$ref": "defs.v1.json#/$defs/Digest", "description": "sha256 of the canonical packet answered"},
+    "decision": {"enum": ["accept", "revise", "escalate"]},
+    "reasons": {"type": "array", "maxItems": 16, "items": {
+      "type": "object",
+      "properties": {
+        "refs": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 100},
+                 "description": "paths into the packet, for example prediction.entries[0]"},
+        "code": {"type": "string", "pattern": "^[a-z_]{1,40}$", "description": "a reason code, for example over_budget"}
+      },
+      "required": ["refs", "code"],
+      "additionalProperties": false}},
+    "assumptions": {"type": "array", "maxItems": 16, "items": {
+      "type": "object",
+      "properties": {
+        "question": {"type": "string", "pattern": "^Q[0-9]{1,3}$"},
+        "range": {"$ref": "defs.v1.json#/$defs/Range"},
+        "evidence": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 100}},
+        "confidence": {"enum": ["low", "medium", "high"]}
+      },
+      "required": ["question", "range", "evidence", "confidence"],
+      "additionalProperties": false}},
+    "suggestions": {"type": "array", "maxItems": 8, "items": {
+      "type": "object",
+      "properties": {
+        "rank": {"type": "integer", "minimum": 1},
+        "expected_ops": {"type": "array", "maxItems": 16, "items": {"$ref": "defs.v1.json#/$defs/ChangeItem"}}
+      },
+      "required": ["rank", "expected_ops"],
+      "additionalProperties": false}},
+    "measure": {"type": "array", "maxItems": 8, "items": {
+      "type": "object",
+      "properties": {
+        "service": {"$ref": "defs.v1.json#/$defs/Name"},
+        "kind": {"enum": ["ab", "profile"]},
+        "why_code": {"type": "string", "pattern": "^[a-z_]{1,40}$"}
+      },
+      "required": ["service", "kind", "why_code"],
+      "additionalProperties": false}},
+    "commentary": {"type": "string", "maxLength": 2048, "description": "free text for humans only; never parsed into a number"}
+  },
+  "required": ["schema", "packet", "decision"],
+  "additionalProperties": false
+}

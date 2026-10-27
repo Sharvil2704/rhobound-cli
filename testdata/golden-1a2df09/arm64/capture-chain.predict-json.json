@@ -1,0 +1,66 @@
+{
+  "version": "rhobound-cli.report/v1",
+  "capture": "testdata/capture-chain",
+  "window_s": 120.00053763792899,
+  "requests": 3099,
+  "spans": 15495,
+  "traces": 3099,
+  "broken_traces": 0,
+  "external_rps": 25.824884296355755,
+  "kept_share": 1,
+  "max_utilization": 0.25773198874589065,
+  "busiest_service": "c",
+  "services": [
+    {
+      "name": "a",
+      "entry": true,
+      "rate_rps": 25.824884296355755,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 7.831813534688614,
+      "own_cs2": 1,
+      "utilization": 0.20225567836396643,
+      "model_wait_ms": 1.985634640469737,
+      "observed_wait_ms": 0,
+      "model_ms": 45.22169909979492,
+      "observed_ms": 43.742223777992905,
+      "error_pct": 3.382259048627405
+    },
+    {
+      "name": "b",
+      "rate_rps": 25.824884296355755,
+      "replicas": 1,
+      "workers_per_pod": 2,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 19.94282022329798,
+      "own_cs2": 1,
+      "utilization": 0.25751051240484696,
+      "model_wait_ms": 1.4163629798611161,
+      "observed_wait_ms": 1.6107654649885483,
+      "model_ms": 35.404250924636564,
+      "observed_ms": 35.91041024330429,
+      "error_pct": -1.4095058097034787
+    },
+    {
+      "name": "c",
+      "rate_rps": 25.824884296355755,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 9.979986194256064,
+      "own_cs2": 1,
+      "utilization": 0.25773198874589065,
+      "model_wait_ms": 3.4652735272214095,
+      "observed_wait_ms": 3.7770303607616738,
+      "model_ms": 13.745291721477471,
+      "observed_ms": 14.057048555017747,
+      "error_pct": -2.217797230479028
+    }
+  ],
+  "warnings": [
+    "no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: a 1+ (0 waited; up to 1 in a pod at once), b 2+ (0 waited; up to 2 in a pod at once), c 1+ (0 waited; up to 1 in a pod at once)"
+  ],
+  "scope": "Mean latency only, for steady load below the utilization limit, assuming Poisson arrivals. No tail (p95/p99), burst, retry or timeout modelling. Worker counts marked + are lower bounds.",
+  "model": "refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas"
+}

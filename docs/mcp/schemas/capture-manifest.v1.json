@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/capture-manifest.v1.json",
+  "title": "rhobound.capture-manifest/v1",
+  "description": "The capture manifest (DATA.md 4.5): the files of one capture with their sha256, the window and how it was cut, and where the data came from. The capture's identity is the sha256 of the canonical manifest. It names no bucket: the prefix is in server configuration and only its digest is recorded. A fetcher writes a preliminary manifest; `check --cut` writes the final one. A manifest written for a local folder has source kind dir and no S3 fields.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound.capture-manifest/v1"},
+    "source": {
+      "type": "object",
+      "properties": {
+        "kind": {"enum": ["s3", "dir"]},
+        "env": {"$ref": "defs.v1.json#/$defs/Env"},
+        "prefix_digest": {"$ref": "defs.v1.json#/$defs/Digest"}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "window": {
+      "type": "object",
+      "properties": {
+        "start": {"$ref": "defs.v1.json#/$defs/Time"},
+        "end": {"$ref": "defs.v1.json#/$defs/Time"},
+        "cut": {"enum": ["entry_span_start", "none"], "description": "none: a whole folder, not cut"}
+      },
+      "required": ["start", "end", "cut"],
+      "additionalProperties": false
+    },
+    "margins_s": {
+      "type": "object",
+      "properties": {
+        "before": {"type": "number", "minimum": 0},
+        "after": {"type": "number", "minimum": 0},
+        "after_derived_from": {"type": "string", "maxLength": 200}
+      },
+      "required": ["before", "after"],
+      "additionalProperties": false
+    },
+    "partition_timezone": {
+      "type": "object",
+      "properties": {
+        "configured": {"type": "string"},
+        "derived_offset_h": {"type": "integer"}
+      },
+      "required": ["configured", "derived_offset_h"],
+      "additionalProperties": false
+    },
+    "objects": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "description": "the file name, derived from the object's key path; never a bucket"},
+          "size": {"type": "integer", "minimum": 0},
+          "etag": {"type": "string"},
+          "sha256": {"$ref": "defs.v1.json#/$defs/Sha256Hex"}
+        },
+        "required": ["name", "size", "sha256"],
+        "additionalProperties": false
+      }
+    },
+    "dropped": {
+      "type": "object",
+      "properties": {
+        "duplicate_spans": {"type": "integer", "minimum": 0},
+        "partial_tail_lines": {"type": "integer", "minimum": 0},
+        "traces_outside_window": {"type": "integer", "minimum": 0}
+      },
+      "required": ["duplicate_spans", "partial_tail_lines", "traces_outside_window"],
+      "additionalProperties": false
+    },
+    "collector": {
+      "type": "object",
+      "properties": {
+        "config_sha256": {"$ref": "defs.v1.json#/$defs/Sha256Hex"},
+        "distribution": {"type": "string"},
+        "version": {"type": "string"},
+        "mode": {"enum": ["direct", "forwarded"]}
+      },
+      "required": ["mode"],
+      "additionalProperties": false
+    },
+    "keep_list_sha256": {"$ref": "defs.v1.json#/$defs/Sha256Hex"},
+    "sampling": {
+      "type": "object",
+      "properties": {
+        "evidence": {"enum": ["counted", "derived-th", "declared", "assumed"]},
+        "independent_count": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Digest"}, {"type": "null"}],
+                              "description": "the digest of the request-count.v1 file"},
+        "declared_sdk_samplers": {"type": "object", "additionalProperties": {"type": "string"}}
+      },
+      "required": ["evidence"],
+      "additionalProperties": false
+    },
+    "cluster_dump": {
+      "type": "object",
+      "properties": {
+        "layout": {"enum": ["start-end", "single-snapshot"]},
+        "start": {"$ref": "#/$defs/dump"},
+        "end": {"$ref": "#/$defs/dump"}
+      },
+      "required": ["layout"],
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_object_bytes": {"type": "integer", "minimum": 1},
+        "max_capture_bytes": {"type": "integer", "minimum": 1}
+      },
+      "required": ["max_object_bytes", "max_capture_bytes"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema", "source", "window", "objects", "sampling", "limits"],
+  "additionalProperties": false,
+  "$defs": {
+    "dump": {
+      "type": "object",
+      "properties": {
+        "digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "taken_at": {"$ref": "defs.v1.json#/$defs/Time", "description": "absent: cluster.time_unknown"}
+      },
+      "required": ["digest"],
+      "additionalProperties": false
+    }
+  }
+}

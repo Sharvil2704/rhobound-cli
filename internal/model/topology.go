@@ -4,6 +4,7 @@ package model
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -87,6 +88,9 @@ type Service struct {
 	// replica is a queue fed its share (ResidenceShares).
 	Shares []float64
 }
+
+// ErrCycle is the error Finish returns for a call graph with a cycle: the model needs a DAG.
+var ErrCycle = errors.New("the call graph has a cycle; the model needs a DAG")
 
 // Topology is a DAG of services plus where external traffic enters.
 type Topology struct {
@@ -242,7 +246,7 @@ func (t *Topology) Finish() error {
 		}
 	}
 	if len(order) != n {
-		return fmt.Errorf("the call graph has a cycle; the model needs a DAG")
+		return ErrCycle
 	}
 	t.order = order
 	return nil

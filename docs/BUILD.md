@@ -57,8 +57,25 @@ $ bin/rhobound version
 rhobound 0.1.0
 ```
 
-For a release, `-trimpath` removes local paths from the binary, and `-s -w` drops the symbol table and debug
-information (here 3.3 MB instead of about 5 MB):
+Fit and A/B records hold the version, so it follows their rule: 1 to 64 letters, digits and `. _ + ~ -`, the first a
+letter or a digit (`0.1.0`, `1.2.3+build.7`, a 40- or 64-digit commit id). Every build refuses to read a record whose
+version breaks the rule (`fit.version`), so a build stamped with such a version (`ship:deadbeef`, a URL, a 65-character
+id) refuses to run `fit` and `diff-fit`, before it reads the capture, and says the rule.
+
+`rhobound version --json` adds what the go command recorded in the binary: the Go release, the architecture and,
+when it was built inside a git checkout, the source it was built from (`vcs`, absent otherwise; `modified` is true when
+the checkout had uncommitted changes). Its schema is `docs/mcp/schemas/version.v1.json`:
+
+```
+$ bin/rhobound version --json
+{"go":"go1.27.2","goarch":"arm64","name":"rhobound","vcs":{"modified":false,"revision":"<40 hex digits>","time":"<commit time, RFC 3339>"},"version":"0.1.0"}
+```
+
+For a release, build with the latest patch release of a supported Go (the `go` lines of `go.mod` and `mcp/go.mod` are
+minimums, and later patch releases carry the standard library's security fixes, which the network-facing MCP server
+needs), with `CGO_ENABLED=0`. `-trimpath` removes local paths from the binary, and `-s -w` drops the symbol table and
+debug information (here 3.3 MB instead of about 5 MB). Two builds from one tree on one host, with `-trimpath`, gave the
+same bytes; builds on other hosts were not compared:
 
 ```
 go build -trimpath -ldflags "-s -w -X main.Version=0.1.0" -o bin/rhobound ./cmd/rhobound
@@ -120,6 +137,9 @@ The Makefile is a shortcut for the `go` commands. `make` is not needed; every ta
 | `make fmt` | `gofmt -l -w .` | formats the code in place |
 | `make accuracy` | `go test -tags accuracy -v -count=1 -timeout 60m ./internal/infer` | every accuracy study (prints tables, does not assert) |
 | `make e2e` | `RHOBOUND_E2E=1 go test -tags e2e -v -count=1 -timeout 40m ./e2e` | the Kubernetes end-to-end test (needs docker, kind, kubectl) |
+| `make mcp-build` | `cd mcp && go build -o ../bin/rhobound-mcp ./cmd/rhobound-mcp` | builds the MCP server (the nested module `mcp/`, Go 1.25 or later) |
+| `make mcp-test` | `cd mcp && go vet ./... && go test ./...` | the server's tests; they build the CLI from this repository and run it |
+| `make contract` | `go run ./tools/gencontract docs` | regenerates the code tables of `docs/mcp/DATA.md` and `docs/mcp/data-contract.json` from the registry |
 
 ## Running the tests
 
@@ -346,14 +366,34 @@ cluster up and gives the commands.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push and pull request, on `ubuntu-latest` with the Go version that `go.mod`
-names:
+`.github/workflows/ci.yml` runs on every push and pull request, on `ubuntu-latest`, twice: with the Go version that
+`go.mod` names, and with the current stable release:
 
-1. `gofmt -l .` must print nothing;
+1. `gofmt -l .` must print nothing (under `bash`, with `pipefail`, so a file gofmt cannot parse fails the step);
 2. `go vet ./... && go vet -tags e2e ./...` (the `accuracy` tag is not vetted in CI; `make vet` does it);
 3. `go test -race -count=1 -timeout 30m ./...` (the race detector makes `internal/infer` about ten times slower, and Go's default limit is 10 minutes per package).
 
-A second job builds and tests `rust/` (rbfast) with `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test --release`; see [rust/README.md](../rust/README.md).
+A second job, `mcp`, runs the same three steps in the nested module `mcp/` (the MCP server), with the Go version that
+`mcp/go.mod` names (1.25) and with the current stable release, after `go mod tidy -diff` (its `go.mod` and `go.sum`
+must be tidy): the root module stays
+on Go 1.23 and the standard library, and `./...` in the root never descends into `mcp/`. The root job's tests include
+the dependency check (`tools/depcheck`: the CLI is built from the standard library and this module only, and `go.mod`
+says `go 1.23`) and the contract-doc check (`tools/gencontract`: the code tables in `docs/mcp/DATA.md` match the
+registry).
+
+A third job, `golden-arm64`, runs on GitHub's `ubuntu-24.04-arm` runner, because the goldens of the previous release
+(`testdata/golden-1a2df09/arm64`) and the judge packet that `testdata/mcp/loop/judge-answer.json` cites were recorded
+on linux/arm64, and on the amd64 runners the golden sweep skips: it runs the byte-for-byte golden sweep, fit parity,
+the documented pod-identity change and the captures past the reader's caps, whose comparisons with 1a2df09's bytes
+run only where those goldens are (`./cmd/rhobound`; amd64 checks their numbers only, and logs that; under `-race` the
+captures of 65 MiB and 1 GiB are not read), and the loop path (`./tools/gencontract`). Each must pass by name. A fourth
+job, `golden-live`, checks the same byte rule on amd64, where no goldens are stored: `tools/golden-live.sh` builds
+rhobound from commit 1a2df09 out of the history (the checkout fetches it all) and compares it with this tree's CLI, byte
+for byte, on every case of the manifest.
+
+A fifth job builds and tests `rust/` (rbfast) on Rust 1.99.1, pinned so that a new stable release's lints cannot turn
+it red, with `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test --release`; see
+[rust/README.md](../rust/README.md).
 
 It does not run the accuracy studies or either end-to-end test.
 

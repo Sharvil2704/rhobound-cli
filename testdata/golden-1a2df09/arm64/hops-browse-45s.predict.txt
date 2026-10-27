@@ -1,0 +1,25 @@
+rhobound-cli: mean latency from traces
+capture   internal/infer/testdata/hops/browse-45s
+window    45 s, 824 entry requests (18.3 /s), 7373 spans
+busiest   frontend at 2% utilization
+model     refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas
+scope     Mean latency only, for steady load below the utilization limit, assuming Poisson arrivals. No tail (p95/p99), burst, retry or timeout modelling. Worker counts marked + are lower bounds.
+
+           service   rps  pods x w  own ms   cs2  glue ms  util  wait ms  seen wait  model ms  seen ms  err %
+          frontend  18.2    1 x 1+    0.84  0.35     0.26    2%     0.01       0.01      2.56     2.53   +1.1
+  frontend-proxy *  18.2    1 x 1+    0.12  0.07     0.05    0%     0.00       0.00      2.73     2.70   +1.1
+  image-provider *   0.1    1 x 1+    0.00  1.00     0.00    0%     0.00       0.00      0.00     0.00      -
+   product-catalog  18.2    1 x 1+    0.10  0.04     0.00    0%     0.00       0.00      1.08     1.08   -0.1
+
+* entry service   || parallel fan-out   w+ = workers per pod, a lower bound (too few requests waited, or too briefly, to read it from)
+own ms: service time per visit (up to its first call out), without the wait for a worker inside the span. seen wait: queueing the traces show (in-span plus between client and server span).
+glue ms: time per visit after its first call that is not in a call (the worker is free by then); a pure delay.
+seen ms: the mean the callers' client spans measured (entries: the server span).
+hop from the mean: the network time of the calls into frontend, product-catalog is the mean client-minus-server span time less the model's wait (not its quietest tenth, which lies below the mean by the spread of the network time). Their seen wait, and the hop's part of their seen ms, are set by it, so they do not check it.
+
+warnings:
+  - nested spans of one kind in one pod (a framework's span inside the instrumentation's, a gRPC client's span around the HTTP client's) were read as one: the other was made INTERNAL, so a request is one visit and a call is one call: frontend 819 SERVER (the outer span kept)
+  - 1 service emits no SERVER span, so it is not in the model (the model has a service for a SERVER span, a visit that holds a worker; --patch cannot name it): load-generator (CLIENT spans)
+  - frontend-proxy: 0.12% of reconstructed service times are negative (clock or ordering jitter)
+  - image-provider: only 5 visits; its estimates are rough
+  - no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: frontend 1+ (0 waited; up to 1 in a pod at once), frontend-proxy 1+ (0 waited; up to 2 in a pod at once), image-provider 1+ (0 waited; up to 1 in a pod at once), product-catalog 1+ (0 waited; up to 2 in a pod at once)

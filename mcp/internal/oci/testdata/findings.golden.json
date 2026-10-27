@@ -1,0 +1,21 @@
+[
+{"code":"profile.bad_signature","level":"refuse","fix":"use an A/B measurement (fit_start with ab) until verified profiles are supported"},
+{"code":"profile.baseline_not_running","level":"refuse","subject":"checkout","fix":"profile against the digest that runs in production now"},
+{"code":"profile.errors_differ","level":"doubt","subject":"checkout","numbers":{"levels":1},"fix":"fix the errors, or compare arms with equal error shares"},
+{"code":"profile.hardware_mismatch","level":"refuse","subject":"checkout","numbers":{"fields":1},"examples":["instance_type"],"fix":"profile on production's instance type with its CPU limit and container spec"},
+{"code":"profile.level_drift","level":"doubt","subject":"checkout","numbers":{"levels":2},"fix":"use the level nearest production's per-pod rate, or show flatness by an equivalence test"},
+{"code":"profile.load_out_of_range","level":"refuse","subject":"checkout","numbers":{"candidate_utilization":0.31,"measured_hi":40,"measured_lo":40,"pod_rps":60},"fix":"measure a level at production's per-pod rate, below the utilization limit"},
+{"code":"profile.locations_present","level":"refuse","numbers":{"fields":1},"examples":["predicate.environment.cpu_model"],"fix":"remove storage locations, account ids, ARNs and URLs from the predicate: anyone who can pull the image can read it"},
+{"code":"profile.no_outside_measurement","level":"refuse","numbers":{"fields":1},"examples":["predicate.levels.0.candidate.cpu_ms_per_visit"],"fix":"report client_latency_ms from the harness-owned load generator and cpu_ms_per_visit from cgroup accounting for each arm and level"},
+{"code":"profile.no_structure","level":"refuse","numbers":{"fields":1},"examples":["predicate.levels.0.candidate.calls"],"fix":"report calls per visit per callee for each arm and level: a structural change must be seen"},
+{"code":"profile.no_variance","level":"refuse","numbers":{"fields":1},"examples":["predicate.levels.0.delta.own_cs2_se"],"fix":"measure and report own_cs2 and own_cs2_se for each arm and level: a mean-only profile cannot be checked for a variance change"},
+{"code":"profile.predicate_type","level":"refuse","examples":["predicate.arms"],"fix":"write an in-toto Statement v1 with the perf-profile/v0.1 predicate, every field as DATA.md 9.2 lists it"},
+{"code":"profile.scope_not_mean","level":"refuse","numbers":{"fields":1},"examples":["predicate.scope.statistic"],"fix":"profiles are of the mean only"},
+{"code":"profile.self_report_mismatch","level":"doubt","subject":"checkout","numbers":{"levels":1},"fix":"the candidate's spans disagree with its latency measured at the load generator: check its instrumentation"},
+{"code":"profile.stale","level":"refuse","subject":"checkout","numbers":{"age_days":16,"valid_for_days":14},"fix":"measure again"},
+{"code":"profile.structure_changed","level":"doubt","subject":"checkout","numbers":{"levels":1},"fix":"the change is structural: describe it as a structural change; its own-time delta is never applied alone"},
+{"code":"profile.subject_mismatch","level":"refuse","subject":"checkout","fix":"profile the candidate's platform manifest, the digest about to run"},
+{"code":"profile.time_disagrees","level":"refuse","subject":"checkout","fix":"the measured time lies in the future: check the harness clock"},
+{"code":"profile.too_few_visits","level":"refuse","subject":"checkout","numbers":{"arm_levels_short":2,"margin_ms":0.1,"visits_needed":51454},"fix":"measure each level longer: n = 8 cs2 S^2 / m^2 visits per arm"},
+{"code":"profile.variance_changed","level":"doubt","subject":"checkout","numbers":{"levels":1},"fix":"the service time's variability changed: inconclusive until the engine has a variance patch"}
+]

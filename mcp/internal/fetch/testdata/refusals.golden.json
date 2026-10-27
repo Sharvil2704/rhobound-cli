@@ -1,0 +1,7 @@
+[
+{"code":"store.compression_mismatch","reason":"3 objects are compressed otherwise than their names say (the reader inflates exactly the .gz names)","fix":"fix the exporter: compression: gzip with the .gz names it writes, and no other compression","subject":"prod","numbers":{"objects":3}},
+{"code":"store.manifest_mismatch","reason":"19 objects read other sizes than the listing gave (the first: 332 bytes, listed 331): they changed while the window was fetched","fix":"re-fetch the window; never edit a capture in place","subject":"prod","numbers":{"listed_bytes":331,"objects":19,"read_bytes":332}},
+{"code":"store.partition_tz_offset","reason":"the partition minutes run +2.00 hours from the span starts they hold: the partitions are not in UTC","fix":"set s3_partition_timezone: UTC on the Collector's S3 exporter (its default is Local)","subject":"prod","numbers":{"derived_offset_h":2,"objects_sampled":19}},
+{"code":"store.too_large","reason":"the window's 38 objects total 12616 bytes in the listing, over the cap of 1000","fix":"a capture over its cap: a shorter window; an object over its cap: smaller objects (rotate the Collector's files sooner, or send smaller batches)","subject":"prod","numbers":{"cap_bytes":1000,"listed_bytes":12616,"objects":38}},
+{"code":"store.unreadable_object","reason":"3 of the window's 22 objects have a suffix the reader does not parse (it reads .json, .jsonl and their .gz forms); the reader would skip them silently","fix":"export with marshaler: otlp_json and compression: gzip","subject":"prod","numbers":{"objects":3}}
+]

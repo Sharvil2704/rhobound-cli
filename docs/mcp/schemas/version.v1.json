@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/version.v1.json",
+  "title": "rhobound version --json",
+  "description": "What `rhobound version --json` and `rhobound-mcp version --json` print, as one canonical JSON line: the binary's name and version, and what the go command recorded in it (docs/BUILD.md, DEPLOY_AWS.md 14). Plain `version` prints `NAME VERSION` instead.",
+  "type": "object",
+  "properties": {
+    "name": {"enum": ["rhobound", "rhobound-mcp"]},
+    "version": {"type": "string", "minLength": 1,
+                "description": "the version set at link time (-ldflags \"-X main.Version=...\"), else the built-in development version"},
+    "go": {"type": "string", "minLength": 1, "description": "the Go release the binary was built with"},
+    "goarch": {"type": "string", "minLength": 1, "description": "the architecture the binary was built for (GOARCH)"},
+    "vcs": {
+      "type": "object",
+      "description": "the source the binary was built from; absent when the go command recorded no revision (a build outside a git checkout, or with -buildvcs=false)",
+      "properties": {
+        "revision": {"type": "string", "minLength": 1, "description": "the commit"},
+        "time": {"type": "string", "description": "the commit's time, RFC 3339"},
+        "modified": {"type": "boolean", "description": "true when the checkout had uncommitted changes"}
+      },
+      "required": ["revision", "time", "modified"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["name", "version", "go", "goarch"],
+  "additionalProperties": false
+}

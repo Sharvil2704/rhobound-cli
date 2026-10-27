@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/gate.v1.json",
+  "title": "rhobound.gate/v1",
+  "description": "gate.json, the machine record `rhobound gate PREDICTION.json --policy P [--readiness R] [--now T] --out DIR` writes beside verdict.txt and summary.md (ARCHITECTURE.md 6.1-6.6). PREDICTION.json is a report v2, or a refusal (refusal.v1), which rule 1 turns into inconclusive. Exit status: 0 pass, 1 block, 3 inconclusive, 2 when the tool cannot run. Each of the 13 rules is listed in order, evaluated or not.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound.gate/v1"},
+    "verdict": {"$ref": "defs.v1.json#/$defs/Verdict"},
+    "exit_code": {"enum": [0, 1, 3]},
+    "advisory": {"type": "boolean", "description": "always true in the first build (gate.enforce_not_earned)"},
+    "preview": {"type": "boolean", "description": "evaluated for a preview (an agent's declared inputs), never for CI"},
+    "now": {"$ref": "defs.v1.json#/$defs/Time", "description": "the time used for fit age: --now, or the clock read outside the pure function"},
+    "fit_age_h": {"type": "number"},
+    "evaluated_at": {"enum": ["fit_window", "busiest_window_7d", "what_if"]},
+    "rules": {
+      "type": "array",
+      "minItems": 14,
+      "maxItems": 14,
+      "items": {
+        "type": "object",
+        "properties": {
+          "number": {"enum": ["1", "2", "3", "4", "5", "6", "7", "8", "8b", "9", "10", "11", "12", "13"]},
+          "rule": {"$ref": "defs.v1.json#/$defs/RuleToken",
+                   "description": "the rule's token when it fired (fit_stale, unmeasured_delta, range_straddles, input_refused:<code>, ...), else its name"},
+          "evaluated": {"type": "boolean"},
+          "effect": {"$ref": "defs.v1.json#/$defs/RuleEffect"},
+          "entry": {"type": "string"},
+          "value": {"type": ["number", "null"], "description": "the rule's input value"},
+          "threshold": {"type": ["number", "null"], "description": "its limit"},
+          "code": {"$ref": "defs.v1.json#/$defs/Code", "description": "the finding code that triggered the rule, if any"}
+        },
+        "required": ["number", "rule", "evaluated", "effect"],
+        "additionalProperties": false
+      }
+    },
+    "decide_with": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 200}},
+    "digests": {
+      "type": "object",
+      "properties": {
+        "report": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "fit": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "policy": {"$ref": "defs.v1.json#/$defs/Digest", "description": "of the effective policy, after defaults"},
+        "readiness": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "judge_request": {"$ref": "defs.v1.json#/$defs/Digest"}
+      },
+      "required": ["report", "policy"],
+      "additionalProperties": false
+    },
+    "policy": {"$ref": "policy.v1.json", "description": "the effective policy, defaults applied"},
+    "unknown_policy_keys": {"type": "array", "items": {"type": "string"}},
+    "exceptions_applied": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule": {"enum": ["unmeasured_delta", "threshold_under_floor"]},
+          "label": {"$ref": "defs.v1.json#/$defs/Label"},
+          "reason": {"type": "string"},
+          "items": {"type": "array", "items": {"type": "integer", "minimum": 0}}
+        },
+        "required": ["rule", "reason"],
+        "additionalProperties": false
+      }
+    },
+    "readiness": {"oneOf": [{"$ref": "readiness.v1.json"}, {"type": "null"}], "description": "the --readiness file, echoed"},
+    "judge": {
+      "type": "object",
+      "properties": {
+        "provenance": {"enum": ["client-asserted", "ci-judge"]},
+        "model_id": {"type": "string"},
+        "decision": {"enum": ["accept", "revise", "escalate"]},
+        "answer": {"$ref": "defs.v1.json#/$defs/Digest"}
+      },
+      "required": ["provenance", "decision", "answer"],
+      "additionalProperties": false,
+      "description": "a judge answer checked by judge-check, when one was supplied (ARCHITECTURE.md 7.2)"
+    },
+    "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"}}
+  },
+  "required": ["schema", "verdict", "exit_code", "advisory", "preview", "now", "evaluated_at", "rules", "decide_with",
+               "digests", "policy", "unknown_policy_keys", "exceptions_applied", "findings"],
+  "additionalProperties": false
+}

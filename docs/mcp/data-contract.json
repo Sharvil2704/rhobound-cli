@@ -1,0 +1,2047 @@
+{
+  "schema": "rhobound.data-contract/v1",
+  "contract": "rhobound.contract/v1.0",
+  "codes": [
+    {
+      "code": "store.unreadable_object",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "an object with a suffix the reader does not parse",
+      "fix": "export with marshaler: otlp_json, compression: gzip",
+      "today": "skipped silently",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object",
+        "objects"
+      ]
+    },
+    {
+      "code": "store.compression_mismatch",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "a .gz object that is not gzip",
+      "fix": "fix the exporter",
+      "today": "read error",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object",
+        "line",
+        "value",
+        "objects"
+      ]
+    },
+    {
+      "code": "store.manifest_mismatch",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "a file's sha256, size or count differs from the capture manifest",
+      "fix": "re-fetch the window; never edit a capture in place",
+      "today": "n/a (no manifest today)",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object",
+        "missing",
+        "size",
+        "unlisted",
+        "line",
+        "objects",
+        "listed_bytes",
+        "read_bytes",
+        "files",
+        "other_entries"
+      ]
+    },
+    {
+      "code": "store.too_large",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "the listing or the inflated stream passes a cap",
+      "fix": "a capture over its cap: a shorter window; an object over its cap: smaller objects (rotate the Collector's files sooner, or send smaller batches)",
+      "today": "no limit",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "bytes",
+        "limit",
+        "listed_bytes",
+        "cap_bytes",
+        "objects"
+      ]
+    },
+    {
+      "code": "input.too_large",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "the inflated stream passes a reader cap: its bytes, a line, the span count or a kept attribute value",
+      "fix": "a value or a line too long: shorten it in the Collector (an OTTL truncate_all) or split the batch; too many bytes or spans: a shorter window or smaller files",
+      "today": "no limit",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "limit"
+      ]
+    },
+    {
+      "code": "store.partition_tz_offset",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "partition minutes differ from span starts by whole hours",
+      "fix": "set s3_partition_timezone: UTC",
+      "today": "not detected",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "derived_offset_h",
+        "objects_sampled"
+      ]
+    },
+    {
+      "code": "store.late_batches",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "spans of the window found in the last margin minute",
+      "fix": "raise the margin; check the Collector's export errors",
+      "today": "not detected",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "late_spans",
+        "margin_after_s"
+      ]
+    },
+    {
+      "code": "store.small_batches",
+      "level": "note",
+      "trigger": "capture",
+      "when": "more than 30 [D] objects per Collector-minute; the note carries the monthly request cost",
+      "fix": "raise the batch timeout to 5-10 s",
+      "today": "not detected",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "objects_per_minute",
+        "put_requests_per_month",
+        "put_cost_usd_per_month",
+        "threshold_objects_per_minute"
+      ]
+    },
+    {
+      "code": "store.query_api_incomplete",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "the source is a trace backend's search API (Tempo, Jaeger, SaaS)",
+      "fix": "tee the Collector pipeline to S3 or files",
+      "today": "n/a",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "trace.bad_json",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "an undecodable value, with file and line, from either decoder path (3.2)",
+      "fix": "re-export; do not edit by hand",
+      "today": "bad OTLP/JSON: ... or <path>: ...",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object",
+        "line",
+        "value"
+      ]
+    },
+    {
+      "code": "trace.jsonl_pretty",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "pretty-printed values in .jsonl; one array of requests",
+      "fix": "write one request per line",
+      "today": "bad OTLP/JSON",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object"
+      ]
+    },
+    {
+      "code": "trace.json_array",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "pretty-printed values in .jsonl; one array of requests",
+      "fix": "write one request per line",
+      "today": "bad OTLP/JSON",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object"
+      ]
+    },
+    {
+      "code": "trace.partial_tail_dropped",
+      "level": "note",
+      "trigger": "capture",
+      "when": "an unterminated last line of the newest object",
+      "fix": "none needed",
+      "today": "whole capture refused",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "lines"
+      ]
+    },
+    {
+      "code": "trace.snake_case_keys",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "resource_spans; instrumentationLibrarySpans; Jaeger UI, Zipkin or X-Ray JSON (named)",
+      "fix": "use a current Collector with the matching receiver",
+      "today": "no usable spans",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object"
+      ]
+    },
+    {
+      "code": "trace.pre_v1_otlp",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "resource_spans; instrumentationLibrarySpans; Jaeger UI, Zipkin or X-Ray JSON (named)",
+      "fix": "use a current Collector with the matching receiver",
+      "today": "no usable spans",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object"
+      ]
+    },
+    {
+      "code": "trace.not_otlp",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "resource_spans; instrumentationLibrarySpans; Jaeger UI, Zipkin or X-Ray JSON (named)",
+      "fix": "use a current Collector with the matching receiver",
+      "today": "no usable spans",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object"
+      ]
+    },
+    {
+      "code": "trace.ids_base64",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "id encodings other than OTLP/JSON hex",
+      "fix": "export with the Collector's OTLP/JSON exporters",
+      "today": "every span skipped; no usable spans",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "spans",
+        "object"
+      ]
+    },
+    {
+      "code": "trace.trace_id_64bit",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "id encodings other than OTLP/JSON hex",
+      "fix": "export with the Collector's OTLP/JSON exporters",
+      "today": "every span skipped; no usable spans",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "spans",
+        "object"
+      ]
+    },
+    {
+      "code": "trace.ids_mixed",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "id encodings other than OTLP/JSON hex",
+      "fix": "export with the Collector's OTLP/JSON exporters",
+      "today": "every span skipped; no usable spans",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "base64",
+        "hex64",
+        "hex",
+        "object"
+      ]
+    },
+    {
+      "code": "trace.kind_enum_name",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "string span kinds",
+      "fix": "export with the Collector's OTLP/JSON exporters",
+      "today": "whole capture refused",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object"
+      ]
+    },
+    {
+      "code": "trace.kind_unknown",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "string span kinds",
+      "fix": "export with the Collector's OTLP/JSON exporters",
+      "today": "whole capture refused",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "object",
+        "line",
+        "value"
+      ]
+    },
+    {
+      "code": "trace.time_not_integer",
+      "level": "note",
+      "trigger": "capture",
+      "when": "float or exponent times, normalized",
+      "fix": "none needed",
+      "today": "read approximately",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "spans"
+      ]
+    },
+    {
+      "code": "trace.spans_skipped",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "more than 0.1% [D] of spans skipped for missing ids or times",
+      "fix": "fix the exporter",
+      "today": "a warning",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "skipped",
+        "share",
+        "ids",
+        "no_service",
+        "times"
+      ]
+    },
+    {
+      "code": "trace.service_name_not_string",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "non-string or unknown_service* names",
+      "fix": "set OTEL_SERVICE_NAME",
+      "today": "skipped, or merged silently",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "trace.service_name_default",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "non-string or unknown_service* names",
+      "fix": "set OTEL_SERVICE_NAME",
+      "today": "skipped, or merged silently",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "trace.mixed_environments",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "more than one deployment environment",
+      "fix": "one environment per prefix",
+      "today": "not detected",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "environments"
+      ]
+    },
+    {
+      "code": "trace.no_server_spans",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "coded",
+      "fix": "instrument the servers",
+      "today": "refused",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded"
+    },
+    {
+      "code": "trace.duplicate_spans_dropped",
+      "level": "note",
+      "trigger": "capture",
+      "when": "byte-identical repeats dropped",
+      "fix": "none needed",
+      "today": "misleading refusal",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "spans"
+      ]
+    },
+    {
+      "code": "trace.span_id_collision",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "same ids, different content",
+      "fix": "find the second writer",
+      "today": "misleading refusal",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "spans"
+      ]
+    },
+    {
+      "code": "trace.client_spans_missing",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "per edge, more than 5% [D] of calls lack a CLIENT span",
+      "fix": "enable client instrumentation",
+      "today": "silent, 13-35% high in a test",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "calls",
+        "without_client_span"
+      ]
+    },
+    {
+      "code": "trace.context_not_propagated",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "a callee whose SERVER spans are almost all roots while calls address it",
+      "fix": "propagate W3C traceparent",
+      "today": "silent double count",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "root_share",
+        "calls_addressing_it",
+        "calls_containing_it",
+        "shuffled_baseline"
+      ]
+    },
+    {
+      "code": "trace.edge_loss",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "more than 1% [D] of calls on an edge lost",
+      "fix": "check exporter queues and SDK drops",
+      "today": "silent below 5%",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "calls",
+        "lost",
+        "share"
+      ]
+    },
+    {
+      "code": "trace.broken_traces",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "coded: more than 5% of traces miss spans, edges named",
+      "fix": "as the message says",
+      "today": "refused in English",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded",
+      "numbers": [
+        "broken",
+        "traces"
+      ]
+    },
+    {
+      "code": "trace.sampling_unverified",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "no independent count and no proportional-sampler evidence",
+      "fix": "supply a request count (I4)",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "trace.sampling_mixed",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "section 3.8",
+      "fix": "one constant head-sampling share, or none",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "thresholds",
+        "entries_without_th"
+      ]
+    },
+    {
+      "code": "trace.sampler_not_proportional",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "section 3.8",
+      "fix": "one constant head-sampling share, or none",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "trace.kept_share_conflict",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "section 3.8",
+      "fix": "one constant head-sampling share, or none",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "declared",
+        "counted",
+        "derived_th",
+        "assumed"
+      ]
+    },
+    {
+      "code": "trace.sampling_minority",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "under 1% [D] of the entries carry a th other than the dominant one, a missing th counting as one: their th is ignored (section 3.8)",
+      "fix": "none needed: a th on a few entries is usually a caller's tracestate, which a ParentBased sampler keeps",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "entries_ignored",
+        "thresholds"
+      ]
+    },
+    {
+      "code": "fit.queue_rebuild_sampled",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "kept share below 1",
+      "fix": "capture every request for gating windows",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "kept_share"
+      ]
+    },
+    {
+      "code": "trace.rate_mismatch",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "the trace entry rate differs from the independent count by more than 5% [D]",
+      "fix": "find the dropped spans or the sampler",
+      "today": "n/a",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "traced_entries",
+        "counted_entries",
+        "ratio"
+      ]
+    },
+    {
+      "code": "trace.image_digest_missing",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "no container.image.repo_digests on a service's resource",
+      "fix": "run k8sattributes with container.image.repo_digests extracted, and keep container.id or k8s.container.name on resources so that it can pick the container in a pod with sidecars (4.1)",
+      "today": "n/a",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "trace.mixed_images",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "two digests for one service in the window",
+      "fix": "a window after the rollout settled",
+      "today": "not detected",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "digests"
+      ]
+    },
+    {
+      "code": "trace.instance_per_process",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "several instance ids of one service on one host, and no pod or task identity",
+      "fix": "add k8s.pod.name or aws.ecs.task.arn; or declare --pod-identity host when the processes share one listening socket",
+      "today": "silent misread",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "hosts",
+        "instances_on_one_host"
+      ]
+    },
+    {
+      "code": "trace.pod_shared",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "one pod identity carries SERVER spans of two services",
+      "fix": "if it is not a sidecar pod, fix the pod association (4.1)",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "services"
+      ]
+    },
+    {
+      "code": "trace.pod_identity_collapsed",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "one pod identity carries SERVER spans of three or more services [D]",
+      "fix": "associate pods by k8s.pod.uid set upstream, or export directly (4.1)",
+      "today": "silent misread: all pods read as one",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "services"
+      ]
+    },
+    {
+      "code": "trace.faas_service",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "SERVER spans from a function platform",
+      "fix": "not modelled",
+      "today": "silent misread",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "trace.probe_like_traffic",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "probe-like routes above 1% [D] of entries",
+      "fix": "declare probe routes, or filter them in the Collector",
+      "today": "counted as user traffic",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "share"
+      ]
+    },
+    {
+      "code": "trace.errors_present",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "section 3.5",
+      "fix": "fix the errors, or capture a quiet window",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "share"
+      ]
+    },
+    {
+      "code": "trace.shedding",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "section 3.5",
+      "fix": "fix the errors, or capture a quiet window",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "share"
+      ]
+    },
+    {
+      "code": "trace.retries",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "section 3.5",
+      "fix": "fix the errors, or capture a quiet window",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "share"
+      ]
+    },
+    {
+      "code": "trace.streams",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "coded: long spans at 5% or more of busy time",
+      "fix": "cut the window by trace start",
+      "today": "refused in English",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded",
+      "numbers": [
+        "busy_share"
+      ]
+    },
+    {
+      "code": "trace.streaming_rpc",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "message events show a stream",
+      "fix": "exclude the route, or cut the window",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "spans"
+      ]
+    },
+    {
+      "code": "trace.links_present",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "CONSUMER spans with links",
+      "fix": "none in this version",
+      "today": "ignored",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "spans"
+      ]
+    },
+    {
+      "code": "trace.clock_skew",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "coded from today's warnings, plus the per-pod-pair detector",
+      "fix": "NTP, or CLIENT spans",
+      "today": "warning text",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded",
+      "numbers": [
+        "calls",
+        "outside_share",
+        "max_offset_ms"
+      ]
+    },
+    {
+      "code": "trace.whole_ms_starts",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "coded from today's warnings, plus the per-pod-pair detector",
+      "fix": "NTP, or CLIENT spans",
+      "today": "warning text",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded",
+      "numbers": [
+        "spans"
+      ]
+    },
+    {
+      "code": "trace.load_trend",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "section 3.12",
+      "fix": "a steady window; a longer window",
+      "today": "not detected",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "second_half_over_first"
+      ]
+    },
+    {
+      "code": "trace.arrivals_overdispersed",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "section 3.12",
+      "fix": "a steady window; a longer window",
+      "today": "not detected",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "dispersion_index",
+        "sub_windows"
+      ]
+    },
+    {
+      "code": "trace.arrivals_unjudged",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "section 3.12",
+      "fix": "a steady window; a longer window",
+      "today": "not detected",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "entries",
+        "needed"
+      ]
+    },
+    {
+      "code": "trace.pod_churn",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "a pod present for part of the window",
+      "fix": "a quiet window",
+      "today": "not modelled, silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "present_share"
+      ]
+    },
+    {
+      "code": "trace.async_tail_truncated",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "traces still open at the margin's end",
+      "fix": "raise the margin",
+      "today": "silent",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "share"
+      ]
+    },
+    {
+      "code": "trace.window_unrepresentative",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "the window's load is below the policy's minimum relative to the reference",
+      "fix": "gate at the busiest window",
+      "today": "n/a",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "trace.peer_renamed",
+      "level": "note",
+      "trigger": "capture",
+      "when": "a CLIENT peer given as an address was renamed to a service from the cluster dump or the peer map (section 5)",
+      "fix": "none needed",
+      "today": "the address stays an outside delay",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "calls"
+      ]
+    },
+    {
+      "code": "trace.personal_data_suspect",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "a kept string value looks like an e-mail address, a JWT or a card number; it is masked (section 15)",
+      "fix": "tighten the privacy list in the Collector",
+      "today": "kept as is",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "spans"
+      ]
+    },
+    {
+      "code": "trace.too_few_entries",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "coded: fewer than 100 entry requests",
+      "fix": "a longer window",
+      "today": "refused in English",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded",
+      "numbers": [
+        "entries",
+        "needed",
+        "objects"
+      ]
+    },
+    {
+      "code": "trace.cycle",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "coded from today's refusals",
+      "fix": "as the message says",
+      "today": "refused in English",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded"
+    },
+    {
+      "code": "trace.too_many_shapes",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "coded from today's refusals",
+      "fix": "as the message says",
+      "today": "refused in English",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded",
+      "numbers": [
+        "left_out_share",
+        "limit"
+      ]
+    },
+    {
+      "code": "trace.negative_service_time",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "coded from today's refusals",
+      "fix": "as the message says",
+      "today": "refused in English",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded"
+    },
+    {
+      "code": "model.utilization_observed",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "coded from limitError",
+      "fix": "--workers when the count is a lower bound",
+      "today": "refused in English",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded",
+      "numbers": [
+        "utilization",
+        "limit"
+      ]
+    },
+    {
+      "code": "model.utilization_after",
+      "level": "refuse",
+      "trigger": "capture",
+      "when": "coded from limitError",
+      "fix": "--workers when the count is a lower bound",
+      "today": "refused in English",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded",
+      "numbers": [
+        "utilization",
+        "limit"
+      ]
+    },
+    {
+      "code": "model.batch_arrivals",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "coded from today's warning",
+      "fix": "none in this version",
+      "today": "warning text",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "coded"
+    },
+    {
+      "code": "load.beyond_validated",
+      "level": "doubt",
+      "trigger": "capture",
+      "when": "a service on a gated path above max_utilization_validated (refuse-like in enforce mode)",
+      "fix": "none: the model is untested there",
+      "today": "n/a",
+      "doc": "DATA.md 3.14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "utilization",
+        "max_utilization_validated"
+      ]
+    },
+    {
+      "code": "store.paged_api",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the source is CloudWatch aws/spans or an X-Ray retrieval API",
+      "fix": "add an S3 exporter to the same Collector",
+      "doc": "DATA.md 4.4",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "store.metrics_only",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the source is Application Signals metrics",
+      "fix": "capture spans; metrics are a verification source only",
+      "doc": "DATA.md 4.4",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "store.not_spans",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the source is Athena results or Parquet",
+      "fix": "export spans as OTLP/JSON",
+      "doc": "DATA.md 4.4",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "cluster.not_list",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a cluster file that is not JSON or not a Kubernetes List",
+      "fix": "dump with kubectl get ... -o json",
+      "doc": "DATA.md 5",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "cluster.unscrubbed",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "secrets, ConfigMaps, env values, managedFields or the last-applied annotation in a dump",
+      "fix": "scrub the dump before it leaves the cluster",
+      "doc": "DATA.md 5",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "item"
+      ]
+    },
+    {
+      "code": "cluster.window_mismatch",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a dump taken more than a minute [D] outside the window",
+      "fix": "dump at the window's start and end",
+      "doc": "DATA.md 5",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "seconds_outside"
+      ]
+    },
+    {
+      "code": "cluster.layout_ambiguous",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "both a flat cluster/ folder and start/ or end/",
+      "fix": "keep one layout",
+      "doc": "DATA.md 5",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "flat_files"
+      ]
+    },
+    {
+      "code": "cluster.peer_map_invalid",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "an ECS peer map that does not match rhobound.peer-map/v1",
+      "fix": "write the peer map as rhobound.peer-map/v1",
+      "doc": "DATA.md 5",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "cluster.digest_disagrees",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "a pod's imageID and the spans' repo_digests name different images",
+      "fix": "a window after the rollout settled",
+      "doc": "DATA.md 5",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "pods"
+      ]
+    },
+    {
+      "code": "cluster.time_unknown",
+      "level": "note",
+      "trigger": "input",
+      "when": "no taken_at recorded for a dump",
+      "fix": "record taken_at in the capture manifest",
+      "doc": "DATA.md 5",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "cluster.single_snapshot",
+      "level": "note",
+      "trigger": "input",
+      "when": "a flat cluster/ folder: one snapshot for the whole window",
+      "fix": "dump at the window's start and end",
+      "doc": "DATA.md 5",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "count.window_mismatch",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the count's window edges more than 10 s [D] from the capture's",
+      "fix": "count the capture's own window",
+      "doc": "DATA.md 6",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "seconds_apart"
+      ]
+    },
+    {
+      "code": "count.unknown_entry",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the count names an entry the capture does not have",
+      "fix": "name entries by their service.name",
+      "doc": "DATA.md 6",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "env.cpu_throttled",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "throttled periods above a threshold [D] in resource metrics",
+      "fix": "raise the CPU limit, or capture a quieter window",
+      "doc": "DATA.md 7",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "fit.utilization_disagrees",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "inferred utilization and CPU use disagree beyond a band",
+      "fix": "check the worker counts",
+      "doc": "DATA.md 7",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "fit.expired",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "a fit past its expiry",
+      "fix": "fit a fresh window",
+      "doc": "ARCHITECTURE.md 4.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "fit.no_baseline",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "a call names an environment that has no baseline fit yet",
+      "fix": "name a fit_id, or wait for the environment's first fit",
+      "doc": "ARCHITECTURE.md 4.2, 5.8",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "fit.version",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "a fit or A/B record of another schema version, one whose fixed fields (the tool, digests, kept share, findings) this version does not write, or a fit record whose bytes are not those fit wrote (serialized again)",
+      "fix": "fit again with this version, and store the record's bytes as fit wrote them",
+      "doc": "ARCHITECTURE.md 4.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "fit.stale",
+      "level": "doubt",
+      "trigger": "runtime",
+      "when": "a fit older than max_fit_age_h at gate time (rule token fit_stale)",
+      "fix": "fit a fresh window",
+      "doc": "ARCHITECTURE.md 4.2, 6.3",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "max_fit_age_h",
+        "fit_age_h"
+      ]
+    },
+    {
+      "code": "ab.not_concurrent",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "A/B arms overlapping less than 90% [D]",
+      "fix": "run both arms at the same time",
+      "doc": "DATA.md 8",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "overlap_share",
+        "needed"
+      ]
+    },
+    {
+      "code": "ab.hardware_differs",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "A/B arms on different instance types or container resources",
+      "fix": "one instance type and one resource spec for both arms",
+      "doc": "DATA.md 8",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "ab.sampled",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "an A/B arm whose kept share is not proven to be 1",
+      "fix": "capture every request, with the load generator's count",
+      "doc": "DATA.md 8",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "traced_requests",
+        "sent"
+      ]
+    },
+    {
+      "code": "ab.errors_differ",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "error shares more than 1 point [D] apart",
+      "fix": "fix the errors in the failing arm",
+      "doc": "DATA.md 8",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "baseline",
+        "candidate"
+      ]
+    },
+    {
+      "code": "ab.too_few_visits",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "fewer visits than the sizing rule needs for the gate's margin",
+      "fix": "run each arm longer",
+      "doc": "DATA.md 8, 9.3",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "visits",
+        "needed"
+      ]
+    },
+    {
+      "code": "ab.count_conflict",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "an A/B arm whose own request count gives a kept share other than 1, while the load generator's log, which admits the arm, says its traces hold every request (the subject is the arm)",
+      "fix": "give each arm its own request count, or none: the log alone proves an arm's kept share",
+      "doc": "DATA.md 8",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "kept_share",
+        "log_share"
+      ]
+    },
+    {
+      "code": "change.label_not_minted",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a label other than declared without a record the CLI can find and recompute",
+      "fix": "cite an A/B record the CLI computed, or label it declared",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "change.unknown_service",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a change or --workers names a service the fit does not have",
+      "fix": "name a service of the fit",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "change.ambiguous_service",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a change or --workers names a service by a name the views show for more than one service, none of them named so as the traces wrote it (a collision of hashes)",
+      "fix": "name the service as the traces wrote it, as the services of the fit record list it",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "change.negative_time",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the change makes a time negative",
+      "fix": "a change no larger than the time it removes",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "own_ms",
+        "change_ms",
+        "glue_ms"
+      ]
+    },
+    {
+      "code": "change.range_inverted",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "lo > hi",
+      "fix": "give the range as lo <= hi",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "lo",
+        "hi"
+      ]
+    },
+    {
+      "code": "change.too_many_ranges",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "more than 6 unsigned ranged items",
+      "fix": "at most 6 unsigned ranged items",
+      "doc": "DATA.md 11.2; ARCHITECTURE.md 4.5",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "unsigned_ranges",
+        "limit"
+      ]
+    },
+    {
+      "code": "change.unsupported_op",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "an operation this version cannot apply",
+      "fix": "use own_ms, own_pct, workers or load_scale",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "change.free_text",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a number given in prose",
+      "fix": "give the number as a value",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "change.cpu_profile_not_own_time",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a CPU profile offered as own time",
+      "fix": "measure own time per visit (an A/B run)",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "change.includes_queueing",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a latency that already contains the queue offered as own time",
+      "fix": "measure own time per visit (an A/B run)",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "change.microbench_unvalidated",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a microbenchmark delta outside research use",
+      "fix": "measure own time per visit (an A/B run)",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "change.route_scope_unsupported",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "an operation restricted to a route",
+      "fix": "convert to a per-visit mean: ms times the route's share of visits",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "change.callee_cost_assumed",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "a structural operation that assumes the callee's mean visit",
+      "fix": "measure the callee's visit for that endpoint",
+      "doc": "DATA.md 11.2",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "load.busiest_unknown",
+      "level": "note",
+      "trigger": "runtime",
+      "when": "no busiest-window pointer yet: evaluated at the fit's window",
+      "fix": "none needed",
+      "doc": "ARCHITECTURE.md 4.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "budget.no_policy",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "a budget under no policy: no entry threshold applies, only the utilization limits bind",
+      "fix": "name a policy (budget --policy P, or the budget tool's policy argument), so that its entry threshold binds",
+      "doc": "ARCHITECTURE.md 4.7",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "policy.no_threshold",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "neither threshold key is set",
+      "fix": "set max_entry_mean_change_pct or max_entry_mean_change_ms",
+      "doc": "DATA.md 13",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "policy.bad_value",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a known key with a bad value, or an unregistered code in doubts_that_hold (exit 2)",
+      "fix": "correct the value",
+      "doc": "DATA.md 13",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "policy.model_band_removed",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "enforce without the model band",
+      "fix": "keep model_band when enforce is true",
+      "doc": "DATA.md 13",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "policy.inline_refused",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "an inline policy from an agent",
+      "fix": "name a policy from the server's configuration",
+      "doc": "DATA.md 13",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "policy.not_named",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "a budget or a prediction names no policy, and the configuration has none named default",
+      "fix": "name a configured policy",
+      "doc": "ARCHITECTURE.md 5.8",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "policy.unknown",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "a policy name the server's configuration does not list",
+      "fix": "name a configured policy",
+      "doc": "ARCHITECTURE.md 5.8",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "gate.enforce_not_earned",
+      "level": "note",
+      "trigger": "runtime",
+      "when": "enforce: true before the readiness conditions hold (always, in the first build)",
+      "fix": "none: the verdict is advisory",
+      "doc": "ARCHITECTURE.md 6.6",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "judge.ms_forbidden",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a millisecond figure in a judge answer",
+      "fix": "answer with typed fields only",
+      "doc": "DATA.md 13",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "judge.loosening",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "an answer that would relax a verdict",
+      "fix": "answer with typed fields only",
+      "doc": "DATA.md 13",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "judge.packet_mismatch",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the answer cites another packet",
+      "fix": "answer the packet that was sent",
+      "doc": "DATA.md 13",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "judge.evidence_unresolved",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "an evidence reference that is not in the packet",
+      "fix": "cite evidence from the packet",
+      "doc": "DATA.md 13",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "judge.answer_outside_question",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a range for a question the packet did not ask, or outside its bounds",
+      "fix": "answer the packet's questions within their bounds",
+      "doc": "DATA.md 13",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "handle.expired",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "a handle past its expiry",
+      "fix": "start a new fit or prediction",
+      "doc": "ARCHITECTURE.md 5.8",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "handle.unknown",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "an unknown handle, or another principal's",
+      "fix": "use a handle this principal received",
+      "doc": "ARCHITECTURE.md 5.8",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "rate.limited",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "a per-principal limit was hit (retry_after_ms)",
+      "fix": "retry after retry_after_ms",
+      "doc": "ARCHITECTURE.md 5.8",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "retry_after_ms"
+      ]
+    },
+    {
+      "code": "job.timeout",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "a job past its deadline_at",
+      "fix": "start the job again, with a shorter window",
+      "doc": "ARCHITECTURE.md 5.5",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "job.failed",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "a job's step failed without a coded refusal: the engine exited without one, or wrote no record",
+      "fix": "start the job again; if it fails again, the server's operator can run rhobound check and fit on the capture to read the engine's message",
+      "doc": "ARCHITECTURE.md 5.5",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "server.engine_mismatch",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "the engine binary's sha256 differs from the configured one",
+      "fix": "install the configured engine binary",
+      "doc": "DEPLOY_AWS.md 2.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "profile.not_found",
+      "level": "refuse",
+      "trigger": "runtime",
+      "when": "no verified record for (baseline, candidate)",
+      "fix": "profile the candidate, or run an A/B",
+      "doc": "DATA.md 9.5 #2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "profile.digest_unresolvable",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a digest that cannot be resolved to the node's platform manifest",
+      "fix": "push a platform manifest for the node's architecture",
+      "doc": "DATA.md 9.5 #1",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "profile.media_type_parameter",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a manifest media type with parameters (;version=)",
+      "fix": "push media types without parameters",
+      "doc": "DATA.md 9.2",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "profile.bad_signature",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the signature does not verify (the first build refuses every signature)",
+      "fix": "sign with a key on the trust list",
+      "doc": "DATA.md 9.5 #3",
+      "since": "v1.0",
+      "status": "new"
+    },
+    {
+      "code": "profile.variance_changed",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "the own time's variance (diff-fit) or cs2 (a profile) differs beyond 2 standard errors",
+      "fix": "none in this version: inconclusive until a variance patch exists",
+      "doc": "DATA.md 8, 9.5 #15",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "cs2_delta",
+        "cs2_se",
+        "levels"
+      ]
+    },
+    {
+      "code": "profile.structure_changed",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "calls per visit differ between arms (also from diff-fit)",
+      "fix": "describe the change structurally",
+      "doc": "DATA.md 8, 9.5 #14",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "levels"
+      ]
+    },
+    {
+      "code": "profile.self_report_mismatch",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "the outside measurement disagrees with the spans (also from diff-fit)",
+      "fix": "check the candidate's instrumentation",
+      "doc": "DATA.md 8, 9.5 #16",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "client_delta_ms",
+        "span_delta_ms",
+        "levels"
+      ]
+    },
+    {
+      "code": "profile.untrusted_signer",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the signer is not the harness identity",
+      "fix": "sign with the harness identity",
+      "doc": "DATA.md 9.5 #4",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "profile.predicate_type",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "another predicate type or version",
+      "fix": "use the frozen predicate type",
+      "doc": "DATA.md 9.5 #5",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "fields"
+      ]
+    },
+    {
+      "code": "profile.harness_not_allowed",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "harness, load generator or Collector config not on the allow-list",
+      "fix": "use an allowed harness",
+      "doc": "DATA.md 9.5 #6",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "profile.subject_mismatch",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the subject or the baseline arm is not the expected digest",
+      "fix": "profile the candidate about to run against the running digest",
+      "doc": "DATA.md 9.5 #7",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "profile.baseline_not_running",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the subject or the baseline arm is not the expected digest",
+      "fix": "profile the candidate about to run against the running digest",
+      "doc": "DATA.md 9.5 #7",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "profile.stale",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "too old, or its time disagrees with the witness row",
+      "fix": "profile again",
+      "doc": "DATA.md 9.5 #8",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "age_days",
+        "valid_for_days"
+      ]
+    },
+    {
+      "code": "profile.time_disagrees",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "too old, or its time disagrees with the witness row",
+      "fix": "profile again",
+      "doc": "DATA.md 9.5 #8",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "seconds_apart"
+      ]
+    },
+    {
+      "code": "profile.hardware_mismatch",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "instance type, CPU family, limit or container spec differ from production",
+      "fix": "profile on production's instance type and spec",
+      "doc": "DATA.md 9.5 #9",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "fields"
+      ]
+    },
+    {
+      "code": "profile.load_out_of_range",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the operating point after the change lies outside the measured levels",
+      "fix": "measure a level at production's per-pod rate",
+      "doc": "DATA.md 9.5 #10",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "pod_rps",
+        "measured_lo",
+        "measured_hi",
+        "candidate_utilization"
+      ]
+    },
+    {
+      "code": "profile.scope_not_mean",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "not a mean profile, or no variance",
+      "fix": "profile the mean with its variance",
+      "doc": "DATA.md 9.5 #11",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "fields"
+      ]
+    },
+    {
+      "code": "profile.no_variance",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "not a mean profile, or no variance",
+      "fix": "profile the mean with its variance",
+      "doc": "DATA.md 9.5 #11",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "fields"
+      ]
+    },
+    {
+      "code": "profile.too_few_visits",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "too few visits for the gate's margin",
+      "fix": "measure each level longer",
+      "doc": "DATA.md 9.5 #12",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "arm_levels_short",
+        "visits_needed",
+        "margin_ms"
+      ]
+    },
+    {
+      "code": "profile.window_over_cap",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "the sized measurement window is over the cost cap",
+      "fix": "a wider margin, or a higher cap",
+      "doc": "DATA.md 9.3",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "profile.level_drift",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "flatness across load levels not shown",
+      "fix": "measure at production's per-pod rate",
+      "doc": "DATA.md 9.5 #13",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "levels"
+      ]
+    },
+    {
+      "code": "profile.transfer_gap",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "the harness baseline differs from production's own time",
+      "fix": "none: the delta is given as a range over two transfer rules",
+      "doc": "DATA.md 9.5 #17",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "profile.errors_differ",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "error shares more than one point [D] apart",
+      "fix": "fix the errors in the failing arm",
+      "doc": "DATA.md 9.5 #18",
+      "since": "v1.0",
+      "status": "later",
+      "numbers": [
+        "levels"
+      ]
+    },
+    {
+      "code": "profile.no_structure",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a profile without calls per visit per arm",
+      "fix": "measure the calls per visit to each callee in both arms",
+      "doc": "DATA.md 9.2",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "fields"
+      ]
+    },
+    {
+      "code": "profile.no_outside_measurement",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a profile without the client-side latency or the cgroup CPU time per visit",
+      "fix": "measure each arm from outside the system under test",
+      "doc": "DATA.md 9.2",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "fields"
+      ]
+    },
+    {
+      "code": "profile.locations_present",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "a storage location, account id or cluster ARN in a profile's predicate",
+      "fix": "record digests only; never a location",
+      "doc": "DATA.md 9.2",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "fields"
+      ]
+    },
+    {
+      "code": "verify.sampled",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "an after-capture that is sampled, or runs another digest",
+      "fix": "capture every request on the deployed digest",
+      "doc": "DATA.md 12",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "verify.digest_mismatch",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "an after-capture that is sampled, or runs another digest",
+      "fix": "capture every request on the deployed digest",
+      "doc": "DATA.md 12",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "verify.not_preregistered",
+      "level": "note",
+      "trigger": "input",
+      "when": "the prediction was not registered before the window: stored, not counted",
+      "fix": "register the prediction before the deploy",
+      "doc": "DATA.md 12",
+      "since": "v1.0",
+      "status": "later"
+    },
+    {
+      "code": "code.no_base_tree",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "code-path inputs that cannot be analysed",
+      "fix": "supply the base tree and the build identity",
+      "doc": "CODEPATHS.md 5",
+      "since": "v1.0",
+      "status": "research"
+    },
+    {
+      "code": "code.build_unbound",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "code-path inputs that cannot be analysed",
+      "fix": "supply the base tree and the build identity",
+      "doc": "CODEPATHS.md 5",
+      "since": "v1.0",
+      "status": "research"
+    },
+    {
+      "code": "code.language_unsupported",
+      "level": "refuse",
+      "trigger": "input",
+      "when": "code-path inputs that cannot be analysed",
+      "fix": "supply the base tree and the build identity",
+      "doc": "CODEPATHS.md 5",
+      "since": "v1.0",
+      "status": "research"
+    },
+    {
+      "code": "code.route_key_missing",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "no route key on SERVER spans: falls back to services only",
+      "fix": "record http.route or rpc.method on SERVER spans",
+      "doc": "CODEPATHS.md 5",
+      "since": "v1.0",
+      "status": "research"
+    }
+  ]
+}

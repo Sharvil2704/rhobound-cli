@@ -197,6 +197,7 @@ type podQueue struct {
 	ShortfallRel   float64        // ... and relative difference
 	RefutedBy      map[int]string // counts tried and refuted -> "contradictions" | "shortfall" | "brief-wait shortfall"
 	Order          []int          // input index of each job above
+	vidx           []int32        // the visits (indices into the visit records) of the jobs, in input order
 }
 
 // queueOrder sorts the jobs as the reference does: by arrival (stable), then
@@ -522,6 +523,7 @@ func reconstructQueues(vrec []visitRec, nSvc int, fixed map[int32]int) []*svcQue
 					d[k] = float64(int64(vrec[i].rel)-int64(base)) / 1e6
 				}
 				q := inferWorkers(a, d, fixed[podSvc[p]])
+				q.vidx = idx
 				mu.Lock()
 				res[p] = q
 				mu.Unlock()

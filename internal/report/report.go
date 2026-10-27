@@ -12,6 +12,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/Sharvil2704/rhobound-cli/internal/change"
 	"github.com/Sharvil2704/rhobound-cli/internal/infer"
 	"github.com/Sharvil2704/rhobound-cli/internal/model"
 )
@@ -66,6 +67,15 @@ type Row struct {
 	// uneven (the inference's pod_shares, in pod-name order); the model and the
 	// change keep them.
 	ReplicaShares []float64 `json:"replica_shares,omitempty"`
+
+	// The keys report v2 adds to a row (V2). Build never sets them, so report v1 never carries them, and V1 clears them.
+	//
+	// UtilizationAfter is the utilization after the change, over the corners of the change set's ranges; at or above
+	// 1 the service saturates. ChangeRangeMs is the change of ModelMs over the corners, nil when a corner leaves the
+	// service no finite mean. Both are nil without a change. AfterMs, ChangeMs and ChangePct keep their v1 meaning in
+	// report v2: set when every item of the change is a point, as with --patch.
+	UtilizationAfter *change.Range `json:"utilization_after,omitempty"`
+	ChangeRangeMs    *change.Range `json:"change_range_ms,omitempty"`
 }
 
 // Change describes a requested change of a service's own time per visit.

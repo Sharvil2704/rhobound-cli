@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/budget.v1.json",
+  "title": "rhobound-mcp.budget/v1",
+  "description": "The `budget` tool (ARCHITECTURE.md 4.7, 5.5): how much a service may add per visit. The root validates the view `rhobound budget --fit F [--service S] [--policy P] --json` prints (canonical JSON); the server adds only its own keys. $defs/input is the tool's input schema. max_value is the largest x with change(x) <= T at every entry; safe_value the largest x with change(x) + model band(x) <= T, both by bisection (at most 25 solves each), never x_max minus a band.",
+  "$ref": "#/$defs/output",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "fit_id": {"$ref": "defs.v1.json#/$defs/Handle"},
+        "service": {"$ref": "defs.v1.json#/$defs/Name"},
+        "kinds": {"type": "array", "items": {"enum": ["own_ms", "load_scale", "extra_calls"]},
+                  "description": "extra_calls needs the structural patch; refused until it ships"},
+        "callee": {"$ref": "defs.v1.json#/$defs/Name"},
+        "policy": {"$ref": "defs.v1.json#/$defs/Name", "description": "a policy name from server configuration"}
+      },
+      "required": ["fit_id"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "schema": {"const": "rhobound-mcp.budget/v1"},
+        "fit_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "items": {"type": "array", "maxItems": 40, "items": {
+          "type": "object",
+          "properties": {
+            "service": {"$ref": "defs.v1.json#/$defs/Name"},
+            "service_untrusted": {"type": "boolean"},
+            "kind": {"type": "string"},
+            "per": {"const": "visit"},
+            "max_value": {"type": ["number", "null"], "description": "largest x with change(x) <= T at every entry"},
+            "safe_value": {"type": ["number", "null"], "description": "largest x with change(x) + model band(x) <= T at every entry (4.7)"},
+            "binding_constraint": {"enum": ["max_entry_mean_change_pct", "max_entry_mean_change_ms",
+                                            "max_utilization_after", "utilization_limit", "none_below_search_cap",
+                                            "max_utilization_validated"],
+                                   "description": "max_utilization_validated binds load_scale only: the factor is capped at the validated load"},
+            "binding_entry": {"$ref": "defs.v1.json#/$defs/Name"},
+            "at_limit": {"type": "object", "properties": {
+              "entry_change_ms": {"type": "number"}, "utilization_after": {"type": "number"}},
+              "additionalProperties": false}
+          },
+          "additionalProperties": false}},
+        "assumes": {"type": "array", "items": {"type": "string"},
+                    "description": "always includes 'monotone entry mean in the added quantity (untested)' until the simulator test passes"},
+        "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"},
+                     "description": "budget.no_policy (doubt) when no policy applies: no entry threshold binds, only the utilization limits, so max_value can be many times what a policy allows; absent under a policy"},
+        "truncated": {"type": "boolean",
+                      "description": "true when more than 40 items existed; the 40 kept are those with the highest leverage"},
+        "scope": {"$ref": "defs.v1.json#/$defs/Scope"},
+        "fit_id": {"$ref": "defs.v1.json#/$defs/Handle", "description": "server"},
+        "fit_age_s": {"type": "integer", "description": "server"},
+        "links": {"$ref": "defs.v1.json#/$defs/ServerLinks"}
+      },
+      "required": ["schema", "fit_digest", "items", "assumes", "truncated", "scope"],
+      "additionalProperties": false
+    }
+  }
+}

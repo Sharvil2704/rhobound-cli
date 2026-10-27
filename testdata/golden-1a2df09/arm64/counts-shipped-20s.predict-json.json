@@ -1,0 +1,627 @@
+{
+  "version": "rhobound-cli.report/v1",
+  "capture": "internal/infer/testdata/counts/shipped-20s",
+  "window_s": 19.883143415823422,
+  "requests": 539,
+  "spans": 6049,
+  "traces": 478,
+  "broken_traces": 0,
+  "external_rps": 27.108389691091425,
+  "kept_share": 1,
+  "max_utilization": 0.017890101608225323,
+  "busiest_service": "frontend",
+  "services": [
+    {
+      "name": "ad",
+      "rate_rps": 1.8105789033010968,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 1.1128658888889005,
+      "own_cs2": 1,
+      "utilization": 0.0020149315006256657,
+      "model_wait_ms": 0.002246875524750669,
+      "observed_wait_ms": 0.160302138888889,
+      "model_ms": 1.800069764413651,
+      "observed_ms": 1.958125027777778,
+      "error_pct": -8.071765649382439
+    },
+    {
+      "name": "cart",
+      "rate_rps": 10.410828693981305,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.199591787439588,
+      "own_cs2": 3.6573586162691227,
+      "glue_ms": 0.05206231884057971,
+      "utilization": 0.00207791590775908,
+      "model_wait_ms": 0.0009677956894095785,
+      "observed_wait_ms": 0.00015120772949417383,
+      "model_ms": 1.52533781530546,
+      "observed_ms": 1.4677278937198066,
+      "error_pct": 3.9251091317510425,
+      "hop_from_mean": true,
+      "variable_calls": [
+        {
+          "callee": "ext:valkey-cart",
+          "mean_per_visit": 1.7246376811594204,
+          "visits_by_calls": [
+            {
+              "calls": 1,
+              "visits": 122
+            },
+            {
+              "calls": 2,
+              "visits": 20
+            },
+            {
+              "calls": 3,
+              "visits": 65
+            }
+          ],
+          "modelled_as": "mean count"
+        }
+      ]
+    },
+    {
+      "name": "checkout",
+      "rate_rps": 1.0058771685006094,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.12089445000002708,
+      "own_cs2": 1,
+      "glue_ms": 0.57509235,
+      "utilization": 0.00012160496705346573,
+      "model_wait_ms": 0.000014703153543238479,
+      "observed_wait_ms": 0.1405104499999993,
+      "model_ms": 19.50569229245784,
+      "observed_ms": 18.28561655,
+      "error_pct": 6.672324879621522,
+      "variable_calls": [
+        {
+          "callee": "product-catalog",
+          "mean_per_visit": 1.95,
+          "visits_by_calls": [
+            {
+              "calls": 1,
+              "visits": 10
+            },
+            {
+              "calls": 2,
+              "visits": 4
+            },
+            {
+              "calls": 3,
+              "visits": 3
+            },
+            {
+              "calls": 4,
+              "visits": 3
+            }
+          ],
+          "modelled_as": "mean count"
+        },
+        {
+          "callee": "currency",
+          "mean_per_visit": 2.95,
+          "visits_by_calls": [
+            {
+              "calls": 2,
+              "visits": 10
+            },
+            {
+              "calls": 3,
+              "visits": 4
+            },
+            {
+              "calls": 4,
+              "visits": 3
+            },
+            {
+              "calls": 5,
+              "visits": 3
+            }
+          ],
+          "modelled_as": "mean count"
+        }
+      ]
+    },
+    {
+      "name": "currency",
+      "rate_rps": 2.967337647076798,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.579750084745727,
+      "own_cs2": 1,
+      "utilization": 0.0017203142523619598,
+      "model_wait_ms": 0.0009990710494455213,
+      "observed_wait_ms": 0.0009990710494455213,
+      "model_ms": 1.4372052542372882,
+      "observed_ms": 1.4372052542372882,
+      "error_pct": 0,
+      "hop_from_mean": true
+    },
+    {
+      "name": "email",
+      "rate_rps": 1.0058771685006094,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 3.309271199999904,
+      "own_cs2": 1,
+      "utilization": 0.0033287203444565174,
+      "model_wait_ms": 0.011052428781491486,
+      "observed_wait_ms": 0.09246580000009597,
+      "model_ms": 4.086538628781396,
+      "observed_ms": 4.1679520000000005,
+      "error_pct": -1.9533183496020274
+    },
+    {
+      "name": "flagd",
+      "entry": true,
+      "rate_rps": 4.878504267227955,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.08943513402060108,
+      "own_cs2": 1,
+      "utilization": 0.00043630968295960636,
+      "model_wait_ms": 0.00003903844887978569,
+      "observed_wait_ms": 0.059200850000017666,
+      "model_ms": 0.08947417246948086,
+      "observed_ms": 0.08943513402061855,
+      "error_pct": 0.04365001438172336
+    },
+    {
+      "name": "frontend",
+      "rate_rps": 23.135174875514018,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.7732857739130378,
+      "own_cs2": 1,
+      "glue_ms": 0.3663391369565217,
+      "utilization": 0.017890101608225323,
+      "model_wait_ms": 0.014086138999459097,
+      "observed_wait_ms": 0.014086138999459097,
+      "model_ms": 4.25089299390849,
+      "observed_ms": 4.093732608695652,
+      "error_pct": 3.839048619809889,
+      "hop_from_mean": true,
+      "variable_calls": [
+        {
+          "callee": "cart",
+          "mean_per_visit": 0.3630434782608696,
+          "visits_by_calls": [
+            {
+              "calls": 0,
+              "visits": 358
+            },
+            {
+              "calls": 1,
+              "visits": 37
+            },
+            {
+              "calls": 2,
+              "visits": 65
+            }
+          ],
+          "modelled_as": "mixture of call shapes"
+        },
+        {
+          "callee": "product-catalog",
+          "mean_per_visit": 0.9543478260869566,
+          "visits_by_calls": [
+            {
+              "calls": 0,
+              "visits": 181
+            },
+            {
+              "calls": 1,
+              "visits": 222
+            },
+            {
+              "calls": 2,
+              "visits": 4
+            },
+            {
+              "calls": 3,
+              "visits": 3
+            },
+            {
+              "calls": 4,
+              "visits": 50
+            }
+          ],
+          "modelled_as": "mixture of call shapes"
+        }
+      ],
+      "call_shapes": [
+        {
+          "shape": "product-catalog",
+          "share": 0.4608695652173913
+        },
+        {
+          "shape": "cart then cart",
+          "share": 0.1391304347826087
+        },
+        {
+          "shape": "recommendation then product-catalog x4",
+          "share": 0.1
+        },
+        {
+          "shape": "cart",
+          "share": 0.08043478260869565
+        },
+        {
+          "shape": "ad",
+          "share": 0.0782608695652174
+        },
+        {
+          "shape": "checkout then product-catalog",
+          "share": 0.021739130434782608
+        },
+        {
+          "shape": "checkout then product-catalog x2",
+          "share": 0.008695652173913044
+        },
+        {
+          "shape": "checkout then product-catalog x3",
+          "share": 0.006521739130434782
+        },
+        {
+          "shape": "checkout then product-catalog x4",
+          "share": 0.006521739130434782
+        },
+        {
+          "shape": "cart x2",
+          "share": 0.002173913043478261
+        },
+        {
+          "shape": "product-catalog x4 + recommendation",
+          "share": 0.002173913043478261
+        }
+      ]
+    },
+    {
+      "name": "frontend-proxy",
+      "entry": true,
+      "rate_rps": 23.135174875514018,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.10724565217392182,
+      "own_cs2": 0.17718720895201456,
+      "glue_ms": 0.051810869565217375,
+      "utilization": 0.0024811469176822315,
+      "model_wait_ms": 0.00015700974273542834,
+      "observed_wait_ms": 0.00027826086955642926,
+      "model_ms": 4.410106525390365,
+      "observed_ms": 4.253067391304347,
+      "error_pct": 3.6923735186302005
+    },
+    {
+      "name": "image-provider",
+      "entry": true,
+      "rate_rps": 0.10058771685006093,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 0,
+      "observed_ms": 0
+    },
+    {
+      "name": "payment",
+      "rate_rps": 1.0058771685006094,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.5665918999999855,
+      "own_cs2": 1,
+      "utilization": 0.0005699218560673658,
+      "model_wait_ms": 0.00032309724653056815,
+      "observed_wait_ms": 0.06543425000001424,
+      "model_ms": 1.6063299972465162,
+      "observed_ms": 1.6714411500000002,
+      "error_pct": -3.895509737419352
+    },
+    {
+      "name": "product-catalog",
+      "rate_rps": 26.404275673140994,
+      "replicas": 1,
+      "workers_per_pod": 4,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.08266305523808563,
+      "own_cs2": 0.16064470069881626,
+      "utilization": 0.0005456645246226236,
+      "model_wait_ms": 1.1324274851176597e-14,
+      "observed_wait_ms": 0.0023399619047715092,
+      "model_ms": 1.4107364109931988,
+      "observed_ms": 1.3354055028571432,
+      "error_pct": 5.6410511994209,
+      "hop_from_mean": true
+    },
+    {
+      "name": "quote",
+      "rate_rps": 1.0058771685006094,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.30674604999997057,
+      "own_cs2": 1,
+      "utilization": 0.00030854884822271674,
+      "model_wait_ms": 0.00009467535236795666,
+      "observed_wait_ms": 0.1421652000000294,
+      "model_ms": 1.7956177253523382,
+      "observed_ms": 1.9376882500000001,
+      "error_pct": -7.331959857199005
+    },
+    {
+      "name": "recommendation",
+      "rate_rps": 2.3638113459764325,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.2652218723403875,
+      "own_cs2": 1,
+      "glue_ms": 0.3526754042553192,
+      "utilization": 0.0006269344710393209,
+      "model_wait_ms": 0.00016638101965327223,
+      "observed_wait_ms": 0.3193127021276981,
+      "model_ms": 3.346487198567742,
+      "observed_ms": 3.467718808510638,
+      "error_pct": -3.4960046254432093
+    },
+    {
+      "name": "shipping",
+      "rate_rps": 2.0117543370012188,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.047084475000148535,
+      "own_cs2": 1,
+      "glue_ms": 0.0354726,
+      "utilization": 0.00009472239678697427,
+      "model_wait_ms": 0.0000044603768184769965,
+      "observed_wait_ms": 0.08535257499999993,
+      "model_ms": 1.264337398053136,
+      "observed_ms": 1.420720775,
+      "error_pct": -11.007326682251401
+    },
+    {
+      "name": "ext:valkey-cart",
+      "external": true,
+      "rate_rps": 17.954907457735874,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0.23257731092436973,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 0.23257731092436973,
+      "observed_ms": 0.23257731092436973
+    },
+    {
+      "name": "shape:frontend:2",
+      "rate_rps": 3.21880693920195,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 3.080273131999657,
+      "observed_ms": 0,
+      "stage": true
+    },
+    {
+      "name": "stage:frontend:3.2",
+      "rate_rps": 2.313517487551402,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 1.4601963753056146,
+      "observed_ms": 0,
+      "parallel": true,
+      "stage": true
+    },
+    {
+      "name": "shape:frontend:3",
+      "rate_rps": 2.313517487551402,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 4.806683573873356,
+      "observed_ms": 0,
+      "stage": true
+    },
+    {
+      "name": "shape:frontend:6",
+      "rate_rps": 0.5029385842503047,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 20.931644409199354,
+      "observed_ms": 0,
+      "stage": true
+    },
+    {
+      "name": "stage:frontend:7.2",
+      "rate_rps": 0.20117543370012186,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 1.4446434556100418,
+      "observed_ms": 0,
+      "parallel": true,
+      "stage": true
+    },
+    {
+      "name": "shape:frontend:7",
+      "rate_rps": 0.20117543370012186,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 20.950335748067882,
+      "observed_ms": 0,
+      "stage": true
+    },
+    {
+      "name": "stage:frontend:8.2",
+      "rate_rps": 0.1508815752750914,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 1.4540598587646107,
+      "observed_ms": 0,
+      "parallel": true,
+      "stage": true
+    },
+    {
+      "name": "shape:frontend:8",
+      "rate_rps": 0.1508815752750914,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 20.959752151222453,
+      "observed_ms": 0,
+      "stage": true
+    },
+    {
+      "name": "stage:frontend:9.2",
+      "rate_rps": 0.1508815752750914,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 1.4601963753056146,
+      "observed_ms": 0,
+      "parallel": true,
+      "stage": true
+    },
+    {
+      "name": "shape:frontend:9",
+      "rate_rps": 0.1508815752750914,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 20.965888667763455,
+      "observed_ms": 0,
+      "stage": true
+    },
+    {
+      "name": "stage:frontend:10.1",
+      "rate_rps": 0.050293858425030466,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 1.8479544018762142,
+      "observed_ms": 0,
+      "parallel": true,
+      "stage": true
+    },
+    {
+      "name": "stage:frontend:11.1",
+      "rate_rps": 0.050293858425030466,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 3.346487198567742,
+      "observed_ms": 0,
+      "parallel": true,
+      "stage": true
+    }
+  ],
+  "warnings": [
+    "nested spans of one kind in one pod (a framework's span inside the instrumentation's, a gRPC client's span around the HTTP client's) were read as one: the other was made INTERNAL, so a request is one visit and a call is one call: cart 20 CLIENT (the span the callee's SERVER span is under kept, else the outermost), flagd 40 SERVER (the outer span kept), frontend 424 SERVER (the outer span kept). Of the SERVER pairs, these name no instrumentation scope on one or both spans, so a framework's wrapper could not be told from a request the service sent to itself with a client that opens no span (two SERVER spans of one scope are kept apart as two visits): flagd 40, frontend 424; if the service does call itself that way, its visits are counted once",
+    "flagd is entered from outside the capture and is also called by cart: 79.4% of its 97 visits have no caller's visit in the capture (requests from outside it, or from a service whose spans are not here or that does not pass the trace context on), 20.6% are called by cart. The load on flagd is right; a change of flagd's time reaches cart and not those senders",
+    "3 services emit no SERVER span, so they are not in the model (the model has a service for a SERVER span, a visit that holds a worker; --patch cannot name them): accounting (CLIENT, CONSUMER spans), fraud-detection (CONSUMER spans), load-generator (CLIENT spans)",
+    "checkout: only 20 visits; its estimates are rough",
+    "email: only 20 visits; its estimates are rough",
+    "image-provider: only 2 visits; its estimates are rough",
+    "payment: only 20 visits; its estimates are rough",
+    "quote: only 20 visits; its estimates are rough",
+    "no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: ad 1+ (0 waited; up to 1 in a pod at once), cart 1+ (0 waited; up to 2 in a pod at once), checkout 1+ (0 waited; up to 1 in a pod at once), currency 1+ (0 waited; up to 1 in a pod at once), email 1+ (0 waited; up to 1 in a pod at once), flagd 1+ (0 waited; up to 1 in a pod at once), frontend 1+ (2 waited; up to 2 in a pod at once), frontend-proxy 1+ (0 waited; up to 2 in a pod at once), image-provider 1+ (0 waited; up to 1 in a pod at once), payment 1+ (0 waited; up to 1 in a pod at once), product-catalog 4+ (0 waited; up to 4 in a pod at once), quote 1+ (0 waited; up to 1 in a pod at once), recommendation 1+ (0 waited; up to 1 in a pod at once), shipping 1+ (0 waited; up to 1 in a pod at once)",
+    "cart -\u003e ext:valkey-cart: calls per visit vary as {1: 122, 2: 20, 3: 65}; only their mean (1.72 per visit) enters the model, as 1 call(s) made on every visit and one more with probability 0.72. That is exact for the load on ext:valkey-cart and for the mean time of a caller that makes its calls one after another; the spread of the counts is not modelled (the calls of one visit reach ext:valkey-cart close together, and the model takes them as independent arrivals), which matters only when ext:valkey-cart is busy (in simulations with up to 20 calls per visit and ext:valkey-cart 30-60% busy the mean latency was within 2% on average). Calls lost from the capture, or sampled out, look the same as a count that varies: if the count should be fixed, check the exporters",
+    "checkout -\u003e product-catalog: calls per visit vary as {1: 10, 2: 4, 3: 3, 4: 3}; only their mean (1.95 per visit) enters the model, as 1 call(s) made on every visit and one more with probability 0.95. As for the callees above, that is exact for the load and for the mean time of a caller that makes its calls one after another, and the spread of the counts is not modelled.",
+    "checkout -\u003e currency: calls per visit vary as {2: 10, 3: 4, 4: 3, 5: 3}; only their mean (2.95 per visit) enters the model, as 2 call(s) made on every visit and one more with probability 0.95. As for the callees above, that is exact for the load and for the mean time of a caller that makes its calls one after another, and the spread of the counts is not modelled.",
+    "frontend: its visits take 11 call shapes, modelled as a mixture (it calls each shape with the share of visits that took it): product-catalog (46.1% of visits); cart then cart (13.9% of visits); recommendation then product-catalog x4 (10.0% of visits); cart (8.0% of visits); ad (7.8% of visits); checkout then product-catalog (2.2% of visits); checkout then product-catalog x2 (0.9% of visits); checkout then product-catalog x3 (0.7% of visits); checkout then product-catalog x4 (0.7% of visits); cart x2 (0.2% of visits); product-catalog x4 + recommendation (0.2% of visits)",
+    "frontend -\u003e cart: calls per visit vary as {0: 358, 1: 37, 2: 65}; the call shapes carry them (0.363 per visit on average)",
+    "frontend -\u003e product-catalog: calls per visit vary as {0: 181, 1: 222, 2: 4, 3: 3, 4: 50}; the call shapes carry them (0.954 per visit on average)",
+    "357 client calls to services without server spans were treated as external delays"
+  ],
+  "scope": "Mean latency only, for steady load below the utilization limit, assuming Poisson arrivals. No tail (p95/p99), burst, retry or timeout modelling. Worker counts marked + are lower bounds.",
+  "model": "refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas",
+  "nested_spans_merged": [
+    {
+      "service": "cart",
+      "server_spans": 0,
+      "client_spans": 20
+    },
+    {
+      "service": "flagd",
+      "server_spans": 40,
+      "client_spans": 0,
+      "server_spans_without_scope": 40
+    },
+    {
+      "service": "frontend",
+      "server_spans": 424,
+      "client_spans": 0,
+      "server_spans_without_scope": 424
+    }
+  ]
+}

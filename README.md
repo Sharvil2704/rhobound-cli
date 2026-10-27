@@ -79,10 +79,11 @@ warnings:
 | `rhobound predict CAPTURE [--patch svc=+3ms,...]` | infer the call graph from traces and predict the mean latency, before and after a change |
 | `rhobound infer CAPTURE` | print the inferred call graph as a topology JSON |
 | `rhobound model TOPOLOGY.json --rps N` | evaluate a topology you wrote or edited, at N requests/s |
-| `rhobound version` | print the version |
+| `rhobound version [--json]` | print the version; with `--json`, also the Go release, the architecture and the source it was built from |
 
 Common flags: `--workers svc=N`, `--kept-share F`, `--max-rho R`, `--plain`, `--json`, `--out DIR`. See
-[USAGE.md](docs/USAGE.md) for every flag, exit code, refusal and warning.
+[USAGE.md](docs/USAGE.md) for every flag, exit code, refusal and warning. The commands of the `rhobound-mcp` branch
+(below) are listed by `rhobound` without arguments and in [USAGE.md](docs/USAGE.md#11-the-rhobound-mcp-commands).
 
 ## What you need to supply
 
@@ -135,6 +136,42 @@ Measured, with failures stated first, in [ACCURACY.md](docs/ACCURACY.md):
 - The simulated studies' truth is our own simulator, and the cluster demo's services are queues of the kind the model
   describes, so none of this is a claim about your system. [VALIDATION.md](docs/VALIDATION.md) lists every check.
 
+## rhobound-mcp: the branch for coding agents and CI
+
+The branch `rhobound-mcp` extends rhobound-cli for coding agents and deploy gates. **It predicts mean latency only, like
+the CLI it extends**, and `rhobound predict CAPTURE` prints exactly what it printed before on the repository's test
+captures and on every capture without a platform pod identity (a test compares the output byte for byte with that of
+commit 1a2df09, on linux/arm64), except on refusals and bad input: `--workers` naming a service the capture does not
+have is now refused (`change.unknown_service`, exit 1) where 1a2df09 ignored it
+([USAGE.md](docs/USAGE.md#7-the-other-flags), section 7); with `--json` a refusal also prints the coded refusal object
+on standard output ([USAGE.md](docs/USAGE.md#9-exit-codes-and-refusals), section 9), where 1a2df09 printed nothing; on a
+file that is JSON but not in OTLP's shape, the decoder's text after `bad OTLP/JSON: ` names the decode type, which has
+gained fields since ([testdata/golden-1a2df09](testdata/golden-1a2df09/README.md)); and `--fit`, `--changes` or
+`--report`, flags 1a2df09 did not have, given with a capture print this build's usage message on standard error where
+1a2df09 printed its own, with exit 1 and nothing on standard output as before. On a capture that names its pods only by
+`k8s.pod.uid` or an ECS task (`aws.ecs.task.arn`) and has no `k8s.pod.name`, pods are keyed by that identity, so the
+predictions can change: the pod count and the per-pod queues follow it, where 1a2df09 used `service.instance.id` or
+`host.name` or, with neither, read all of a service's spans as one pod, and the split warning names pods by it, an ECS
+task by its id ([DATA.md](docs/mcp/DATA.md#34-resource-attributes), 3.4). It adds:
+
+- to the CLI (still the standard library only): `check`, the data contract, which refuses or flags every known defect
+  of a capture by a stable code with a fix; `fit` and `predict --fit F --changes C`, which make and reuse a fit record;
+  `budget` and `context`, how much a service may add per visit before a threshold is crossed; `preview` and `gate`,
+  an advisory preview for an agent and a gate with exit codes for CI; `diff-fit`, the measured difference of an A/B
+  run; `explain`, `judge-packet` and `judge-check`, for a second model's review. Refusals print a coded JSON object
+  with `--json`.
+- `rhobound-mcp` (the nested Go module [mcp/](mcp/), Go 1.25 and the official MCP Go SDK): an MCP server with six
+  tools (`context`, `budget`, `predict`, `explain`, `fit_start`, `job_status`) over stdio or HTTP, and a bench
+  profile with the first four, for benchmarks. It runs the CLI as a subprocess and never computes a number itself:
+  `context`, `budget`, `predict` and `explain` return the JSON of a CLI command plus the server's handles, and its
+  refusals carry codes from the same registry as the CLI's. `rhobound-mcp version --json` prints the same build
+  information as `rhobound version --json`.
+
+Nothing in it is deployed, and no accuracy study of the gate has been run. The design, the data contract and its
+status are in [docs/mcp/](docs/mcp/ARCHITECTURE.md); [examples/mcp/](examples/mcp/README.md) runs the server locally,
+and [testdata/mcp/](testdata/mcp/README.md) walks the loop an agent follows.
+What this release does not do or guarantee is listed in [Known limits](docs/mcp/ARCHITECTURE.md#512-known-limits).
+
 ## Documentation
 
 | document | contents |
@@ -147,6 +184,7 @@ Measured, with failures stated first, in [ACCURACY.md](docs/ACCURACY.md):
 | [VALIDATION.md](docs/VALIDATION.md) | every check that has been run, failures first |
 | [REAL_CLUSTER.md](docs/REAL_CLUSTER.md) | the run on a real cluster: the OpenTelemetry Demo and the repository's demo, what failed, the causes, the fixes, before and after, what is still open |
 | [validation/cluster/](validation/cluster/README.md) | the scripts of the real-cluster runs (Phase A and Phase B); how to run them on your own cluster is in [REAL_CLUSTER.md](docs/REAL_CLUSTER.md#2-how-to-reproduce-it) |
+| [docs/mcp/](docs/mcp/ARCHITECTURE.md) | rhobound-mcp: the architecture, the data contract (every code, generated from the registry), deployment on AWS and locally, the evaluation plan, the code-path research plan, and the JSON Schemas |
 
 Example topologies for `rhobound model` are in [examples/](examples/).
 
@@ -175,4 +213,6 @@ when it matters; byte parity holds only against the first release's code.
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The Rust port in [rust/](rust/) also contains
 code derived from the Go standard library under the BSD-3-Clause licence ([rust/LICENSE-GO](rust/LICENSE-GO));
-see NOTICE.
+see NOTICE. The MCP server in [mcp/](mcp/) is a separate Go module whose binary links third-party Go modules
+(the official MCP Go SDK and its dependencies, under Apache-2.0, MIT and BSD-3-Clause), listed with their licences in
+[mcp/THIRD-PARTY.md](mcp/THIRD-PARTY.md).

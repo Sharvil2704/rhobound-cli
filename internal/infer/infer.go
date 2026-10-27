@@ -44,6 +44,7 @@
 package infer
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -53,6 +54,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Sharvil2704/rhobound-cli/internal/contract"
 	"github.com/Sharvil2704/rhobound-cli/internal/model"
 	"github.com/Sharvil2704/rhobound-cli/internal/otlp"
 )
@@ -74,6 +76,24 @@ type Options struct {
 	// time by visits busy at arrival). Empty: the RHOBOUND_ESTIMATOR variable,
 	// else EstimatorFIFO.
 	Estimator string
+	// KeepSamples keeps each service's per-visit samples in Inferred.Samples, for the standard errors of an A/B
+	// difference (internal/abdiff). It changes no other result.
+	KeepSamples bool
+}
+
+// Samples are one service's per-visit observations, kept with Options.KeepSamples: what the batch-means standard
+// errors of an A/B difference are computed from.
+type Samples struct {
+	// Own are the service times of the visits (release minus start of service, ms), in order of arrival: the FIFO
+	// queue rebuild's, so empty with the rise estimator.
+	Own []float64
+	// Glue are the glue times of the visits of complete traces (ms), in order of arrival.
+	Glue []float64
+	// Calls are the mean calls per visit the visits wait for, by callee, over the visits of complete traces.
+	Calls map[string]float64
+	// Visits are the visits counted; Errors those whose SERVER span has an error status or an HTTP status of 500 or
+	// more.
+	Visits, Errors int64
 }
 
 // ServiceStats are the observations behind one service of the topology.
@@ -149,6 +169,21 @@ type Inferred struct {
 	// NestedSpans lists, by service, the nested spans of one kind in one pod that were read as one (nested.go).
 	NestedSpans []NestedMerge
 	Warnings    []string
+	// WarningCodes and WarningSubjects are parallel to Warnings: the registered code of each warning that has one
+	// (internal/contract), and the service it concerns, "" for a warning with no code or no subject. The text of a
+	// warning does not depend on them.
+	WarningCodes    []string
+	WarningSubjects []string
+	// Samples are the services' per-visit samples by name, with Options.KeepSamples; nil otherwise. They are no part
+	// of a fit record.
+	Samples map[string]*Samples
+}
+
+// glueSample is one visit's glue, kept with Options.KeepSamples.
+type glueSample struct {
+	svc   int32
+	start uint64
+	glue  float64
 }
 
 type edgeKey struct{ caller, callee int32 }
@@ -268,6 +303,10 @@ type acc struct {
 
 	lostEdges map[lostKey]int64   // calls with no span of their callee under them, by caller and address (lost.go)
 	lostBelow map[orphanKey]int64 // spans whose parent is not in the capture, below a top in it or not SERVER/CONSUMER, by service and kind
+
+	keep    bool         // Options.KeepSamples: keep glueRec and errs
+	glueRec []glueSample // each complete trace's visits' glue
+	errs    []int64      // visits whose SERVER span is an error, by service
 }
 
 func newAcc(n int) *acc {
@@ -312,7 +351,8 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		opt.MinRequests = 2 // the window is read from the spread of the entry arrivals
 	}
 	if len(d.Spans) == 0 {
-		return nil, fmt.Errorf("the capture holds no usable spans")
+		return nil, &Refusal{Code: contract.TraceSpansSkipped, Numbers: map[string]float64{"skipped": float64(d.Skipped)},
+			Err: fmt.Errorf("the capture holds no usable spans")}
 	}
 	est := opt.Estimator
 	if est == "" {
@@ -335,7 +375,7 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		}
 	}
 	if len(hasServer) == 0 {
-		return nil, fmt.Errorf("the capture holds no SERVER spans: nothing to infer")
+		return nil, &Refusal{Code: contract.TraceNoServerSpans, Err: fmt.Errorf("the capture holds no SERVER spans: nothing to infer")}
 	}
 	var names []string
 	for s := range hasServer {
@@ -346,6 +386,12 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	svcOf := map[string]int32{}
 	for i, s := range names {
 		svcOf[s] = int32(i)
+	}
+	for _, name := range sortedNames(opt.Workers) {
+		if _, ok := svcOf[name]; !ok {
+			return nil, &Refusal{Code: contract.ChangeUnknownService, Subject: name,
+				Err: fmt.Errorf("--workers: unknown service %q (services with SERVER spans: %s)", name, strings.Join(names, ", "))}
+		}
 	}
 	resSvc := make([]int32, len(d.Resources)) // -1: emits no server spans
 	podOf := map[string]int32{}
@@ -424,7 +470,15 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	// streams and other server spans that stay open for much of the capture are no visits (see longlived.go)
 	long := longVisits(d, resName, nameList)
 	if err := longVisitsError(d, long); err != nil {
-		return nil, err
+		r := &Refusal{Code: contract.TraceStreams, Err: err}
+		for _, ls := range long {
+			if ls.share >= longBusyRefuse {
+				r.Subject = ls.name
+				r.Numbers = map[string]float64{"busy_share": ls.share}
+				break
+			}
+		}
+		return nil, r
 	}
 	nestedBy := make([][]nestedCount, nChunks)
 	eachChunk(nGroups, chunk, func(ci, lo, hi int) {
@@ -462,6 +516,9 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	accs := make([]*acc, nChunks)
 	eachChunk(nGroups, chunk, func(ci, lo, hi int) {
 		a := newAcc(nAll)
+		if opt.KeepSamples {
+			a.keep, a.errs = true, make([]int64, nAll)
+		}
 		for g := lo; g < hi; g++ {
 			processTrace(d, d.Spans[bounds[g]:bounds[g+1]], a, resSvc, resPod, resName, nSvc, unknownPeer, !fifo, pp)
 		}
@@ -470,7 +527,16 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 
 	// ---- merge
 	t := newAcc(nAll)
+	if opt.KeepSamples {
+		t.keep, t.errs = true, make([]int64, nAll)
+	}
 	for _, a := range accs {
+		if a.keep {
+			t.glueRec = append(t.glueRec, a.glueRec...)
+			for i, n := range a.errs {
+				t.errs[i] += n
+			}
+		}
 		for i := 0; i < nAll; i++ {
 			t.visits[i] += a.visits[i]
 			t.sVisits[i] += a.sVisits[i]
@@ -551,20 +617,34 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	}
 	lostEdges := lostEdgesOf(t, pp, d, nameList, names)
 	if t.broken > 0 && float64(t.broken) > maxBrokenShare*float64(t.traces) {
-		return nil, brokenError(t, names, pp, nameList, lostEdges)
+		return nil, &Refusal{Code: contract.TraceBrokenTraces,
+			Numbers: map[string]float64{"broken": float64(t.broken), "traces": float64(t.traces)},
+			Err:     brokenError(t, names, pp, nameList, lostEdges)}
 	}
 	if t.entryN < int64(opt.MinRequests) {
-		return nil, fmt.Errorf("only %d entry requests in the capture; need at least %d", t.entryN, opt.MinRequests)
+		return nil, &Refusal{Code: contract.TraceTooFewEntries,
+			Numbers: map[string]float64{"entries": float64(t.entryN), "needed": float64(opt.MinRequests)},
+			Err:     fmt.Errorf("only %d entry requests in the capture; need at least %d", t.entryN, opt.MinRequests)}
 	}
 	windowNs := float64(t.entryMax-t.entryMin) * float64(t.entryN) / float64(t.entryN-1)
 	windowS := windowNs / 1e9
 	if windowS <= 0 {
-		return nil, fmt.Errorf("the entry requests span no time")
+		return nil, &Refusal{Code: contract.TraceTooFewEntries, Numbers: map[string]float64{"entries": float64(t.entryN)},
+			Err: fmt.Errorf("the entry requests span no time")}
 	}
 
 	out := &Inferred{WindowS: windowS, Requests: t.entryN, Spans: len(d.Spans), Traces: t.traces, BrokenTraces: t.broken,
 		ProbeSpans: d.Probes, NestedSpans: nestedSummary(nameList, nestedTotal)}
-	warn := func(f string, a ...any) { out.Warnings = append(out.Warnings, fmt.Sprintf(f, a...)) }
+	warn := func(f string, a ...any) {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(f, a...))
+		out.WarningCodes = append(out.WarningCodes, "")
+		out.WarningSubjects = append(out.WarningSubjects, "")
+	}
+	// coded tags the warning just added with its registered code and subject
+	coded := func(code, subject string) {
+		out.WarningCodes[len(out.WarningCodes)-1] = code
+		out.WarningSubjects[len(out.WarningSubjects)-1] = subject
+	}
 	if d.Skipped > 0 {
 		warn("%d spans were skipped (a missing id, service name, start or end time)", d.Skipped)
 	}
@@ -644,6 +724,7 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	stats := make([]ServiceStats, len(used))
 	var lower []string    // services whose rebuilt queues saw too few waits to pin the worker count
 	var negative []string // services whose rebuilt queues give a negative mean service time
+	var negName string    // the first of them
 	identified := false
 	briefly := false // some lower bound saw enough waits, too short to pin the count
 	for k, id := range used {
@@ -696,8 +777,12 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 					}
 					if q.negShare > 0.001 {
 						warn("%s: %.2f%% of reconstructed service times are negative (clock or ordering jitter)", st.Name, 100*q.negShare)
+						coded(contract.TraceClockSkew, st.Name)
 					}
 					if !(mean >= 0) {
+						if negName == "" {
+							negName = st.Name
+						}
 						negative = append(negative, fmt.Sprintf("%s %.3f ms", st.Name, mean))
 					}
 				}
@@ -783,6 +868,9 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 					skip = reconstructQueues(vs, nSvc, fixed)[i]
 				}
 				warn("%s", earlyWarning(st.Name, sh, t.early[i], t.earlyOwn[i], t.earlyMax[i], c, mean, skip))
+				if t.earlyOwn[i] < t.early[i] { // some on another pod's clock: clock skew between pods
+					coded(contract.TraceClockSkew, st.Name)
+				}
 			}
 		} else {
 			st.Name, st.External = extName(id), true
@@ -816,11 +904,12 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		// The release is clipped to the span, so at the most workers the pod ever had busy every service time is
 		// at least 0; the search stops below that only with a few contradictions. A negative mean takes a worker
 		// count that the spans contradict: a user-set one, or times that do not fit any FIFO queue.
-		return nil, fmt.Errorf("refusing to infer: the rebuilt queues give a negative mean service time (%s): the spans' "+
+		return nil, &Refusal{Code: contract.TraceNegativeServiceTime, Subject: negName, Err: fmt.Errorf("refusing to infer: "+
+			"the rebuilt queues give a negative mean service time (%s): the spans' "+
 			"times contradict a first-come-first-served queue with that many workers. Clock skew between pods does "+
 			"this (a call with no CLIENT span is timed by the callee's clock, so a callee whose clock runs behind seems "+
 			"to answer before it was called), and so does a --workers count below the pod's real one -- synchronize the "+
-			"clocks (NTP) or export CLIENT spans for the calls, and check --workers", strings.Join(negative, ", "))
+			"clocks (NTP) or export CLIENT spans for the calls, and check --workers", strings.Join(negative, ", "))}
 	}
 	if len(lower) > 0 {
 		// one line, not one per service: on a capture whose spans start once a worker has taken the request no
@@ -1061,10 +1150,12 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 			res, ok := b.mixtureCalls(sigs)
 			if !ok {
 				shape, seen := commonShape(sigs, stats, idx)
-				return nil, fmt.Errorf("%s: its calls overlap in %.0f%% of its visits with two or more calls, and its visits take "+
-					"more than %d call shapes, so that the commonest %d leave %.0f%% of its visits that make calls out (the limit is %.0f%%); the model has "+
-					"sequential, parallel and staged calls, or a mixture of up to %d shapes (most common shape: %s, %.0f%% of visits)",
-					name, 100*share, maxShapes, maxShapes, 100*res.tail, 100*shapeTail, maxShapes, shape, 100*float64(seen)/float64(nsp))
+				return nil, &Refusal{Code: contract.TraceTooManyShapes, Subject: name,
+					Numbers: map[string]float64{"left_out_share": res.tail, "limit": shapeTail}, Err: fmt.Errorf(
+						"%s: its calls overlap in %.0f%% of its visits with two or more calls, and its visits take "+
+							"more than %d call shapes, so that the commonest %d leave %.0f%% of its visits that make calls out (the limit is %.0f%%); the model has "+
+							"sequential, parallel and staged calls, or a mixture of up to %d shapes (most common shape: %s, %.0f%% of visits)",
+						name, 100*share, maxShapes, maxShapes, 100*res.tail, 100*shapeTail, maxShapes, shape, 100*float64(seen)/float64(nsp))}
 			}
 			calls := append(res.calls, topUpCalls(res.expected, "the call shapes")...)
 			topo.Services[si].Calls = append(calls, asyncCalls...)
@@ -1164,15 +1255,29 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 				selfCalls = append(selfCalls, stats[i].Name)
 			}
 		}
+		var msg error
 		if len(selfCalls) > 0 {
-			return nil, fmt.Errorf("the inferred call graph is not usable: %w (a service calling itself: %s; nested spans of one pod "+
+			msg = fmt.Errorf("the inferred call graph is not usable: %w (a service calling itself: %s; nested spans of one pod "+
 				"are read as one, so this is a call over the network, SERVER spans of one instrumentation scope inside one another (read as a "+
 				"call), or nested spans more than %d ms apart)", err,
 				strings.Join(selfCalls, ", "), nestedSlackNs/1_000_000)
+		} else {
+			msg = fmt.Errorf("the inferred call graph is not usable: %w", err)
 		}
-		return nil, fmt.Errorf("the inferred call graph is not usable: %w", err)
+		if !errors.Is(err, model.ErrCycle) {
+			return nil, msg
+		}
+		r := &Refusal{Code: contract.TraceCycle, Err: msg}
+		if len(selfCalls) > 0 {
+			r.Subject = selfCalls[0]
+		}
+		return nil, r
 	}
-	batchWarnings(topo, stats, batchNodes, nodeOwner, warn)
+	batchWarnings(topo, stats, batchNodes, nodeOwner, func(f string, a ...any) {
+		warn(f, a...)
+		subject, _ := a[0].(string) // the caller that sends the calls at once
+		coded(contract.ModelBatchArrivals, subject)
+	})
 	markLost(lostEdges, stats, idx)
 	for _, w := range markStructure(t, stats, idx) {
 		warn("%s", w)
@@ -1190,7 +1295,87 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 			"request's path and were left out (a consumer's work is its own, not the producing request's; a call from it "+
 			"to a service with server spans is an entry of that service)", t.consumerX)
 	}
+	if opt.KeepSamples {
+		out.Samples = keptSamples(t, queues, names, nSvc, extName)
+	}
 	return out, nil
+}
+
+// keptSamples gathers each service's per-visit samples (Options.KeepSamples), each list in order of arrival, ties
+// broken by value, so that they do not depend on how the work was split.
+func keptSamples(t *acc, queues []*svcQueue, names []string, nSvc int, extName func(int32) string) map[string]*Samples {
+	out := map[string]*Samples{}
+	type timed struct {
+		start uint64
+		v     float64
+	}
+	byStart := func(xs []timed) []float64 {
+		sort.Slice(xs, func(i, j int) bool {
+			if xs[i].start != xs[j].start {
+				return xs[i].start < xs[j].start
+			}
+			return xs[i].v < xs[j].v
+		})
+		out := make([]float64, len(xs))
+		for i, x := range xs {
+			out[i] = x.v
+		}
+		return out
+	}
+	glue := make([][]timed, nSvc)
+	for _, g := range t.glueRec {
+		if int(g.svc) < nSvc {
+			glue[g.svc] = append(glue[g.svc], timed{g.start, g.glue})
+		}
+	}
+	for i := 0; i < nSvc; i++ {
+		smp := &Samples{Calls: map[string]float64{}, Visits: t.visits[i], Errors: t.errs[i], Glue: byStart(glue[i]),
+			Own: []float64{}}
+		if i < len(queues) && queues[i] != nil {
+			var own []timed
+			for _, q := range queues[i].pods {
+				for k := range q.B {
+					own = append(own, timed{t.vrec[q.vidx[q.Order[k]]].start, q.D[k] - q.B[k]})
+				}
+			}
+			smp.Own = byStart(own)
+		}
+		if n := float64(t.sVisits[i]); n > 0 {
+			var keys []countKey // in a fixed order, so that the sums do not depend on the map's
+			for k := range t.counts {
+				if int(k.caller) == i {
+					keys = append(keys, k)
+				}
+			}
+			sort.Slice(keys, func(a, b int) bool {
+				if keys[a].callee != keys[b].callee {
+					return keys[a].callee < keys[b].callee
+				}
+				return keys[a].n < keys[b].n
+			})
+			for _, k := range keys {
+				var callee string
+				if int(k.callee) < nSvc {
+					callee = names[k.callee]
+				} else {
+					callee = extName(k.callee)
+				}
+				smp.Calls[callee] += float64(k.n) * float64(t.counts[k]) / n
+			}
+		}
+		out[names[i]] = smp
+	}
+	return out
+}
+
+// sortedNames returns a map's keys in order.
+func sortedNames(m map[string]int) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // hasGroup reports whether some stage holds two or more calls.
@@ -2152,12 +2337,20 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 		a.ownSum[svc] += pre
 		a.ownSq[svc] += pre * pre
 		a.serverSum[svc] += dur
+		if a.keep {
+			if ext := d.ExtOf(v); ext.Status == 2 || ext.HTTPStatus >= 500 {
+				a.errs[svc]++
+			}
+		}
 		if broken {
 			continue
 		}
 		a.sVisits[svc]++
 		a.glueSum[svc] += glue
 		a.glueSq[svc] += glue * glue
+		if a.keep {
+			a.glueRec = append(a.glueRec, glueSample{svc, v.Start, glue})
+		}
 		for j, c := range cs {
 			key := edgeKey{svc, c.callee}
 			ea := a.edges[key]

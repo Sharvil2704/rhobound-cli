@@ -3,10 +3,17 @@ Copyright 2026 The rhobound-cli authors
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-The Go module contains no third-party code: the Go standard library is its only dependency.
+The root Go module contains no third-party code: the Go standard library is its only dependency.
 
-It does contain third-party data: internal/infer/testdata/counts/, internal/infer/testdata/hops/browse-45s/ and
-internal/infer/testdata/nested/ hold cut-down excerpts of traces produced by the OpenTelemetry Demo
+mcp/ (rhobound-mcp, the MCP server) is a separate Go module. It vendors no third-party code, but it depends on, and
+its binaries include, the Go modules listed with their licences in mcp/THIRD-PARTY.md: the official MCP Go SDK
+(github.com/modelcontextprotocol/go-sdk, Apache-2.0 and MIT, as its LICENSE states), github.com/google/jsonschema-go
+(MIT), github.com/segmentio/asm and github.com/segmentio/encoding (MIT; segmentio/encoding includes code from the Go
+standard library under the Go Authors' BSD-style licence), github.com/yosida95/uritemplate/v3 (BSD-3-Clause) and
+golang.org/x/oauth2, golang.org/x/sync, golang.org/x/sys and golang.org/x/time (BSD-3-Clause).
+
+The root module does contain third-party data: internal/infer/testdata/counts/, internal/infer/testdata/hops/browse-45s/
+and internal/infer/testdata/nested/ hold cut-down excerpts of traces produced by the OpenTelemetry Demo
 (https://github.com/open-telemetry/opentelemetry-demo, release 2.2.0, whose Kubernetes manifest runs the Demo's 2.1.3
 service images), Copyright The OpenTelemetry Authors, licensed under the Apache License, Version 2.0; internal/infer/testdata/README.md says what was kept. validation/cluster/
 downloads the Demo's Kubernetes manifest when it runs and does not contain it.

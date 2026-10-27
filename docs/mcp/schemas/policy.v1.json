@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/policy.v1.json",
+  "title": "rhobound.policy/v1",
+  "description": "A gate policy (ARCHITECTURE.md 6.2). Unknown keys are ignored and listed in gate.json, so this object is open; a known key with a bad value is policy.bad_value (exit 2). There is no default entry threshold: a policy that sets neither max_entry_mean_change_pct nor max_entry_mean_change_ms is refused (policy.no_threshold). Defaults: max_utilization_after 0.80, max_utilization_validated 0.58, model_band {0.163, 0.0227, simulated-p90}, misfit_max_error_pct 10, max_fit_age_h 24, evaluate_at busiest_window_7d, trusted_labels [measured-ab, measured-paired], the doubts_that_hold list of 6.2, max_preview_attempts 5, enforce false, exceptions []. Every doubts_that_hold entry must be a registered code. model_band cannot be null when enforce is true (policy.model_band_removed). Policies are named in server configuration, never inline from an agent (policy.inline_refused).",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound.policy/v1"},
+    "max_entry_mean_change_pct": {"oneOf": [{"type": "number", "exclusiveMinimum": 0}, {"type": "null"}]},
+    "max_entry_mean_change_ms": {"oneOf": [{"type": "number", "exclusiveMinimum": 0}, {"type": "null"}]},
+    "max_utilization_after": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+    "max_utilization_validated": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+    "model_band": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "change_frac": {"type": "number", "minimum": 0},
+            "latency_frac": {"type": "number", "minimum": 0},
+            "source": {"type": "string", "minLength": 1, "description": "simulated-p90 by default; an environment's own measured rows later"}
+          },
+          "required": ["change_frac", "latency_frac", "source"],
+          "additionalProperties": false
+        },
+        {"type": "null", "description": "removed: refused in enforce mode"}
+      ]
+    },
+    "misfit_max_error_pct": {"type": "number", "exclusiveMinimum": 0},
+    "max_fit_age_h": {"type": "number", "exclusiveMinimum": 0},
+    "evaluate_at": {"enum": ["busiest_window_7d", "fit_window"]},
+    "trusted_labels": {"type": "array", "uniqueItems": true, "items": {"$ref": "defs.v1.json#/$defs/Label"}},
+    "doubts_that_hold": {"type": "array", "uniqueItems": true, "items": {"$ref": "defs.v1.json#/$defs/Code"}},
+    "max_preview_attempts": {"type": "integer", "minimum": 1},
+    "enforce": {"type": "boolean"},
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "rule": {"const": "unmeasured_delta"},
+              "label": {"$ref": "defs.v1.json#/$defs/Label"},
+              "reason": {"type": "string", "minLength": 1, "maxLength": 400}
+            },
+            "required": ["rule", "label", "reason"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "rule": {"const": "threshold_under_floor"},
+              "reason": {"type": "string", "minLength": 1, "maxLength": 400}
+            },
+            "required": ["rule", "reason"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "description": "the one place a team relaxes a rule, always with a recorded reason; no other rule can be relaxed"
+    }
+  },
+  "required": ["schema"],
+  "anyOf": [
+    {"required": ["max_entry_mean_change_pct"], "properties": {"max_entry_mean_change_pct": {"type": "number"}}},
+    {"required": ["max_entry_mean_change_ms"], "properties": {"max_entry_mean_change_ms": {"type": "number"}}}
+  ],
+  "additionalProperties": true
+}

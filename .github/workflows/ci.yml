@@ -3,14 +3,78 @@ name: ci
 on: [push, pull_request]
 jobs:
   test:
+    # On the minimum Go of go.mod and on the current stable release, which carries the standard library's security
+    # fixes the release builds are made with (docs/BUILD.md).
+    strategy:
+      matrix:
+        go: ['', stable]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: {go-version-file: go.mod}
-      - run: gofmt -l . | tee /dev/stderr | (! read)
+        # the root module has no go.sum: the cache is keyed on go.mod
+        with: {go-version: '${{ matrix.go }}', go-version-file: go.mod, cache-dependency-path: go.mod}
+      - shell: bash
+        run: gofmt -l . | tee /dev/stderr | (! read)
       - run: go vet ./... && go vet -tags e2e ./...
       - run: go test -race -count=1 -timeout 30m ./...
+  mcp:
+    # rhobound-mcp, the MCP server (the nested module mcp/): Go 1.25 and the official MCP Go SDK. Its tests build the
+    # CLI from the root module and run it, so they validate the CLI's real outputs against docs/mcp/schemas.
+    strategy:
+      matrix:
+        go: ['', stable]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '${{ matrix.go }}', go-version-file: mcp/go.mod, cache-dependency-path: mcp/go.sum}
+      - run: go mod tidy -diff
+      - shell: bash
+        run: gofmt -l . | tee /dev/stderr | (! read)
+      - run: go vet ./...
+      - run: go test -race -count=1 -timeout 30m ./...
+  golden-arm64:
+    # The numbers on the architecture they were recorded on: the byte-for-byte sweep against the goldens of the
+    # previous release (testdata/golden-1a2df09/arm64, which the amd64 jobs above skip), fit parity, the documented
+    # pod-identity change and the captures past the reader's caps (whose comparison with 1a2df09's bytes runs only
+    # where the goldens are), and the loop's judge packet, whose digest testdata/mcp/loop/judge-answer.json cites.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache-dependency-path: go.mod}
+      # Every case of the manifest must run and pass: a renamed test would otherwise match nothing and exit 0.
+      - shell: bash
+        run: |
+          go test -count=1 -v -run 'TestGoldenSweep1a2df09|TestFitParity|TestPodIdentityChange|TestReportV1ReadsWithoutCaps' \
+            ./cmd/rhobound | tee golden.log
+          want=$(python3 -c 'import json; print(len(json.load(open("testdata/golden-1a2df09/arm64/manifest.json"))["cases"]))')
+          got=$(grep -c -- '--- PASS: TestGoldenSweep1a2df09/' golden.log || true)
+          echo "golden sweep: $got of $want cases passed"
+          test "$want" -gt 0 && test "$got" -eq "$want"
+          grep -q -- '--- PASS: TestFitParity' golden.log
+          grep -q -- '--- PASS: TestPodIdentityChange' golden.log
+          grep -q -- '--- PASS: TestReportV1ReadsWithoutCaps' golden.log
+      - shell: bash
+        run: |
+          go test -count=1 -v -run 'TestLoopPath' ./tools/gencontract | tee loop.log
+          grep -q -- '--- PASS: TestLoopPath' loop.log
+  golden-live:
+    # The byte rule on amd64, where no goldens are stored: rhobound built from commit 1a2df09 out of the history and
+    # this tree's CLI, built by the same Go, print the same bytes on every case of the manifest (tools/golden-live.sh,
+    # which counts the cases that pass).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache-dependency-path: go.mod}
+      - shell: bash
+        run: tools/golden-live.sh
   rust:
     # rbfast (rust/). Without RBFAST_ORACLE and the other Go-made data the parity tests skip, and on this amd64
     # runner the comparisons with Go's linux/arm64 values use the tolerance stated in rust/README.md.
@@ -20,7 +84,8 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@v4
-      - run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustup default stable
+      # pinned (rust/README.md): a new stable release's lints would otherwise turn the job red with no change here
+      - run: rustup toolchain install 1.99.1 --profile minimal --component clippy,rustfmt && rustup default 1.99.1
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --release --workspace --locked

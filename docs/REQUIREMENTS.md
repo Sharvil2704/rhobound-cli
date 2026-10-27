@@ -10,7 +10,10 @@ are marked **not detected**.
 - [ ] Every service exports **SERVER** spans, and **CLIENT** spans for the calls it makes.
 - [ ] Trace context (W3C `traceparent`) is passed on every call, so a callee's span names its caller's span as parent.
 - [ ] Each span's resource has `service.name`, and `k8s.pod.name` (or `service.instance.id`, or `host.name`).
-- [ ] Every request is kept, or you know the head-sampling share and pass it as `--kept-share`.
+- [ ] Every request is kept, or you know the head-sampling share and pass it as `--kept-share`. On the
+      `rhobound-mcp` branch, add an independent request count of the window (`request-count.json`): without one,
+      `rhobound check` reports the doubt `trace.sampling_unverified` on every capture, and a gate holds its verdict at
+      `inconclusive`.
 - [ ] The clocks of the machines are in step (NTP), or every call has a CLIENT span.
 - [ ] One continuous window with at least 100 entry requests; a few minutes at 20 or more requests/s is a good start.
 - [ ] The window is cut by the time its **traces started**, whole, so that it holds no gRPC stream or long poll that began before it ([Streams and other long server spans](#streams-and-other-long-server-spans)).
@@ -346,6 +349,23 @@ Keep every request, or head-sample at a known share and pass it as `--kept-share
 utilizations are divided by that share. Sampling is **not detected**: a wrong share moves every utilization and the
 `err %` column shows it (see [USAGE.md](USAGE.md#7-the-other-flags)). The share must apply to whole traces and to
 every request alike; a tail sampler that keeps slow or failed requests does not.
+
+On the `rhobound-mcp` branch, `rhobound check` makes the sampling a finding. A trace cannot show that it was not
+sampled, so without evidence from outside the traces every capture carries the doubt `trace.sampling_unverified`, and
+it never goes away by itself. The evidence is an independent count of the entry requests for the same window, from a
+load balancer, API Gateway, an ingress or the load generator, as `request-count.json` in the capture folder (or
+`--request-count F`):
+
+```json
+{"schema": "rhobound.request-count/v1", "window": {"start": "2023-11-14T22:13:20Z", "end": "2023-11-14T22:15:20Z"},
+ "source": "loadgen", "entries": [{"entry": "a", "count": 3099}]}
+```
+
+The kept share is then counted (`kept_share.source: counted`) and the doubt does not fire. A count higher than the
+traces' entry requests means they were sampled: the kept share is derived from it, and worker counts are read as
+lower bounds (`fit.queue_rebuild_sampled`). A constant `ot=th:` sampling threshold on every entry span is evidence too.
+A declared share (`--kept-share`) or SDK sampler (`--sampler svc=NAME`) is recorded and cross-checked, but leaves the
+doubt in place. [mcp/DATA.md](mcp/DATA.md) (sections 3.8 and 6) has every rule.
 
 ## 2. How much data
 

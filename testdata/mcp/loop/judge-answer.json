@@ -1,0 +1,10 @@
+{
+  "schema": "rhobound-mcp.judge-answer/v1",
+  "packet": "sha256:9e72618625fcd9d14824ad6497513646e666cfb13fab66bd28eb2eac52069de0",
+  "decision": "revise",
+  "reasons": [{"refs": ["prediction.entries[0]", "budgets[0]"], "code": "over_budget"}],
+  "suggestions": [{"rank": 1, "expected_ops": [{"op": "scale_count", "service": "b", "callee": "c", "value": 0.5,
+    "note": "batch the lookups to c: one call per two visits"}]}],
+  "measure": [{"service": "b", "kind": "ab", "why_code": "own_time_unknown"}],
+  "commentary": "The added work in b is above its per-visit budget. Batch the lookups to c, or move the work off the request path, then measure b with an A/B run."
+}

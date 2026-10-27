@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/data-contract.v1.json",
+  "title": "rhobound.data-contract/v1",
+  "description": "The data contract's registry as one document, docs/mcp/data-contract.json: every registered code with its level, trigger, condition, fix, behaviour at 1a2df09 (codes a capture triggers), the section that defines it, the registry version that added it, its status and the names of the numbers its findings carry. Generated from the registry in internal/contract by tools/gencontract, with the code tables of DATA.md 3.14 and 19. The server's rhobound://data-contract resource is this document, canonical; `rhobound explain --section data_contract` carries a subset of each row (code, level, trigger, fix, status), cut to its max_chars.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound.data-contract/v1"},
+    "contract": {"type": "string", "pattern": "^rhobound\\.contract/v[0-9]+\\.[0-9]+$"},
+    "codes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {"$ref": "defs.v1.json#/$defs/Code"},
+          "level": {"$ref": "defs.v1.json#/$defs/Level"},
+          "trigger": {"$ref": "defs.v1.json#/$defs/Trigger"},
+          "when": {"type": "string", "minLength": 1},
+          "fix": {"type": "string", "minLength": 1},
+          "today": {"type": "string", "minLength": 1, "description": "the behaviour at 1a2df09; codes a capture triggers only"},
+          "doc": {"type": "string", "minLength": 1},
+          "since": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+$"},
+          "status": {"enum": ["new", "coded", "later", "research"]},
+          "numbers": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"}, "description": "the names of the numbers a finding or a refusal of the code may carry; a stored finding with another is not one the registry makes"}
+        },
+        "required": ["code", "level", "trigger", "when", "fix", "doc", "since", "status"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema", "contract", "codes"],
+  "additionalProperties": false
+}

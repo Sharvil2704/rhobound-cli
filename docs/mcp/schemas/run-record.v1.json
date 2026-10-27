@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/run-record.v1.json",
+  "title": "rhobound.run-record/v1",
+  "description": "One trial of an evaluation study (EVALUATION.md 5). Every group is required: a record with a missing field counts as a failure of its arm, never as excluded. Predictions are registered in the ledger before the after-capture is opened.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound.run-record/v1"},
+    "captures": {
+      "type": "object",
+      "properties": {
+        "before": {"type": "array", "minItems": 1, "items": {"$ref": "defs.v1.json#/$defs/Digest"}},
+        "after": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Digest"}}
+      },
+      "required": ["before", "after"],
+      "additionalProperties": false,
+      "description": "capture manifest digests"
+    },
+    "load": {
+      "type": "object",
+      "properties": {
+        "generator": {"type": "string"},
+        "version": {"type": "string"},
+        "arrivals": {"type": "string"},
+        "rate_rps": {"type": "number", "minimum": 0},
+        "mix": {"type": "string"},
+        "warmup_s": {"type": "number", "minimum": 0}
+      },
+      "required": ["generator", "version", "arrivals", "rate_rps", "mix", "warmup_s"],
+      "additionalProperties": false
+    },
+    "measured_utilization": {"type": "object", "additionalProperties": {"type": "number"}, "description": "by service"},
+    "images": {"type": "object", "additionalProperties": {"$ref": "defs.v1.json#/$defs/Digest"}, "description": "by service"},
+    "change_inputs": {"type": "array", "items": {
+      "type": "object",
+      "properties": {
+        "source": {"type": "string"},
+        "op": {"type": "string"},
+        "service": {"type": "string"},
+        "value": {"$ref": "defs.v1.json#/$defs/Value"},
+        "label": {"$ref": "defs.v1.json#/$defs/Label"}
+      },
+      "required": ["source", "op", "service", "value", "label"],
+      "additionalProperties": false}},
+    "gate": {
+      "type": "object",
+      "properties": {
+        "tool_version": {"type": "string"},
+        "policy_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "report_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "verdict": {"$ref": "defs.v1.json#/$defs/Verdict"},
+        "codes": {"type": "array", "items": {"type": "string"}, "description": "finding codes and rule tokens"}
+      },
+      "required": ["tool_version", "policy_digest", "report_digest", "verdict", "codes"],
+      "additionalProperties": false
+    },
+    "truth": {
+      "type": "object",
+      "properties": {
+        "entry_mean_ms": {"type": "object", "additionalProperties": {"type": "number"}},
+        "aa_noise_ms": {"type": "number", "minimum": 0},
+        "p95_ms": {"type": "object", "additionalProperties": {"type": "number"}},
+        "p99_ms": {"type": "object", "additionalProperties": {"type": "number"}}
+      },
+      "required": ["entry_mean_ms", "aa_noise_ms", "p95_ms", "p99_ms"],
+      "additionalProperties": false,
+      "description": "the measured truth; tails are recorded, never predicted"
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "instance_type": {"type": "string"},
+        "cpu_model": {"type": "string"},
+        "kernel": {"type": "string"},
+        "orchestrator_version": {"type": "string"},
+        "cpu_limits": {"type": "object", "additionalProperties": {"type": "number"}},
+        "replicas": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "placement": {"type": "string"}
+      },
+      "required": ["instance_type", "cpu_model", "kernel", "orchestrator_version", "cpu_limits", "replicas", "placement"],
+      "additionalProperties": false
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "model": {"type": "string", "description": "a model id or a weight hash"},
+        "harness": {"type": "string"},
+        "harness_version": {"type": "string"},
+        "tokens": {"type": "integer", "minimum": 0},
+        "tool_calls": {"type": "integer", "minimum": 0},
+        "wall_clock_s": {"type": "number", "minimum": 0},
+        "polls": {"type": "integer", "minimum": 0},
+        "bench_mode": {"type": "boolean"}
+      },
+      "required": ["model", "harness", "harness_version", "tokens", "tool_calls", "wall_clock_s", "polls", "bench_mode"],
+      "additionalProperties": false
+    },
+    "task": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "family": {"type": "string"},
+        "source": {"type": "string"},
+        "date": {"type": "string", "format": "date"},
+        "split": {"type": "string"},
+        "expressibility": {"type": "string"}
+      },
+      "required": ["id", "family", "source", "date", "split", "expressibility"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema", "captures", "load", "measured_utilization", "images", "change_inputs", "gate", "truth",
+               "environment", "agent", "task"],
+  "additionalProperties": false
+}

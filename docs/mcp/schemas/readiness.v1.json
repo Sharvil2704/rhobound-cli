@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/readiness.v1.json",
+  "title": "rhobound.readiness/v1",
+  "description": "An environment's readiness record (ARCHITECTURE.md 6.6): the four conditions under which enforce mode is earned. CI writes it from ledger records. The first build has no ledger: the gate parses, checks and echoes the file in gate.json, and every verdict stays advisory with gate.enforce_not_earned whatever the file says.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound.readiness/v1"},
+    "env": {"$ref": "defs.v1.json#/$defs/Env"},
+    "aa_floor": {
+      "type": "object",
+      "properties": {
+        "pairs": {"type": "integer", "minimum": 0, "description": "A/A pairs measured at the gated load; at least 10"},
+        "floor_ms": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0},
+                     "description": "the false-delta floor by entry; a threshold below it is threshold_under_floor"},
+        "records": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Digest"}}
+      },
+      "required": ["pairs", "floor_ms", "records"],
+      "additionalProperties": false
+    },
+    "seeded": {
+      "type": "object",
+      "properties": {
+        "n": {"type": "integer", "minimum": 0, "description": "injected changes judged; n_seeded is 40 by default"},
+        "exceedances": {"type": "integer", "minimum": 0},
+        "nominal_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "p_value": {"type": "number", "minimum": 0, "maximum": 1, "description": "exact binomial test of exceedances against the nominal rate"},
+        "passed": {"type": "boolean"},
+        "records": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Digest"}}
+      },
+      "required": ["n", "exceedances", "nominal_rate", "p_value", "passed", "records"],
+      "additionalProperties": false
+    },
+    "transfer": {
+      "type": "object",
+      "properties": {
+        "required": {"type": "boolean", "description": "false when the gate takes no measured labels"},
+        "passed": {"type": "boolean", "description": "the transfer study passed its pre-registered criterion, not merely ran"},
+        "record": {"$ref": "defs.v1.json#/$defs/Digest"}
+      },
+      "required": ["required", "passed"],
+      "additionalProperties": false
+    },
+    "rate_cross_check": {
+      "type": "object",
+      "properties": {
+        "windows": {"type": "integer", "minimum": 0},
+        "max_diff_pct": {"type": "number", "minimum": 0},
+        "passed": {"type": "boolean", "description": "every gated window's trace entry rate within 5% of an outside count"}
+      },
+      "required": ["windows", "max_diff_pct", "passed"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema", "env", "aa_floor", "seeded", "transfer", "rate_cross_check"],
+  "additionalProperties": false
+}

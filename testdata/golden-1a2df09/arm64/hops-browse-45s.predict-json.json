@@ -1,0 +1,96 @@
+{
+  "version": "rhobound-cli.report/v1",
+  "capture": "internal/infer/testdata/hops/browse-45s",
+  "window_s": 44.969692869987846,
+  "requests": 824,
+  "spans": 7373,
+  "traces": 824,
+  "broken_traces": 0,
+  "external_rps": 18.3234518052474,
+  "kept_share": 1,
+  "max_utilization": 0.01533588557061866,
+  "busiest_service": "frontend",
+  "services": [
+    {
+      "name": "frontend",
+      "rate_rps": 18.212265811283523,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.8420635702075696,
+      "own_cs2": 0.35015063047718314,
+      "glue_ms": 0.25638606837606837,
+      "utilization": 0.01533588557061866,
+      "model_wait_ms": 0.008853539365815233,
+      "observed_wait_ms": 0.008853539365815233,
+      "model_ms": 2.562154780324551,
+      "observed_ms": 2.533124542124542,
+      "error_pct": 1.1460249078657987,
+      "hop_from_mean": true
+    },
+    {
+      "name": "frontend-proxy",
+      "entry": true,
+      "rate_rps": 18.212265811283523,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.11592063492063824,
+      "own_cs2": 0.07018788580886243,
+      "glue_ms": 0.05326495726495724,
+      "utilization": 0.0021111774161874184,
+      "model_wait_ms": 0.00013123006970031104,
+      "observed_wait_ms": 0.00020024420024086775,
+      "model_ms": 2.7314716025798464,
+      "observed_ms": 2.702510378510379,
+      "error_pct": 1.0716415485305577
+    },
+    {
+      "name": "image-provider",
+      "entry": true,
+      "rate_rps": 0.11118599396387986,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0,
+      "own_cs2": 1,
+      "utilization": 0,
+      "model_wait_ms": 0,
+      "observed_wait_ms": 0,
+      "model_ms": 0,
+      "observed_ms": 0
+    },
+    {
+      "name": "product-catalog",
+      "rate_rps": 18.190028612490746,
+      "replicas": 1,
+      "workers_per_pod": 1,
+      "workers_are_a_lower_bound": true,
+      "own_ms": 0.10199894621031631,
+      "own_cs2": 0.039208864014088955,
+      "utilization": 0.0018553637500095582,
+      "model_wait_ms": 0.00009850499482659536,
+      "observed_wait_ms": 0.0007357176038646218,
+      "model_ms": 1.0821268155083215,
+      "observed_ms": 1.0827640281173594,
+      "error_pct": -0.05885055215085726,
+      "hop_from_mean": true
+    }
+  ],
+  "warnings": [
+    "nested spans of one kind in one pod (a framework's span inside the instrumentation's, a gRPC client's span around the HTTP client's) were read as one: the other was made INTERNAL, so a request is one visit and a call is one call: frontend 819 SERVER (the outer span kept)",
+    "1 service emits no SERVER span, so it is not in the model (the model has a service for a SERVER span, a visit that holds a worker; --patch cannot name it): load-generator (CLIENT spans)",
+    "frontend-proxy: 0.12% of reconstructed service times are negative (clock or ordering jitter)",
+    "image-provider: only 5 visits; its estimates are rough",
+    "no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: frontend 1+ (0 waited; up to 1 in a pod at once), frontend-proxy 1+ (0 waited; up to 2 in a pod at once), image-provider 1+ (0 waited; up to 1 in a pod at once), product-catalog 1+ (0 waited; up to 2 in a pod at once)"
+  ],
+  "scope": "Mean latency only, for steady load below the utilization limit, assuming Poisson arrivals. No tail (p95/p99), burst, retry or timeout modelling. Worker counts marked + are lower bounds.",
+  "model": "refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas",
+  "nested_spans_merged": [
+    {
+      "service": "frontend",
+      "server_spans": 819,
+      "client_spans": 0
+    }
+  ]
+}

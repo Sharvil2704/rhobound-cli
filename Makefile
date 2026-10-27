@@ -1,9 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 GO ?= go
 
-.PHONY: build test race vet cover e2e accuracy fmt
+.PHONY: build test race vet cover e2e accuracy fmt mcp mcp-build mcp-test contract
 build:
 	$(GO) build -o bin/rhobound ./cmd/rhobound
+
+# rhobound-mcp, the MCP server: the nested module mcp/ (Go 1.25 or later; the root module stays Go 1.23).
+mcp-build:
+	cd mcp && $(GO) build -o ../bin/rhobound-mcp ./cmd/rhobound-mcp
+
+mcp-test:
+	cd mcp && $(GO) vet ./... && $(GO) test ./...
+
+mcp: build mcp-build
+
+# The files generated from the data contract's registry (internal/contract): the code tables of docs/mcp/DATA.md and
+# docs/mcp/data-contract.json. `go test ./tools/gencontract` fails when they are not current.
+contract:
+	$(GO) run ./tools/gencontract docs
 
 test:
 	$(GO) test ./...

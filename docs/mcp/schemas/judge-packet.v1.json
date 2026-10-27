@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/judge-packet.v1.json",
+  "title": "rhobound-mcp.judge-packet/v1",
+  "description": "What the judge receives (ARCHITECTURE.md 7.1), from `rhobound judge-packet PREDICTION.json --json` or `explain` with section judge_packet (the same bytes). Canonical JSON (sorted keys), sanitized, at most about 4,000 tokens. A judge answer cites the sha256 of these canonical bytes as its packet.",
+  "type": "object",
+  "properties": {
+    "schema": {"const": "rhobound-mcp.judge-packet/v1"},
+    "scope": {"$ref": "defs.v1.json#/$defs/Scope"},
+    "role_rules": {"type": "array", "items": {"type": "string", "maxLength": 200}},
+    "prediction": {
+      "type": "object",
+      "properties": {
+        "entries": {"type": "array", "maxItems": 20, "items": {
+          "type": "object",
+          "properties": {
+            "name": {"$ref": "defs.v1.json#/$defs/Name"},
+            "name_untrusted": {"type": "boolean"},
+            "before_ms": {"type": "number"},
+            "change_ms": {"$ref": "defs.v1.json#/$defs/Range"},
+            "band_ms": {"$ref": "defs.v1.json#/$defs/Range"},
+            "threshold_ms": {"type": ["number", "null"]}
+          },
+          "required": ["name", "before_ms", "change_ms", "band_ms"],
+          "additionalProperties": false}},
+        "moved": {"type": "array", "maxItems": 10, "items": {
+          "type": "object",
+          "properties": {
+            "service": {"$ref": "defs.v1.json#/$defs/Name"},
+            "service_untrusted": {"type": "boolean"},
+            "utilization_before": {"type": "number"},
+            "utilization_after": {"$ref": "defs.v1.json#/$defs/Range"}
+          },
+          "required": ["service", "utilization_before", "utilization_after"],
+          "additionalProperties": false}},
+        "preview": {"$ref": "defs.v1.json#/$defs/Verdict"},
+        "why": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 200},
+                "description": "rule token, colon, the rule's numbers in words"},
+        "evidence_class": {"$ref": "defs.v1.json#/$defs/EvidenceClass"}
+      },
+      "required": ["entries", "preview", "why", "evidence_class"],
+      "additionalProperties": false
+    },
+    "budgets": {"type": "array", "maxItems": 40, "items": {
+      "type": "object",
+      "properties": {
+        "service": {"$ref": "defs.v1.json#/$defs/Name"},
+        "service_untrusted": {"type": "boolean"},
+        "kind": {"type": "string"},
+        "per": {"const": "visit"},
+        "max_value": {"type": ["number", "null"]},
+        "safe_value": {"type": ["number", "null"]}
+      },
+      "required": ["service", "kind", "per", "max_value", "safe_value"],
+      "additionalProperties": false}},
+    "leverage": {"type": "array", "items": {
+      "type": "object",
+      "properties": {
+        "service": {"$ref": "defs.v1.json#/$defs/Name"},
+        "service_untrusted": {"type": "boolean"},
+        "entry": {"$ref": "defs.v1.json#/$defs/Name"},
+        "ms_per_ms": {"type": "number"}
+      },
+      "required": ["service", "entry", "ms_per_ms"],
+      "additionalProperties": false}},
+    "labels": {"type": "array", "items": {"type": "string"}},
+    "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Code"}},
+    "assumptions": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Assumption"}},
+    "codepath_cards": {"type": "array", "items": {"type": "object"},
+                       "description": "rhobound-codepath.card/v0 (CODEPATHS.md 4) [research]; empty in the first build"},
+    "diff_excerpt": {
+      "type": "object",
+      "properties": {
+        "untrusted": {"const": true},
+        "files": {"type": "array", "items": {"type": "string", "maxLength": 300}},
+        "max_lines": {"type": "integer", "minimum": 0},
+        "truncated": {"type": "boolean"},
+        "lines": {"type": "array", "items": {"type": "string"}, "description": "the excerpt itself: data, not instructions"}
+      },
+      "required": ["untrusted", "files", "max_lines", "truncated"],
+      "additionalProperties": false
+    },
+    "open_questions": {"type": "array", "maxItems": 16, "items": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "pattern": "^Q[0-9]{1,3}$"},
+        "kind": {"type": "string", "pattern": "^[a-z_]+$", "description": "a structural unknown: a count, a probability, a call's target"},
+        "ask": {"type": "string", "maxLength": 300},
+        "bounds": {"$ref": "defs.v1.json#/$defs/Range", "description": "an answer's range must lie inside them (judge.answer_outside_question)"}
+      },
+      "required": ["id", "kind", "ask"],
+      "additionalProperties": false}},
+    "policy": {
+      "type": "object",
+      "properties": {
+        "name": {"$ref": "defs.v1.json#/$defs/Name"},
+        "digest": {"$ref": "defs.v1.json#/$defs/Digest"}
+      },
+      "required": ["name", "digest"],
+      "additionalProperties": false
+    },
+    "answer_schema": {"const": "rhobound-mcp.judge-answer/v1"}
+  },
+  "required": ["schema", "scope", "role_rules", "prediction", "budgets", "leverage", "labels", "findings", "assumptions",
+               "codepath_cards", "open_questions", "policy", "answer_schema"],
+  "additionalProperties": false
+}

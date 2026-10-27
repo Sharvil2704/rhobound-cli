@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/context.v1.json",
+  "title": "rhobound-mcp.context/v1",
+  "description": "The `context` tool (ARCHITECTURE.md 5.5): where latency is tight, before any code is written. The root validates the view, which `rhobound context --fit F --json` prints as canonical JSON and the server returns as structuredContent with its own keys added (marked server; never required, so one schema validates both). $defs/input is the tool's input schema.",
+  "$ref": "#/$defs/output",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "env": {"$ref": "defs.v1.json#/$defs/Env"},
+        "fit_id": {"$ref": "defs.v1.json#/$defs/Handle"},
+        "capture": {"$ref": "defs.v1.json#/$defs/Name", "description": "stdio only: a capture name from the user's config file"},
+        "detail": {"enum": ["summary", "full"], "default": "summary"}
+      },
+      "oneOf": [{"required": ["env"]}, {"required": ["fit_id"]}, {"required": ["capture"]}],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "schema": {"const": "rhobound-mcp.context/v1"},
+        "fit_id": {"$ref": "defs.v1.json#/$defs/Handle", "description": "server"},
+        "fit_digest": {"$ref": "defs.v1.json#/$defs/Digest"},
+        "fit_age_s": {"type": "integer", "description": "server"},
+        "window_s": {"type": "number"},
+        "entry_rps": {"type": "number"},
+        "kept_share": {"$ref": "defs.v1.json#/$defs/KeptShare"},
+        "evidence_class": {"type": "string"},
+        "max_utilization": {"type": "number"},
+        "validated_ceiling": {"type": "number"},
+        "entries": {"type": "array", "maxItems": 20, "items": {
+          "type": "object",
+          "properties": {
+            "name": {"$ref": "defs.v1.json#/$defs/Name"},
+            "name_untrusted": {"type": "boolean"},
+            "model_ms": {"type": "number"},
+            "observed_ms": {"type": "number"}
+          },
+          "additionalProperties": false}},
+        "services": {"type": "array", "maxItems": 40, "items": {
+          "type": "object",
+          "properties": {
+            "name": {"$ref": "defs.v1.json#/$defs/Name"},
+            "name_untrusted": {"type": "boolean"},
+            "utilization": {"type": "number"},
+            "own_ms": {"type": "number"},
+            "workers": {"type": "string", "description": "e.g. '4', or '2+' for a lower bound"},
+            "leverage": {"type": "object", "additionalProperties": {"type": "number"},
+                         "description": "entry ms per +1 ms of this service's own time per visit, per entry"},
+            "misfit_pct": {"type": "number"}
+          },
+          "additionalProperties": false}},
+        "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"}},
+        "findings_omitted": {"type": "integer"},
+        "assumptions": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Assumption"}},
+        "truncated": {"type": "boolean"},
+        "scope": {"$ref": "defs.v1.json#/$defs/Scope"},
+        "links": {"$ref": "defs.v1.json#/$defs/ServerLinks"}
+      },
+      "required": ["schema", "fit_digest", "entries", "services", "findings", "assumptions", "truncated", "scope"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/defs.v1.json",
+  "title": "rhobound-mcp shared definitions",
+  "description": "The shared definitions of ARCHITECTURE.md 5.4 (Handle to Refusal), then the ones the other schemas of this folder add. Every object is closed (additionalProperties: false) unless its description says otherwise.",
+  "$defs": {
+    "Handle": {"type": "string", "pattern": "^(fit|pred|job|ab|ver)_[0-9A-HJKMNP-TV-Z]{26}$",
+               "description": "server-minted ULID, bound to the caller's principal, expires"},
+    "Name": {"type": "string", "pattern": "^[A-Za-z0-9._:/@-]{1,128}$"},
+    "Route": {"type": "string", "pattern": "^([A-Z]{3,10} )?[A-Za-z0-9._:/@{}*-]{1,128}$",
+              "description": "a route template, only from http.route or rpc.method, optionally after the method and one space; never from url.path"},
+    "Code": {"type": "string", "pattern": "^[a-z]+\\.[a-z0-9_]+$",
+             "description": "a finding or refusal code from the registry: domain.name"},
+    "Env": {"type": "string", "pattern": "^[a-z0-9-]{1,40}$",
+            "description": "an environment name from server configuration, never a bucket, prefix or path"},
+    "Range": {"type": "object", "properties": {"lo": {"type": "number"}, "hi": {"type": "number"}},
+              "required": ["lo", "hi"], "additionalProperties": false},
+    "Value": {"oneOf": [{"type": "number"}, {"$ref": "#/$defs/Range"}]},
+    "ChangeItem": {
+      "type": "object",
+      "properties": {
+        "op": {"enum": ["own_ms", "own_pct", "workers", "load_scale",
+                        "glue_ms", "cs2", "add_call", "remove_call", "set_p", "scale_count", "set_async",
+                        "make_parallel"]},
+        "service": {"$ref": "#/$defs/Name"},
+        "callee": {"$ref": "#/$defs/Name"},
+        "value": {"$ref": "#/$defs/Value"},
+        "note": {"type": "string", "maxLength": 200}
+      },
+      "required": ["op", "service", "value"],
+      "additionalProperties": false,
+      "description": "a number the caller supplies; always labelled declared. v1 applies own_ms, own_pct, workers and load_scale; the others are refused with change.unsupported_op until the variance patch (cs2) and the structural patch ship"
+    },
+    "MeasuredRef": {
+      "oneOf": [
+        {"type": "object", "properties": {"ab": {"$ref": "#/$defs/Handle"}}, "required": ["ab"],
+         "additionalProperties": false},
+        {"type": "object", "properties": {"profile": {"type": "object", "properties": {
+            "service": {"$ref": "#/$defs/Name"},
+            "candidate": {"$ref": "#/$defs/Digest"}},
+            "required": ["service", "candidate"], "additionalProperties": false}},
+         "required": ["profile"], "additionalProperties": false}
+      ],
+      "description": "a reference to a record the server verified; the server copies the numbers and mints the label"
+    },
+    "Finding": {
+      "type": "object",
+      "properties": {
+        "code": {"$ref": "#/$defs/Code"},
+        "level": {"$ref": "#/$defs/Level"},
+        "subject": {"$ref": "#/$defs/Name"},
+        "subject_untrusted": {"type": "boolean"},
+        "numbers": {"type": "object", "additionalProperties": {"type": "number"}},
+        "examples": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/Name"},
+                     "description": "trace ids, span ids or object keys that show the defect"},
+        "fix": {"type": "string", "maxLength": 300}
+      },
+      "required": ["code", "level", "fix"],
+      "additionalProperties": false
+    },
+    "Assumption": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z_]+$"},
+        "status": {"enum": ["checked-ok", "checked-doubt", "not-checkable", "not-checked"]},
+        "how": {"type": "string", "maxLength": 200}
+      },
+      "required": ["id", "status"],
+      "additionalProperties": false
+    },
+    "Refusal": {
+      "type": "object",
+      "properties": {
+        "code": {"$ref": "#/$defs/Code"},
+        "reason": {"type": "string", "maxLength": 600},
+        "fix": {"type": "string", "maxLength": 400},
+        "subject": {"$ref": "#/$defs/Name"},
+        "numbers": {"type": "object", "additionalProperties": {"type": "number"}}
+      },
+      "required": ["code", "reason", "fix"],
+      "additionalProperties": false
+    },
+
+    "Level": {"enum": ["refuse", "doubt", "note"], "description": "a finding's level (DATA.md 1, rule 2)"},
+    "Trigger": {"enum": ["capture", "input", "runtime"],
+                "description": "what raises a code, and so which test covers it (DATA.md 17)"},
+    "Digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$",
+               "description": "a content id: sha256 of canonical bytes"},
+    "Sha256Hex": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "a bare sha256, as files are listed"},
+    "Time": {"type": "string", "format": "date-time", "description": "RFC 3339, UTC"},
+    "Float": {"oneOf": [{"type": "number"}, {"enum": ["NaN", "+Inf", "-Inf"]}],
+              "description": "a float64 that may be non-finite; JSON has no NaN or infinity, so they are written as these strings"},
+    "Label": {"enum": ["derived", "measured-ab", "measured-paired", "measured-unpaired", "declared",
+                       "estimated-static", "estimated-microbench", "estimated-judge", "assumed"],
+              "description": "where a number came from (ARCHITECTURE.md 4.3); only the CLI or the server mints a label other than declared"},
+    "EvidenceClass": {"enum": ["simulated-70-80", "queue-like-real-cluster-le-0.58", "real-software-queueing-untested"],
+                      "description": "ARCHITECTURE.md 4.6"},
+    "KeptShare": {
+      "type": "object",
+      "properties": {
+        "value": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "source": {"enum": ["counted", "derived-th", "declared", "assumed"]}
+      },
+      "required": ["value", "source"],
+      "additionalProperties": false,
+      "description": "the share of requests the capture holds and how it was obtained (DATA.md 3.8)"
+    },
+    "Tool": {
+      "type": "object",
+      "properties": {
+        "name": {"const": "rhobound"},
+        "version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+~-]{0,63}$", "description": "the build's version (-X main.Version): 1 to 64 letters, digits and . _ + ~ -, the first a letter or a digit; fit and diff-fit refuse to run under another"},
+        "goarch": {"type": "string", "pattern": "^[a-z0-9]+$"}
+      },
+      "required": ["name", "version", "goarch"],
+      "additionalProperties": false,
+      "description": "the tool that computed a record; content ids include GOARCH because the last bits of floating point differ between architectures (ARCHITECTURE.md 4.1)"
+    },
+    "Scope": {"const": "mean-only/v1", "description": "the short scope code every result carries (ARCHITECTURE.md 5.9)"},
+    "RuleToken": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(:[a-z]+\\.[a-z0-9_]+)?$",
+                  "description": "a gate rule token (ARCHITECTURE.md 5.4, 6.3), a namespace separate from codes; it may cite the finding code that triggered it, as input_refused:<code> (rule 1) and, in this draft, doubt_holds:<code> (rule 5)"},
+    "Verdict": {"enum": ["pass", "block", "inconclusive"]},
+    "RuleEffect": {"enum": ["pass", "block", "inconclusive", "note"]},
+    "ServerLinks": {"type": "array", "items": {"type": "string", "format": "uri"},
+                    "description": "server: resource links; never printed by a CLI twin"}
+  }
+}

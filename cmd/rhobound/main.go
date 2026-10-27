@@ -5,16 +5,20 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"path/filepath"
+	"runtime"
+	"runtime/debug"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/Sharvil2704/rhobound-cli/internal/contract"
+	"github.com/Sharvil2704/rhobound-cli/internal/engine"
 	"github.com/Sharvil2704/rhobound-cli/internal/infer"
 	"github.com/Sharvil2704/rhobound-cli/internal/model"
 	"github.com/Sharvil2704/rhobound-cli/internal/otlp"
@@ -24,15 +28,146 @@ import (
 // Version is set at build time with -ldflags "-X main.Version=...".
 var Version = "0.1.0-dev"
 
-const usage = `rhobound - mean latency from OpenTelemetry traces
+// command is one subcommand: run gets the arguments after its name and returns the exit status; usage is its lines
+// in the help ("" for an alias, which the help does not list).
+type command struct {
+	run   func(args []string, stdout, stderr io.Writer) int
+	usage string
+}
+
+// commands are the subcommands by name. main.go registers its own in init(); a subcommand in another file registers
+// itself from that file's init() with register.
+var commands = map[string]command{}
+
+// register adds a subcommand. A name registered twice is a programming error and panics.
+func register(name string, c command) {
+	if _, dup := commands[name]; dup {
+		panic("rhobound: command " + name + " registered twice")
+	}
+	commands[name] = c
+}
+
+func init() {
+	register("predict", command{run: withRefusal(cmdPredict), usage: `  rhobound predict CAPTURE [--patch svc=+3ms,other=+10%] [--workers svc=N] [--kept-share F]
+                           [--max-rho 0.85] [--out DIR] [--json] [--plain]
+`})
+	register("infer", command{run: withRefusal(cmdInfer),
+		usage: "  rhobound infer   CAPTURE [--workers svc=N]        print the inferred call graph (JSON)\n"})
+	register("model", command{run: withRefusal(cmdModel),
+		usage: "  rhobound model   TOPOLOGY.json --rps N [--patch ...] [--max-rho 0.85] [--out DIR] [--json] [--plain]\n"})
+	version := func(args []string, out, errw io.Writer) int {
+		if jsonRequested(args) {
+			b, err := contract.Canonical(versionInfo())
+			if err != nil {
+				fmt.Fprintln(errw, "rhobound:", err)
+				return 1
+			}
+			fmt.Fprintf(out, "%s\n", b)
+			return 0
+		}
+		fmt.Fprintln(out, "rhobound", Version)
+		return 0
+	}
+	register("version", command{run: version, usage: "  rhobound version\n"})
+	register("--version", command{run: version})
+	register("-v", command{run: version})
+	help := func(_ []string, out, _ io.Writer) int {
+		fmt.Fprint(out, usageText())
+		return 0
+	}
+	register("help", command{run: help})
+	register("--help", command{run: help})
+	register("-h", command{run: help})
+}
+
+// buildInfo is what `rhobound version --json` prints: the name and version, the Go release and GOARCH the binary was
+// built with, and the version control state the go command stamped into it (vcs, absent when it stamped none).
+type buildInfo struct {
+	Name    string   `json:"name"`
+	Version string   `json:"version"`
+	Go      string   `json:"go"`
+	GOARCH  string   `json:"goarch"`
+	VCS     *vcsInfo `json:"vcs,omitempty"`
+}
+
+type vcsInfo struct {
+	Revision string `json:"revision"`
+	Time     string `json:"time"`
+	Modified bool   `json:"modified"`
+}
+
+// versionInfo is the binary's own build information.
+func versionInfo() buildInfo {
+	bi, _ := debug.ReadBuildInfo()
+	return versionOf(bi)
+}
+
+// versionOf is the build information of bi (nil: none was embedded).
+func versionOf(bi *debug.BuildInfo) buildInfo {
+	v := buildInfo{Name: "rhobound", Version: Version, Go: runtime.Version(), GOARCH: runtime.GOARCH}
+	if bi == nil {
+		return v
+	}
+	if bi.GoVersion != "" {
+		v.Go = bi.GoVersion
+	}
+	var vcs vcsInfo
+	for _, s := range bi.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			vcs.Revision = s.Value
+		case "vcs.time":
+			vcs.Time = s.Value
+		case "vcs.modified":
+			vcs.Modified = s.Value == "true"
+		}
+	}
+	if vcs.Revision != "" {
+		v.VCS = &vcs
+	}
+	return v
+}
+
+// withError adapts a subcommand that returns an error: the error is printed as "rhobound: <error>" and the exit
+// status is 1.
+func withError(f func(args []string, stdout, stderr io.Writer) error) func(args []string, stdout, stderr io.Writer) int {
+	return func(args []string, stdout, stderr io.Writer) int {
+		if err := f(args, stdout, stderr); err != nil {
+			fmt.Fprintln(stderr, "rhobound:", err)
+			return 1
+		}
+		return 0
+	}
+}
+
+// firstCommands are listed first in the help, in this order; version is listed last, and every other registered
+// command with a usage between them, by name.
+var firstCommands = []string{"predict", "infer", "model"}
+
+// usageText is the help: usageHead, the usage lines of the registered commands, usageNotes.
+func usageText() string {
+	var rest []string
+	for name, c := range commands {
+		if c.usage != "" && name != "version" && !slices.Contains(firstCommands, name) {
+			rest = append(rest, name)
+		}
+	}
+	sort.Strings(rest)
+	var b strings.Builder
+	b.WriteString(usageHead)
+	for _, name := range append(append(append([]string{}, firstCommands...), rest...), "version") {
+		b.WriteString(commands[name].usage)
+	}
+	b.WriteString(usageNotes)
+	return b.String()
+}
+
+const usageHead = `rhobound - mean latency from OpenTelemetry traces
 
 Usage:
-  rhobound predict CAPTURE [--patch svc=+3ms,other=+10%] [--workers svc=N] [--kept-share F]
-                           [--max-rho 0.85] [--out DIR] [--json] [--plain]
-  rhobound infer   CAPTURE [--workers svc=N]        print the inferred call graph (JSON)
-  rhobound model   TOPOLOGY.json --rps N [--patch ...] [--max-rho 0.85] [--out DIR] [--json] [--plain]
-  rhobound version
+`
 
+const usageNotes = `
 CAPTURE is a folder with traces/ (OTLP/JSON lines, plain or .gz), or a trace file.
 --patch svc=+3ms adds work that holds the worker to every visit; svc=+10% scales
 the service's whole own time per visit, glue (time after its first call) included.
@@ -50,30 +185,15 @@ func main() {
 // run executes one command line and returns the exit status.
 func run(args []string, out, errw io.Writer) int {
 	if len(args) < 1 {
-		fmt.Fprint(errw, usage)
+		fmt.Fprint(errw, usageText())
 		return 2
 	}
-	var err error
-	switch args[0] {
-	case "predict":
-		err = cmdPredict(args[1:], out, errw)
-	case "infer":
-		err = cmdInfer(args[1:], out, errw)
-	case "model":
-		err = cmdModel(args[1:], out, errw)
-	case "version", "--version", "-v":
-		fmt.Fprintln(out, "rhobound", Version)
-	case "help", "--help", "-h":
-		fmt.Fprint(out, usage)
-	default:
-		fmt.Fprintf(errw, "unknown command %q\n\n%s", args[0], usage)
+	c, ok := commands[args[0]]
+	if !ok {
+		fmt.Fprintf(errw, "unknown command %q\n\n%s", args[0], usageText())
 		return 2
 	}
-	if err != nil {
-		fmt.Fprintln(errw, "rhobound:", err)
-		return 1
-	}
-	return 0
+	return c.run(args[1:], out, errw)
 }
 
 // parseInterleaved parses flags that may follow positional arguments.
@@ -138,64 +258,6 @@ func splitList(s string) []string {
 	return out
 }
 
-// parsePatch turns "svc=+3ms,other=-10%" into a model patch. +N ms is extra
-// work on every visit, added to the service time (it holds the worker); +N%
-// scales the service's whole own time per visit, the service time and the
-// glue (the time after its first call out, which holds no worker) alike.
-// patchTargets are the services a patch can name: the topology's names without the zero-time nodes the inference adds
-// for the call structure (stage:S:n and shape:S:n), which are not services.
-func patchTargets(topo *model.Topology) []string {
-	var out []string
-	for _, n := range topo.Names() {
-		if !strings.HasPrefix(n, "stage:") && !strings.HasPrefix(n, "shape:") {
-			out = append(out, n)
-		}
-	}
-	return out
-}
-
-func parsePatch(s string, topo *model.Topology) (model.Patch, []report.Change, error) {
-	if s == "" {
-		return model.Patch{}, nil, nil
-	}
-	n := len(topo.Services)
-	p := model.Patch{DS: make([]float64, n), Shift: make([]bool, n), Glue: make([]float64, n)}
-	var changes []report.Change
-	for _, kv := range splitList(s) {
-		name, val, ok := strings.Cut(kv, "=")
-		name, val = strings.TrimSpace(name), strings.TrimSpace(val)
-		i := topo.Index(name)
-		if !ok || i < 0 {
-			return model.Patch{}, nil, fmt.Errorf("--patch: unknown service in %q (services: %s)", kv, strings.Join(patchTargets(topo), ", "))
-		}
-		var delta, glue float64
-		var err error
-		switch {
-		case strings.HasSuffix(val, "%"):
-			var pct float64
-			pct, err = strconv.ParseFloat(strings.TrimSuffix(val, "%"), 64)
-			delta = topo.Services[i].S * pct / 100
-			glue = topo.Services[i].Glue * pct / 100
-		default:
-			delta, err = strconv.ParseFloat(strings.TrimSuffix(val, "ms"), 64)
-			p.Shift[i] = true // a fixed amount of extra time per visit: the mean moves, the variance stays
-		}
-		if err != nil || math.IsNaN(delta) || math.IsInf(delta, 0) || math.IsNaN(glue) || math.IsInf(glue, 0) {
-			return model.Patch{}, nil, fmt.Errorf("--patch: cannot read %q (use +3ms or -10%%)", kv)
-		}
-		p.DS[i] += delta
-		p.Glue[i] += glue
-		changes = append(changes, report.Change{Service: name, DeltaMs: delta + glue, GlueMs: glue, Spec: val})
-		if topo.Services[i].S+p.DS[i] < 0 {
-			return model.Patch{}, nil, fmt.Errorf("--patch: %s would get a negative service time", name)
-		}
-		if topo.Services[i].Glue+p.Glue[i] < 0 {
-			return model.Patch{}, nil, fmt.Errorf("--patch: %s would get a negative glue time", name)
-		}
-	}
-	return p, changes, nil
-}
-
 func load(path string, c *common) (*infer.Inferred, error) {
 	if k := *c.keptShare; !(k > 0 && k <= 1) {
 		return nil, fmt.Errorf("--kept-share must be in (0, 1], got %v", k)
@@ -231,134 +293,6 @@ func cmdInfer(args []string, out, errw io.Writer) error {
 	}
 	fmt.Fprintf(errw, "external load %.2f requests/s over %.0f s\n", inf.LamExtPerMs*1000, inf.WindowS)
 	return nil
-}
-
-func cmdPredict(args []string, out, errw io.Writer) error {
-	fs, c := newFlags("predict")
-	pos, err := parseInterleaved(fs, args)
-	if err != nil || len(pos) != 1 {
-		return fmt.Errorf("usage: rhobound predict CAPTURE [--patch svc=+3ms] [--workers svc=N] [--out DIR] [--json]")
-	}
-	if !(*c.maxRho > 0 && *c.maxRho <= 0.95) { // also refuses NaN
-		return fmt.Errorf("--max-rho must be in (0, 0.95]")
-	}
-	inf, err := load(pos[0], c)
-	if err != nil {
-		return err
-	}
-	patch, changes, err := parsePatch(*c.patch, inf.Topology)
-	if err != nil {
-		return err
-	}
-	cfg := modelConfig(c)
-	base, err := model.AnalyticWith(inf.Topology, inf.LamExtPerMs, nil, cfg)
-	if err != nil {
-		return err
-	}
-	if mr, _ := base.MaxRho(); !base.Stable || !(mr <= *c.maxRho) { // a NaN utilization is refused too
-		return limitError("refusing to predict: at the observed load", inf, base, *c.maxRho)
-	}
-	var delta *model.Delta
-	if patch.DS != nil {
-		delta, err = model.ChangePatchWith(inf.Topology, inf.LamExtPerMs, patch, cfg)
-		if err != nil {
-			return err
-		}
-		if mr, _ := delta.Patched.MaxRho(); !delta.Stable || !(mr <= *c.maxRho) {
-			return limitError("refusing the change: after it", inf, delta.Patched, *c.maxRho)
-		}
-	}
-	rep := report.Build(pos[0], inf, *c.keptShare, base, delta, changes)
-	rep.Model = modelName(c)
-	return writeReport(rep, c, out, errw)
-}
-
-// writeReport writes the report into the --out folder (report.txt and
-// report.json) when one is given, then prints it, as JSON with --json.
-func writeReport(rep *report.Report, c *common, out, errw io.Writer) error {
-	if *c.out != "" {
-		if err := os.MkdirAll(*c.out, 0o755); err != nil {
-			return err
-		}
-		tf, err := os.Create(filepath.Join(*c.out, "report.txt"))
-		if err != nil {
-			return err
-		}
-		err = rep.WriteText(tf)
-		if cerr := tf.Close(); err == nil {
-			err = cerr
-		}
-		if err != nil {
-			return err
-		}
-		jf, err := os.Create(filepath.Join(*c.out, "report.json"))
-		if err != nil {
-			return err
-		}
-		err = rep.WriteJSON(jf)
-		if cerr := jf.Close(); err == nil {
-			err = cerr
-		}
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(errw, "wrote %s/report.txt and report.json\n", *c.out)
-	}
-	if *c.asJSON {
-		return rep.WriteJSON(out)
-	}
-	return rep.WriteText(out)
-}
-
-// limitError is the refusal of a load (the observed one, or the one after the
-// change) at which a service is above the --max-rho limit: it names each such
-// service and its utilization, says which would pass 100% (no steady state;
-// the model is unstable there), and, for a service whose worker count is only
-// a lower bound, that its utilization is then an upper bound and --workers
-// sets the count (a pod with no worker limit reads as such a bound).
-func limitError(when string, inf *infer.Inferred, r *model.Result, limit float64) error {
-	var busy, lower []string
-	example := ""
-	for i, rho := range r.Rho {
-		if rho <= limit {
-			continue
-		}
-		name := inf.Topology.Services[i].Name
-		if math.IsNaN(rho) {
-			busy = append(busy, fmt.Sprintf("%s has no utilization (NaN: an input is out of range)", name))
-			continue
-		}
-		if rho < 1 {
-			busy = append(busy, fmt.Sprintf("%s would run at %.1f%% utilization", name, 100*rho))
-		} else {
-			busy = append(busy, fmt.Sprintf("%s would pass 100%% utilization (%.1f%%: no steady state, the model is unstable)", name, 100*rho))
-		}
-		if i < len(inf.Stats) {
-			if st := inf.Stats[i]; st.WorkersInferred && !st.WorkersFromQueueing && !st.External && !st.Stage {
-				sv := inf.Topology.Services[i]
-				pods, w := sv.Servers, sv.Workers
-				if sv.Routing == model.Pooled {
-					pods, w = 1, sv.Servers*sv.Workers
-				}
-				lower = append(lower, fmt.Sprintf("%s (%d x %d+)", name, pods, w))
-				if example == "" {
-					example = name
-				}
-			}
-		}
-	}
-	if len(busy) == 0 { // every utilization is within the limit, but a residence is not finite (rounding at saturation)
-		busy = append(busy, "the model has no finite latency (a queue at the edge of saturation)")
-	}
-	msg := fmt.Sprintf("%s %s, above the limit of %.1f%% (--max-rho; the model covers steady load below it only)", when,
-		strings.Join(busy, ", "), 100*limit)
-	if len(lower) > 0 {
-		msg += fmt.Sprintf(". The worker count of %s is only a lower bound: too few of its requests waited for a worker, or "+
-			"too briefly, to tell its pool from a larger one or from one with no limit, so that utilization is an upper bound. "+
-			"If the pool is larger, or has no limit, set its size with --workers (for example --workers %s=N with N its "+
-			"workers per pod)", strings.Join(lower, ", "), example)
-	}
-	return errors.New(msg)
 }
 
 func cmdModel(args []string, out, errw io.Writer) error {
@@ -399,7 +333,7 @@ func cmdModel(args []string, out, errw io.Writer) error {
 		return err
 	}
 	if mr, _ := base.MaxRho(); !base.Stable || !(mr <= *c.maxRho) {
-		return limitError(fmt.Sprintf("refusing to evaluate: at %g requests/s", *rps), inf, base, *c.maxRho)
+		return engine.LimitError(contract.ModelUtilizationObserved, fmt.Sprintf("refusing to evaluate: at %g requests/s", *rps), inf, base, *c.maxRho)
 	}
 	patch, changes, err := parsePatch(*c.patch, topo)
 	if err != nil {
@@ -411,7 +345,7 @@ func cmdModel(args []string, out, errw io.Writer) error {
 			return err
 		}
 		if mr, _ := delta.Patched.MaxRho(); !delta.Stable || !(mr <= *c.maxRho) {
-			return limitError("refusing the change: after it", inf, delta.Patched, *c.maxRho)
+			return engine.LimitError(contract.ModelUtilizationAfter, "refusing the change: after it", inf, delta.Patched, *c.maxRho)
 		}
 	}
 	rep := report.Build(pos[0], inf, 1, base, delta, changes)
@@ -420,16 +354,6 @@ func cmdModel(args []string, out, errw io.Writer) error {
 	return writeReport(rep, c, out, errw)
 }
 
-func modelConfig(c *common) model.Config {
-	if *c.plain {
-		return model.Plain
-	}
-	return model.Default
-}
+func modelConfig(c *common) model.Config { return engine.Config(*c.plain) }
 
-func modelName(c *common) string {
-	if *c.plain {
-		return "basic: Poisson arrivals at every queue, exponential parallel branches"
-	}
-	return "refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas"
-}
+func modelName(c *common) string { return engine.ModelName(*c.plain) }

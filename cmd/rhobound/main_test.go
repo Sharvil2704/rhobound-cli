@@ -74,6 +74,26 @@ func TestPredictJSONAndFlagsAfterTheArgument(t *testing.T) {
 	}
 }
 
+// TestPredictFlagsGivenEmpty: --fit, --changes and --report did not exist at 1a2df09, which refused them; given with an
+// empty value they are given all the same, so predict refuses them with a usage message and prints no report, never
+// reading the capture as if they were absent. Given with a value and a capture, they are refused the same way: exit
+// 1, nothing on standard output, and this build's usage message on standard error where 1a2df09 printed its own.
+func TestPredictFlagsGivenEmpty(t *testing.T) {
+	for _, args := range [][]string{
+		{"predict", fixture, "--fit="}, {"predict", fixture, "--fit", ""}, {"predict", fixture, "--changes="},
+		{"predict", fixture, "--report="}, {"predict", fixture, "--report", ""}, {"predict", "--fit="},
+		{"predict", "--fit", fixture, "--changes="}, {"predict", "--fit", fixture, "--report="},
+		{"predict", fixture, "--fit", "x.json"}, {"predict", fixture, "--changes", "x.json"},
+		{"predict", fixture, "--report", "v1"}, {"predict", fixture, "--report", "v1", "--json"},
+		{"predict", fixture, "--report", "v2"},
+	} {
+		out, errw, code := exec(t, args...)
+		if code != 1 || out != "" || errw == "" {
+			t.Errorf("%q: exit %d, stdout %.80q, stderr %q", args, code, out, errw)
+		}
+	}
+}
+
 func TestOutDirWritesBothFiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "r")
 	if _, errw, code := exec(t, "predict", fixture, "--out", dir); code != 0 {

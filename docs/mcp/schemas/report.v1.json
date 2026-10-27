@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/report.v1.json",
+  "title": "rhobound-cli.report/v1",
+  "description": "The JSON report of `rhobound predict CAPTURE --json` and `rhobound model --json`, as rhobound-cli printed it at commit 1a2df09 (internal/report/report.go). `predict CAPTURE` prints it forever; `predict --fit F --report v1` prints the v1 projection of report v2. $defs/base holds the keys without closing the object, so that report.v2 extends it.",
+  "allOf": [{"$ref": "#/$defs/base"}],
+  "properties": {
+    "version": {"const": "rhobound-cli.report/v1"},
+    "services": {"type": "array", "items": {"$ref": "#/$defs/row"}}
+  },
+  "unevaluatedProperties": false,
+  "$defs": {
+    "base": {
+      "type": "object",
+      "properties": {
+        "version": {"type": "string"},
+        "capture": {"type": "string", "description": "the capture path or name exactly as given (a topology file's path for `rhobound model`)"},
+        "window_s": {"type": "number"},
+        "requests": {"type": "integer", "minimum": 0},
+        "consumer_requests": {"type": "integer", "minimum": 0},
+        "async_calls": {"type": "array", "items": {"$ref": "#/$defs/asyncCall"}},
+        "spans": {"type": "integer", "minimum": 0},
+        "traces": {"type": "integer", "minimum": 0},
+        "broken_traces": {"type": "integer", "minimum": 0},
+        "probe_spans_dropped": {"type": "integer", "minimum": 0},
+        "external_rps": {"type": "number"},
+        "kept_share": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "max_utilization": {"type": "number"},
+        "busiest_service": {"type": "string"},
+        "services": {"type": "array", "items": {"$ref": "#/$defs/rowBase"}},
+        "changes": {"type": "array", "items": {"$ref": "#/$defs/change"}},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+        "scope": {"type": "string"},
+        "model": {"type": "string"},
+        "nested_spans_merged": {"type": "array", "items": {"$ref": "#/$defs/nestedMerge"}}
+      },
+      "required": ["version", "capture", "window_s", "requests", "spans", "traces", "broken_traces", "external_rps",
+                   "kept_share", "max_utilization", "busiest_service", "services", "scope", "model"]
+    },
+    "row": {
+      "allOf": [{"$ref": "#/$defs/rowBase"}],
+      "unevaluatedProperties": false
+    },
+    "rowBase": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "external": {"type": "boolean"},
+        "entry": {"type": "boolean"},
+        "entry_from_consumer": {"type": "boolean"},
+        "rate_rps": {"type": "number"},
+        "replicas": {"type": "integer"},
+        "workers_per_pod": {"type": "integer"},
+        "workers_are_a_lower_bound": {"type": "boolean"},
+        "own_ms": {"type": "number"},
+        "own_cs2": {"type": "number"},
+        "glue_ms": {"type": "number"},
+        "utilization": {"type": "number"},
+        "model_wait_ms": {"type": "number"},
+        "observed_wait_ms": {"type": "number"},
+        "model_ms": {"type": "number"},
+        "observed_ms": {"type": "number"},
+        "error_pct": {"type": "number"},
+        "after_ms": {"type": "number"},
+        "change_ms": {"type": "number"},
+        "change_pct": {"type": "number"},
+        "parallel": {"type": "boolean"},
+        "stage": {"type": "boolean"},
+        "images": {"type": "array", "items": {"type": "string"}},
+        "lost_visits": {"type": "integer", "minimum": 0},
+        "lost_share": {"type": "number"},
+        "hop_from_mean": {"type": "boolean"},
+        "broken_visit_share": {"type": "number"},
+        "variable_calls": {"type": "array", "items": {"$ref": "#/$defs/variableCall"}},
+        "call_shapes": {"type": "array", "items": {"$ref": "#/$defs/callShape"}},
+        "replica_shares": {"type": "array", "items": {"type": "number"}}
+      },
+      "required": ["name", "rate_rps", "replicas", "workers_per_pod", "own_ms", "own_cs2", "utilization",
+                   "model_wait_ms", "observed_wait_ms", "model_ms", "observed_ms"]
+    },
+    "change": {
+      "type": "object",
+      "properties": {
+        "service": {"type": "string"},
+        "delta_ms": {"type": "number"},
+        "glue_delta_ms": {"type": "number"},
+        "spec": {"type": "string"}
+      },
+      "required": ["service", "delta_ms", "spec"],
+      "additionalProperties": false
+    },
+    "asyncCall": {
+      "type": "object",
+      "properties": {"caller": {"type": "string"}, "callee": {"type": "string"}, "per_visit": {"type": "number"}},
+      "required": ["caller", "callee", "per_visit"],
+      "additionalProperties": false
+    },
+    "variableCall": {
+      "type": "object",
+      "properties": {
+        "callee": {"type": "string"},
+        "mean_per_visit": {"type": "number"},
+        "visits_by_calls": {"type": "array", "items": {
+          "type": "object",
+          "properties": {"calls": {"type": "integer", "minimum": 0}, "visits": {"type": "integer", "minimum": 0}},
+          "required": ["calls", "visits"], "additionalProperties": false}},
+        "modelled_as": {"enum": ["mean count", "stages", "mixture of call shapes"]}
+      },
+      "required": ["callee", "mean_per_visit", "visits_by_calls", "modelled_as"],
+      "additionalProperties": false
+    },
+    "callShape": {
+      "type": "object",
+      "properties": {"shape": {"type": "string"}, "share": {"type": "number"}},
+      "required": ["shape", "share"],
+      "additionalProperties": false
+    },
+    "nestedMerge": {
+      "type": "object",
+      "properties": {
+        "service": {"type": "string"},
+        "server_spans": {"type": "integer", "minimum": 0},
+        "client_spans": {"type": "integer", "minimum": 0},
+        "server_spans_without_scope": {"type": "integer", "minimum": 0}
+      },
+      "required": ["service", "server_spans", "client_spans"],
+      "additionalProperties": false
+    }
+  }
+}

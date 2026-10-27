@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "rhobound": {
+      "command": "rhobound-mcp",
+      "args": ["stdio", "--config", "examples/mcp/config.example.json"]
+    }
+  }
+}

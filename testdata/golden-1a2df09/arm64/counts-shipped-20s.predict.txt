@@ -1,0 +1,61 @@
+rhobound-cli: mean latency from traces
+capture   internal/infer/testdata/counts/shipped-20s
+window    20 s, 539 entry requests in 478 traces (27.1 /s), 6049 spans
+busiest   frontend at 2% utilization
+model     refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas
+scope     Mean latency only, for steady load below the utilization limit, assuming Poisson arrivals. No tail (p95/p99), burst, retry or timeout modelling. Worker counts marked + are lower bounds.
+
+                 service   rps  pods x w  own ms   cs2  glue ms  util  wait ms  seen wait  model ms  seen ms  err %
+                      ad   1.8    1 x 1+    1.11  1.00     0.00    0%     0.00       0.16      1.80     1.96   -8.1
+                    cart  10.4    1 x 1+    0.20  3.66     0.05    0%     0.00       0.00      1.53     1.47   +3.9
+                checkout   1.0    1 x 1+    0.12  1.00     0.58    0%     0.00       0.14     19.51    18.29   +6.7
+                currency   3.0    1 x 1+    0.58  1.00     0.00    0%     0.00       0.00      1.44     1.44   +0.0
+                   email   1.0    1 x 1+    3.31  1.00     0.00    0%     0.01       0.09      4.09     4.17   -2.0
+                 flagd *   4.9    1 x 1+    0.09  1.00     0.00    0%     0.00       0.06      0.09     0.09   +0.0
+                frontend  23.1    1 x 1+    0.77  1.00     0.37    2%     0.01       0.01      4.25     4.09   +3.8
+        frontend-proxy *  23.1    1 x 1+    0.11  0.18     0.05    0%     0.00       0.00      4.41     4.25   +3.7
+        image-provider *   0.1    1 x 1+    0.00  1.00     0.00    0%     0.00       0.00      0.00     0.00      -
+                 payment   1.0    1 x 1+    0.57  1.00     0.00    0%     0.00       0.07      1.61     1.67   -3.9
+         product-catalog  26.4    1 x 4+    0.08  0.16     0.00    0%     0.00       0.00      1.41     1.34   +5.6
+                   quote   1.0    1 x 1+    0.31  1.00     0.00    0%     0.00       0.14      1.80     1.94   -7.3
+          recommendation   2.4    1 x 1+    0.27  1.00     0.35    0%     0.00       0.32      3.35     3.47   -3.5
+                shipping   2.0    1 x 1+    0.05  1.00     0.04    0%     0.00       0.09      1.26     1.42  -11.0
+        shape:frontend:2   3.2     1 x 1    0.00  1.00     0.00    0%     0.00          -      3.08        -      -
+   stage:frontend:3.2 ||   2.3     1 x 1    0.00  1.00     0.00    0%     0.00          -      1.46        -      -
+        shape:frontend:3   2.3     1 x 1    0.00  1.00     0.00    0%     0.00          -      4.81        -      -
+        shape:frontend:6   0.5     1 x 1    0.00  1.00     0.00    0%     0.00          -     20.93        -      -
+   stage:frontend:7.2 ||   0.2     1 x 1    0.00  1.00     0.00    0%     0.00          -      1.44        -      -
+        shape:frontend:7   0.2     1 x 1    0.00  1.00     0.00    0%     0.00          -     20.95        -      -
+   stage:frontend:8.2 ||   0.2     1 x 1    0.00  1.00     0.00    0%     0.00          -      1.45        -      -
+        shape:frontend:8   0.2     1 x 1    0.00  1.00     0.00    0%     0.00          -     20.96        -      -
+   stage:frontend:9.2 ||   0.2     1 x 1    0.00  1.00     0.00    0%     0.00          -      1.46        -      -
+        shape:frontend:9   0.2     1 x 1    0.00  1.00     0.00    0%     0.00          -     20.97        -      -
+  stage:frontend:10.1 ||   0.1     1 x 1    0.00  1.00     0.00    0%     0.00          -      1.85        -      -
+  stage:frontend:11.1 ||   0.1     1 x 1    0.00  1.00     0.00    0%     0.00          -      3.35        -      -
+         ext:valkey-cart  18.0     1 x 1    0.23  1.00     0.00    0%     0.00       0.00      0.23     0.23      -
+
+* entry service   || parallel fan-out   w+ = workers per pod, a lower bound (too few requests waited, or too briefly, to read it from)
+own ms: service time per visit (up to its first call out), without the wait for a worker inside the span. seen wait: queueing the traces show (in-span plus between client and server span).
+glue ms: time per visit after its first call that is not in a call (the worker is free by then); a pure delay.
+seen ms: the mean the callers' client spans measured (entries: the server span).
+shape:S:j, stage:S:j.n: S's visits take several call shapes; S calls shape j with the share of its visits that took it (rps: visits per second that do); a shape holds its stages one after another, and stage j.n is the calls made at once in stage n of shape j; zero-time delays.
+hop from the mean: the network time of the calls into cart, currency, frontend, product-catalog is the mean client-minus-server span time less the model's wait (not its quietest tenth, which lies below the mean by the spread of the network time). Their seen wait, and the hop's part of their seen ms, are set by it, so they do not check it.
+calls per visit that vary (the visits' counts are in the JSON report and the warnings): cart -> ext:valkey-cart 1.72 per visit (mean count), checkout -> product-catalog 1.95 per visit (mean count), checkout -> currency 2.95 per visit (mean count), frontend -> cart 0.363 per visit (mixture of call shapes), frontend -> product-catalog 0.954 per visit (mixture of call shapes)
+
+warnings:
+  - nested spans of one kind in one pod (a framework's span inside the instrumentation's, a gRPC client's span around the HTTP client's) were read as one: the other was made INTERNAL, so a request is one visit and a call is one call: cart 20 CLIENT (the span the callee's SERVER span is under kept, else the outermost), flagd 40 SERVER (the outer span kept), frontend 424 SERVER (the outer span kept). Of the SERVER pairs, these name no instrumentation scope on one or both spans, so a framework's wrapper could not be told from a request the service sent to itself with a client that opens no span (two SERVER spans of one scope are kept apart as two visits): flagd 40, frontend 424; if the service does call itself that way, its visits are counted once
+  - flagd is entered from outside the capture and is also called by cart: 79.4% of its 97 visits have no caller's visit in the capture (requests from outside it, or from a service whose spans are not here or that does not pass the trace context on), 20.6% are called by cart. The load on flagd is right; a change of flagd's time reaches cart and not those senders
+  - 3 services emit no SERVER span, so they are not in the model (the model has a service for a SERVER span, a visit that holds a worker; --patch cannot name them): accounting (CLIENT, CONSUMER spans), fraud-detection (CONSUMER spans), load-generator (CLIENT spans)
+  - checkout: only 20 visits; its estimates are rough
+  - email: only 20 visits; its estimates are rough
+  - image-provider: only 2 visits; its estimates are rough
+  - payment: only 20 visits; its estimates are rough
+  - quote: only 20 visits; its estimates are rough
+  - no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: ad 1+ (0 waited; up to 1 in a pod at once), cart 1+ (0 waited; up to 2 in a pod at once), checkout 1+ (0 waited; up to 1 in a pod at once), currency 1+ (0 waited; up to 1 in a pod at once), email 1+ (0 waited; up to 1 in a pod at once), flagd 1+ (0 waited; up to 1 in a pod at once), frontend 1+ (2 waited; up to 2 in a pod at once), frontend-proxy 1+ (0 waited; up to 2 in a pod at once), image-provider 1+ (0 waited; up to 1 in a pod at once), payment 1+ (0 waited; up to 1 in a pod at once), product-catalog 4+ (0 waited; up to 4 in a pod at once), quote 1+ (0 waited; up to 1 in a pod at once), recommendation 1+ (0 waited; up to 1 in a pod at once), shipping 1+ (0 waited; up to 1 in a pod at once)
+  - cart -> ext:valkey-cart: calls per visit vary as {1: 122, 2: 20, 3: 65}; only their mean (1.72 per visit) enters the model, as 1 call(s) made on every visit and one more with probability 0.72. That is exact for the load on ext:valkey-cart and for the mean time of a caller that makes its calls one after another; the spread of the counts is not modelled (the calls of one visit reach ext:valkey-cart close together, and the model takes them as independent arrivals), which matters only when ext:valkey-cart is busy (in simulations with up to 20 calls per visit and ext:valkey-cart 30-60% busy the mean latency was within 2% on average). Calls lost from the capture, or sampled out, look the same as a count that varies: if the count should be fixed, check the exporters
+  - checkout -> product-catalog: calls per visit vary as {1: 10, 2: 4, 3: 3, 4: 3}; only their mean (1.95 per visit) enters the model, as 1 call(s) made on every visit and one more with probability 0.95. As for the callees above, that is exact for the load and for the mean time of a caller that makes its calls one after another, and the spread of the counts is not modelled.
+  - checkout -> currency: calls per visit vary as {2: 10, 3: 4, 4: 3, 5: 3}; only their mean (2.95 per visit) enters the model, as 2 call(s) made on every visit and one more with probability 0.95. As for the callees above, that is exact for the load and for the mean time of a caller that makes its calls one after another, and the spread of the counts is not modelled.
+  - frontend: its visits take 11 call shapes, modelled as a mixture (it calls each shape with the share of visits that took it): product-catalog (46.1% of visits); cart then cart (13.9% of visits); recommendation then product-catalog x4 (10.0% of visits); cart (8.0% of visits); ad (7.8% of visits); checkout then product-catalog (2.2% of visits); checkout then product-catalog x2 (0.9% of visits); checkout then product-catalog x3 (0.7% of visits); checkout then product-catalog x4 (0.7% of visits); cart x2 (0.2% of visits); product-catalog x4 + recommendation (0.2% of visits)
+  - frontend -> cart: calls per visit vary as {0: 358, 1: 37, 2: 65}; the call shapes carry them (0.363 per visit on average)
+  - frontend -> product-catalog: calls per visit vary as {0: 181, 1: 222, 2: 4, 3: 3, 4: 50}; the call shapes carry them (0.954 per visit on average)
+  - 357 client calls to services without server spans were treated as external delays

@@ -1,0 +1,174 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "registry.example.com/shop/checkout",
+      "digest": {
+        "sha256": "dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7"
+      }
+    }
+  ],
+  "predicateType": "https://github.com/Sharvil2704/rhobound-cli/blob/perf-profile-v0.1/docs/mcp/DATA.md#perf-profile-v0.1",
+  "predicate": {
+    "scope": {
+      "statistic": "mean",
+      "load": "steady, open-loop Poisson",
+      "max_utilization": 0.85,
+      "not_covered": [
+        "p95/p99",
+        "bursts",
+        "retries",
+        "timeouts",
+        "cpu throttling",
+        "utilization >= 0.85"
+      ]
+    },
+    "service": "checkout",
+    "arms": [
+      {
+        "role": "baseline",
+        "digest": {
+          "sha256": "8ba8496a2525ae171ffd104d632dede6ef418d9b95962a9d88e2fcdbc8d48d24"
+        }
+      },
+      {
+        "role": "candidate",
+        "digest": {
+          "sha256": "dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7"
+        }
+      }
+    ],
+    "pairing": {
+      "mode": "concurrent",
+      "run_id": "0190f3c2-5b7a-7c1e-9a2b-4c5d6e7f8a9b"
+    },
+    "tool": {
+      "name": "rhobound",
+      "version": "0.1.0",
+      "digest": {
+        "sha256": "7c9bbe5ec9b3fb774e8fa0f54247e93c34ddf8e5d16fe3073420de0ae81a262d"
+      },
+      "goarch": "arm64"
+    },
+    "harness": {
+      "image": {
+        "sha256": "49f756463ad9dcfb9b6ade54d7d6f15476e7214f46a65b4b0c55d46845b12f70"
+      },
+      "config": {
+        "sha256": "b79606fb3afea5bd1609ed40b622142f1c98125abcfe89a76a661b0e8e343910"
+      },
+      "loadgen": {
+        "sha256": "bd5d5d0eeff97bacc45aa57dbac9689a25a2eedb52ec991f3a46a2a00ad41908"
+      },
+      "collector": {
+        "sha256": "0736fd5b7cc7ab7dfe821d3a17f93f2634497770232486155c9c881321c4d22c"
+      },
+      "arrivals": "poisson-open-loop",
+      "warmup_s": 90,
+      "dependencies": "stubbed"
+    },
+    "environment": {
+      "platform": "linux/arm64",
+      "instance_type": "m7g.xlarge",
+      "cpu_model": "Neoverse-V1",
+      "kernel": "6.1",
+      "cpu_limit_millicores": 1000,
+      "memory_limit_mib": 1024,
+      "container_spec": {
+        "sha256": "cd46bf5404bb89be138d0135cf7cf373d767bcdc77decf6a90fd729f0d06883e"
+      }
+    },
+    "sizing": {
+      "margin_ms": 0.3,
+      "rule": "n = 8 cs2 S^2 / m^2 per arm per level",
+      "se_method": "batch-means/30"
+    },
+    "levels": [
+      {
+        "pod_rps": 40.0,
+        "baseline": {
+          "visits": 9800,
+          "utilization": 0.31,
+          "utilization_is_upper_bound": true,
+          "own_ms": 7.42,
+          "own_se_ms": 0.07,
+          "own_cs2": 0.98,
+          "own_cs2_se": 0.04,
+          "glue_ms": 0.81,
+          "glue_se_ms": 0.02,
+          "calls": [
+            {
+              "callee": "inventory",
+              "per_visit": 1.0,
+              "parallel": false,
+              "async": false
+            }
+          ],
+          "workers": {
+            "value": 4,
+            "lower_bound": true
+          },
+          "error_share": 0.0,
+          "client_latency_ms": 9.1,
+          "client_latency_se_ms": 0.08,
+          "cpu_ms_per_visit": 6.9
+        },
+        "candidate": {
+          "visits": 9800,
+          "utilization": 0.31,
+          "utilization_is_upper_bound": true,
+          "own_ms": 7.98,
+          "own_se_ms": 0.07,
+          "own_cs2": 1.01,
+          "own_cs2_se": 0.04,
+          "glue_ms": 0.81,
+          "glue_se_ms": 0.02,
+          "calls": [
+            {
+              "callee": "inventory",
+              "per_visit": 1.0,
+              "parallel": false,
+              "async": false
+            }
+          ],
+          "workers": {
+            "value": 4,
+            "lower_bound": true
+          },
+          "error_share": 0.0,
+          "client_latency_ms": 9.71,
+          "client_latency_se_ms": 0.08,
+          "cpu_ms_per_visit": 6.9
+        },
+        "delta": {
+          "own_ms": 0.56,
+          "own_se_ms": 0.1,
+          "own_cs2": 0.03,
+          "own_cs2_se": 0.06,
+          "glue_ms": -0.01,
+          "glue_se_ms": 0.03,
+          "calls_changed": false,
+          "self_report_consistent": true
+        }
+      }
+    ],
+    "load_dependence": {
+      "test": "TOST",
+      "margin_pct_of_own": 3,
+      "flat_shown": true
+    },
+    "harness_aa": {
+      "false_delta_q95_ms": 0.12,
+      "record": {
+        "sha256": "60762631f077e0bcdac7ad4045b8ada02c26471817cde96b223bc7db45c64bdd"
+      }
+    },
+    "captures": {
+      "manifest": {
+        "sha256": "05b3abf2579a5eb66403cd78be557fd860633a1fe2103c7642030defe32c657f"
+      }
+    },
+    "measured_at": "2026-10-26T12:00:00Z",
+    "valid_for_days": 14
+  }
+}

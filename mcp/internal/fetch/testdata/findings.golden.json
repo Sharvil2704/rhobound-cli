@@ -1,0 +1,9 @@
+[
+{"code":"store.compression_mismatch","level":"refuse","subject":"prod","numbers":{"objects":3},"examples":["2026-10-26T12:04/traces_empty.json.gz","2026-10-26T12:04/traces_plain.json.gz","2026-10-26T12:04/traces_zipped.json"],"fix":"fix the exporter: compression: gzip with the .gz names it writes, and no other compression"},
+{"code":"store.late_batches","level":"doubt","subject":"prod","numbers":{"late_spans":2,"margin_after_s":840},"fix":"raise the margin after the window (the Collector's retry, batch and SDK delays); check the Collector's export errors"},
+{"code":"store.manifest_mismatch","level":"refuse","subject":"prod","numbers":{"listed_bytes":331,"objects":19,"read_bytes":332},"examples":["2026-10-26T11:58/traces_1158-000.json.gz","2026-10-26T11:59/traces_1159-000.json.gz","2026-10-26T12:00/traces_1200-000.json.gz"],"fix":"re-fetch the window; never edit a capture in place"},
+{"code":"store.partition_tz_offset","level":"refuse","subject":"prod","numbers":{"derived_offset_h":2,"objects_sampled":19},"fix":"set s3_partition_timezone: UTC on the Collector's S3 exporter (its default is Local)"},
+{"code":"store.small_batches","level":"note","subject":"prod","numbers":{"objects_per_minute":300,"put_cost_usd_per_month":64.8,"put_requests_per_month":12960000,"threshold_objects_per_minute":30},"fix":"raise the Collector's batch timeout to 5-10 s"},
+{"code":"store.too_large","level":"refuse","subject":"prod","numbers":{"cap_bytes":1000,"listed_bytes":12616,"objects":38},"fix":"a capture over its cap: a shorter window; an object over its cap: smaller objects (rotate the Collector's files sooner, or send smaller batches)"},
+{"code":"store.unreadable_object","level":"refuse","subject":"prod","numbers":{"objects":3},"examples":["2026-10-26T12:03/traces_a.json.zst","2026-10-26T12:03/traces_b.json.zst","2026-10-26T12:03/traces_c.binpb"],"fix":"export with marshaler: otlp_json and compression: gzip"}
+]
