@@ -150,7 +150,7 @@ func pattern(p string, rps, secs float64, seed uint64) (func(float64) float64, f
 		burst, hi, lo := num(1), num(2), num(3)
 		low := rps / (hi/(hi+lo)*burst + lo/(hi+lo))
 		srng := rand.New(rand.NewPCG(seed, 0x6d6d7070)) // its own stream: the states do not move the arrivals' draws
-		var ends []float64                                 // the end of each state; even index = low, odd = high
+		var ends []float64                              // the end of each state; even index = low, odd = high
 		for t, k := 0.0, 0; t < secs; k++ {
 			m := lo
 			if k%2 == 1 {

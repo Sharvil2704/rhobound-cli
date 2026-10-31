@@ -170,7 +170,7 @@ func main() {
 		own(func() {
 			work.Process(cfg.Work)
 			if paths["verify_token"] {
-				ok = ok && work.VerifyToken(r.Header.Get("X-Session") + tail)
+				ok = ok && work.VerifyToken(r.Header.Get("X-Session")+tail)
 			}
 			if paths["risk_check"] {
 				ok = ok && work.RiskCheck(tail)
