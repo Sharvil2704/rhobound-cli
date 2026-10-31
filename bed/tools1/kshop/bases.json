@@ -1,0 +1,5 @@
+{
+ "_doc": "The Go builder images a change request (rbd.change-request/v2 \"base\") may name: KEY -> image REF@sha256:<64 hex>. pr-check.sh admits only these keys; build.sh passes the value as --build-arg GO_IMAGE (the kit's Dockerfile: ARG GO_IMAGE, FROM ${GO_IMAGE}). Keys starting with _ are not bases. go1269 = today's builder (the Dockerfile's default). go127 = golang 1.27.3-bookworm, its index digest read from the Docker Hub tags API on 2026-10-30.",
+ "go1269": "golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c",
+ "go127": "golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9"
+}

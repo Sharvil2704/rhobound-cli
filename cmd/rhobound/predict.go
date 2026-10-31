@@ -23,29 +23,34 @@ import (
 
 // cmdPredict is `rhobound predict`. With a capture it reads the capture and prints report v1, exactly as rhobound-cli
 // has always done. With --fit it predicts from a fit record (`rhobound fit`) and a change (--patch, or a change set
-// with --changes) and prints report v2, or its v1 projection with --report v1.
+// with --changes) and prints report v2, or its v1 projection with --report v1; --load-scale S solves it at S times the
+// fit's external rate, a what-if.
 func cmdPredict(args []string, out, errw io.Writer) error {
 	fs, c := newFlags("predict")
 	fitPath := fs.String("fit", "", "predict from this fit record (rhobound fit) instead of a capture: report v2")
 	changes := fs.String("changes", "", "with --fit: the change set (rhobound.change/v1) to apply")
 	form := fs.String("report", "", "with --fit: v1 prints the v1 projection of report v2")
+	loadScale := fs.Float64("load-scale", 1, "with --fit: solve before and after the change at this multiple of the fit's external rate (a what-if)")
 	pos, err := parseInterleaved(fs, args)
 	// a flag given with an empty value (--fit=, --changes '') is given all the same: 1a2df09 had none of these flags
 	// and refused them, so no form of them reads a capture as if they were absent
 	if err == nil && given(fs, "fit") {
 		if len(pos) != 0 || *fitPath == "" || given(fs, "changes") && *changes == "" {
-			return errors.New("usage: rhobound predict --fit F [--patch svc=+3ms | --changes C] [--report v1] [--max-rho 0.85] [--out DIR] [--json]")
+			return errors.New("usage: rhobound predict --fit F [--patch svc=+3ms | --changes C] [--report v1] [--load-scale S] [--max-rho 0.85] [--out DIR] [--json]")
 		}
 		if given(fs, "report") && *form == "" {
 			return fmt.Errorf("--report %q: the only other form is v1", *form)
 		}
-		return predictFromFit(fs, c, *fitPath, *changes, *form, out, errw)
+		return predictFromFit(fs, c, *fitPath, *changes, *form, *loadScale, out, errw)
 	}
 	if err != nil || len(pos) != 1 {
 		return fmt.Errorf("usage: rhobound predict CAPTURE [--patch svc=+3ms] [--workers svc=N] [--out DIR] [--json]")
 	}
 	if given(fs, "changes") || given(fs, "report") {
 		return errors.New("--changes and --report go with --fit (rhobound predict --fit F); a capture takes --patch and prints report v1")
+	}
+	if given(fs, "load-scale") {
+		return errors.New("--load-scale goes with --fit (rhobound predict --fit F --load-scale S); a capture is predicted at its observed load")
 	}
 	if !(*c.maxRho > 0 && *c.maxRho <= 0.95) { // also refuses NaN
 		return fmt.Errorf("--max-rho must be in (0, 0.95]")
@@ -84,7 +89,12 @@ func cmdPredict(args []string, out, errw io.Writer) error {
 // predictFromFit is `rhobound predict --fit F`: the fit record, the change (--patch or --changes; none gives the
 // fit's baseline), checked against the fit and the record store, then the engine. The options the inference was
 // made with (--workers, --kept-share, --plain) are the fit's; giving them here is an error.
-func predictFromFit(fs *flag.FlagSet, c *common, fitPath, changesPath, form string, out, errw io.Writer) error {
+//
+// loadScale is the engine's load point (engine.Request.LoadScale): 1, the default, is the fit's window and today's
+// report byte for byte; any other positive number is a what-if (load.evaluated_at what_if), where the system before
+// the change and after it are both solved at loadScale times the fit's rate, and is refused with --report v1, whose
+// keys cannot say it.
+func predictFromFit(fs *flag.FlagSet, c *common, fitPath, changesPath, form string, loadScale float64, out, errw io.Writer) error {
 	var fitOnly []string
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "workers" || f.Name == "kept-share" || f.Name == "plain" {
@@ -103,6 +113,12 @@ func predictFromFit(fs *flag.FlagSet, c *common, fitPath, changesPath, form stri
 	}
 	if !(*c.maxRho > 0 && *c.maxRho <= 0.95) { // also refuses NaN
 		return fmt.Errorf("--max-rho must be in (0, 0.95]")
+	}
+	if !(loadScale > 0) || math.IsInf(loadScale, 0) { // also refuses NaN
+		return fmt.Errorf("--load-scale must be a positive number, got %v", loadScale)
+	}
+	if loadScale != 1 && form == "v1" {
+		return errors.New("--load-scale and --report v1: report v1 has no load point, so it cannot say that it is a what-if; use report v2")
 	}
 	rec, err := readFit(fitPath)
 	if err != nil {
@@ -150,7 +166,7 @@ func predictFromFit(fs *flag.FlagSet, c *common, fitPath, changesPath, form stri
 		return err
 	}
 	req := engine.Request{Fit: rec, Changes: resolved, ChangeHash: hash, Findings: doubts, Plain: rec.Options.Plain,
-		MaxRho: *c.maxRho}
+		MaxRho: *c.maxRho, LoadScale: loadScale}
 	v, err := engine.Predict(req)
 	if err != nil {
 		return err

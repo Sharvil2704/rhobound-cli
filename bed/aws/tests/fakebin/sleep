@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# fake sleep for the offline tests: returns at once (the script's waits for IAM, KMS and the security group are retries, not timing)
+exit 0

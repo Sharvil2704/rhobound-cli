@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# test stand-in for kubectl (namespace kshop): get deployment -o jsonpath (the container image), set image, rollout
+# status (STUB_ROLLOUT_RC; STUB_ROLLOUT_FAIL=D: only deployment D's fails), rollout undo, get pods -l app=D (the imageIDs;
+# k8s/<D>.terminating = polls an old pod is still listed). Images live in $STUB_DIR/k8s/<deployment>.image.
+set -euo pipefail
+echo "kubectl $*" >> "$STUB_DIR/calls.log"
+[[ ${1:-} == -n && ${2:-} == kshop ]] || { echo "kubectl stub: expected -n kshop first" >&2; exit 2; }
+shift 2
+K=$STUB_DIR/k8s
+case "${1:-} ${2:-}" in
+  "get deployment") cat "$K/$3.image" ;;
+  "set image") d=${3#deployment/}; kv=$4; [[ ${kv%%=*} == "$d" ]] || exit 1
+    cp "$K/$d.image" "$K/$d.prev"; printf '%s' "${kv#*=}" > "$K/$d.image" ;;
+  "rollout status") [[ ${3#deployment/} != "${STUB_ROLLOUT_FAIL:-}" ]] || exit 1; exit "${STUB_ROLLOUT_RC:-0}" ;;
+  "rollout undo") d=${3#deployment/}; mv "$K/$d.prev" "$K/$d.image" ;;
+  "get pods") d=${4#app=}; cat "$K/$d.image"; echo   # -l app=D -o jsonpath=...imageID: one line per pod
+    n=$(cat "$K/$d.terminating" 2> /dev/null || echo 0)     # STUB: an old pod still terminating for n more polls
+    if (( n > 0 )); then cat "$K/$d.prev"; echo; echo $((n - 1)) > "$K/$d.terminating"; fi ;;
+  *) echo "kubectl stub: unsupported: $*" >&2; exit 2 ;;
+esac

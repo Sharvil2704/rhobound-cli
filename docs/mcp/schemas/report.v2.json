@@ -31,7 +31,7 @@
       "type": "object",
       "properties": {
         "evaluated_at": {"enum": ["fit_window", "what_if"],
-                         "description": "the engine evaluates at the fit's window, or a what-if load_scale; the gate decides busiest-window questions"},
+                         "description": "the engine evaluates at the fit's window, or a what-if load_scale (predict --fit F --load-scale S): the services' rates, utilizations, waits and model means are then at it, their error_pct stays the model at the fit's load against the traces; the gate decides busiest-window questions"},
         "load_scale": {"type": "number", "exclusiveMinimum": 0},
         "max_utilization_before": {"type": "number"},
         "max_utilization_after": {"$ref": "defs.v1.json#/$defs/Range"}
@@ -70,6 +70,10 @@
           "after_ms": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}]},
           "change_ms": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}]},
           "change_pct": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}]},
+          "before_at_fit_load_ms": {"type": "number",
+                                    "description": "what-if only (load.evaluated_at what_if): the entry's model mean before the change at the fit's load (load_scale 1); before_ms, after_ms and change_ms are at load.load_scale"},
+          "load_level_ms": {"type": "number",
+                            "description": "what-if only: before_ms less before_at_fit_load_ms, what the load alone moves the entry's mean; change_ms never holds it (it is after minus before, both at load.load_scale)"},
           "model_band_ms": {"type": "number", "description": "max(change_frac x max|change|, latency_frac x before_ms) at the default fractions (model_band): the band at the larger end, for display"},
           "band_ms": {"oneOf": [{"$ref": "defs.v1.json#/$defs/Range"}, {"type": "null"}],
                       "description": "change_ms with each end widened by the model band at that end's own change (lo - band(lo), hi + band(hi)), then by each biased construct on its side"},

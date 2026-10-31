@@ -1,0 +1,9 @@
+{
+ "base_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+ "cand_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+ "keep": false,
+ "schema": "rbd.truth/v1",
+ "service": "catalog",
+ "status": "ok",
+ "warnings": []
+}

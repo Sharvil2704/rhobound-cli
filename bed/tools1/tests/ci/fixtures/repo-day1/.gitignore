@@ -1,0 +1,12 @@
+# build output and local captures never go to the repo
+/kshop/captures/
+/kshop/app/kshop-svc
+/kshop/app/kshop-load
+__pycache__/
+*.pyc
+*.tar
+*.jsonl
+*.jsonl.gz
+.env
+*.pem
+*.key

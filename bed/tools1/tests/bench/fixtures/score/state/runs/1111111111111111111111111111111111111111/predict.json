@@ -1,0 +1,9 @@
+{
+ "delta_ms": -4.8,
+ "exit": 0,
+ "ok": true,
+ "rule": "mean_change@storefront",
+ "service": "catalog",
+ "step": "predict",
+ "verdict": "pass"
+}

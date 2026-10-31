@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# fake kubectl for the verifier's tests: deployment images in $STUB/img-<name>; every call appended to $STUB/kubectl.log.
+#   STUB_SET_FAIL=<digest>       set image to that digest fails
+#   STUB_ROLLOUT_FAIL=<digest>   rollout status fails while the deployment's image has that digest
+#   STUB_BG=<n>                  .status.active of the background load job [1]
+set -uo pipefail
+echo "$*" >> "$STUB/kubectl.log"
+a=()
+for x in "$@"; do case $x in --request-timeout=* | --timeout=*) ;; *) a+=("$x") ;; esac; done
+[[ ${a[0]:-} == -n ]] && a=("${a[@]:2}")
+case "${a[0]:-} ${a[1]:-}" in
+  "get deployment")
+    f=$STUB/img-${a[2]}
+    [[ -f $f ]] || { echo "Error from server (NotFound): deployments \"${a[2]}\" not found" >&2; exit 1; }
+    cat "$f" ;;
+  "get job") echo -n "${STUB_BG-1}" ;;
+  "set image")
+    d=${a[2]#deployment/}; img=${a[3]#*=}
+    [[ -n ${STUB_SET_FAIL:-} && $img == *"$STUB_SET_FAIL" ]] && { echo "stub: set image refused" >&2; exit 1; }
+    [[ -f $STUB/img-$d ]] || exit 1
+    printf '%s' "$img" > "$STUB/img-$d"
+    echo "deployment.apps/$d image updated" ;;
+  "rollout status")
+    d=${a[2]#deployment/}
+    [[ -n ${STUB_ROLLOUT_FAIL:-} && $(cat "$STUB/img-$d") == *"$STUB_ROLLOUT_FAIL" ]] && { echo "stub: rollout timed out" >&2; exit 1; }
+    echo "deployment \"$d\" successfully rolled out" ;;
+  *) echo "stub kubectl: unexpected: $*" >&2; exit 9 ;;
+esac

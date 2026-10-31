@@ -58,6 +58,7 @@ type predEntry struct {
 	ChangePct     *rng     `json:"change_pct,omitempty"`
 	ModelBandMs   float64  `json:"model_band_ms"`
 	BandMs        *rng     `json:"band_ms,omitempty"`
+	BlockBandMs   *rng     `json:"block_band_ms,omitempty"`
 	ThresholdMs   *float64 `json:"threshold_ms"`
 	size          float64
 }
@@ -91,6 +92,7 @@ type predRule struct {
 	Effect    string   `json:"effect"`
 	Value     *float64 `json:"value,omitempty"`
 	Threshold *float64 `json:"threshold,omitempty"`
+	Variant   string   `json:"variant,omitempty"`
 }
 
 // PreviewLabel is a label as a preview shows it: declared is caller-asserted.
@@ -121,8 +123,9 @@ func PreviewRules(g *gate.Result) []gate.Rule {
 }
 
 // Prediction returns the prediction view (rhobound-mcp.prediction/v1) of a report v2 and the preview's evaluation of
-// it: the entries with their change, band and threshold, the services the change moves, the labels, and the preview's
-// verdict, always advisory, with its rules and decide_with. It carries no server key.
+// it: the entries with their change, band and threshold (and the block band under the policy's block_band "model"),
+// the services the change moves, the labels, and the preview's verdict, always advisory, with its rules and
+// decide_with. It carries no server key.
 func Prediction(r *report.V2, g *gate.Result, detail string) ([]byte, error) {
 	v := &predictionView{Schema: PredictionSchema, FitDigest: r.FitDigest, ChangeHash: r.ChangeHash,
 		EvidenceClass: r.EvidenceClass, Entries: []predEntry{}, Moved: []predMoved{}, Labels: []predLabel{},
@@ -152,6 +155,9 @@ func Prediction(r *report.V2, g *gate.Result, detail string) ([]byte, error) {
 		}
 		if ev.BandMs != nil {
 			e.BandMs = span(ev.BandMs.Lo, ev.BandMs.Hi)
+		}
+		if ev.BlockBandMs != nil {
+			e.BlockBandMs = span(ev.BlockBandMs.Lo, ev.BlockBandMs.Hi)
 		}
 		if en.AfterMs != nil {
 			e.AfterMs = span(en.AfterMs.Lo, en.AfterMs.Hi)
@@ -194,7 +200,7 @@ func Prediction(r *report.V2, g *gate.Result, detail string) ([]byte, error) {
 	}
 	for _, rr := range PreviewRules(g) {
 		v.Preview.Rules = append(v.Preview.Rules, predRule{Rule: rr.Rule, Entry: rr.Entry, Effect: rr.Effect,
-			Value: round(rr.Value), Threshold: round(rr.Threshold)})
+			Value: round(rr.Value), Threshold: round(rr.Threshold), Variant: rr.Variant})
 	}
 	t := trim{findings: &v.Findings, assumptions: &v.Assumptions, omitted: &v.FindingsOmitted, truncated: &v.Truncated,
 		size: func() (int, error) { return size(v) },

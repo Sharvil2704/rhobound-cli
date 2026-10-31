@@ -1,0 +1,1 @@
+Build the kshop image with the Go 1.27.3 builder (go127)

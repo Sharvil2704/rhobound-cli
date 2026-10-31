@@ -31,6 +31,9 @@ type previewInputs struct {
 	digest   string
 	report   *report.V2
 	services []string // the services the change items name, in order, without repeats
+	// loadScale is the load point the budgets are computed at (budget.Budgeter.LoadScale): 0, the fit's window, but
+	// for a what-if report read by judge-packet and explain, its load.load_scale
+	loadScale float64
 }
 
 // twinPredict reads a change set, checks it against the fit and the record store, and predicts it, as
@@ -90,7 +93,7 @@ const maxDecideBudgets = 4
 // safeBudgets returns the safe own-time budget of each changed service the change set names (at most
 // maxDecideBudgets), which decide_with quotes, and the budget items.
 func (in *previewInputs) safeBudgets(p *gate.Policy) (map[string]float64, []budget.Item, error) {
-	b := &budget.Budgeter{Fit: in.fit, FitDigest: in.digest, Policy: p}
+	b := &budget.Budgeter{Fit: in.fit, FitDigest: in.digest, Policy: p, LoadScale: in.loadScale}
 	out := map[string]float64{}
 	var items []budget.Item
 	for i, svc := range in.services {

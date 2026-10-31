@@ -1,0 +1,1 @@
+{"schema": "rbd.change-request/v2", "services": ["catalog", "pricing"], "summary": "Build the shared kshop image with the Go 1.27.3 builder (base key go127) instead of Go 1.26.9. No source change: the compiler and the Go runtime change for every service of the image. Watch CPU per request of catalog (Rank) and pricing (Quote); gated by A/Bs of both.", "base": "go127"}

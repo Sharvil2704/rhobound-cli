@@ -1,0 +1,253 @@
+{
+ "approaches": [
+  {
+   "cut": {
+    "reason": "rhobound: mean_change at storefront",
+    "stage": "S4"
+   },
+   "id": "m-perdoc",
+   "origin": "model",
+   "s1": {
+    "compiled": true,
+    "tokens": 20000,
+    "turns": 6,
+    "visible_pass": true
+   },
+   "s2": {
+    "failed": [],
+    "hidden_pass": true
+   },
+   "s3": {
+    "allocs": 20000,
+    "delta_ms": 6.0,
+    "spread_ms": 0.4
+   },
+   "s4": {
+    "binding_rule": "mean_change",
+    "declared": {
+     "catalog": {
+      "hi": 12.0,
+      "lo": 4.800000000000001
+     }
+    },
+    "entries": [
+     {
+      "band_hi": 13.2,
+      "band_lo": 4.1,
+      "name": "storefront",
+      "threshold": 3.397
+     },
+     {
+      "band_hi": 0.4,
+      "band_lo": -0.4,
+      "name": "checkout",
+      "threshold": 4.461
+     }
+    ],
+    "verdict": "block"
+   },
+   "s5": null,
+   "selected": false,
+   "stage_reached": "S4",
+   "strategy": "fold-every-doc-per-request"
+  },
+  {
+   "cut": {
+    "reason": "rhobound: saturates",
+    "stage": "S4"
+   },
+   "id": "m-maprune",
+   "origin": "model",
+   "s1": {
+    "compiled": true,
+    "tokens": 20000,
+    "turns": 6,
+    "visible_pass": true
+   },
+   "s2": {
+    "failed": [],
+    "hidden_pass": true
+   },
+   "s3": {
+    "allocs": 90000,
+    "delta_ms": 9.0,
+    "spread_ms": 0.8
+   },
+   "s4": {
+    "binding_rule": "saturates",
+    "declared": {
+     "catalog": {
+      "hi": 18.0,
+      "lo": 7.2
+     }
+    },
+    "entries": [
+     {
+      "band_hi": 80.0,
+      "band_lo": 6.0,
+      "name": "storefront",
+      "threshold": 3.397
+     },
+     {
+      "band_hi": 0.4,
+      "band_lo": -0.4,
+      "name": "checkout",
+      "threshold": 4.461
+     }
+    ],
+    "verdict": "block"
+   },
+   "s5": null,
+   "selected": false,
+   "stage_reached": "S4",
+   "strategy": "map-per-rune"
+  },
+  {
+   "cut": {
+    "reason": "judge: reject (changes ASCII ordering)",
+    "stage": "S5"
+   },
+   "id": "m-once",
+   "origin": "model",
+   "s1": {
+    "compiled": true,
+    "tokens": 20000,
+    "turns": 6,
+    "visible_pass": true
+   },
+   "s2": {
+    "failed": [],
+    "hidden_pass": true
+   },
+   "s3": {
+    "allocs": 4,
+    "delta_ms": 0.05,
+    "spread_ms": 0.05
+   },
+   "s4": {
+    "binding_rule": "mean_change",
+    "declared": {
+     "catalog": {
+      "hi": 0.1,
+      "lo": 0.04000000000000001
+     }
+    },
+    "entries": [
+     {
+      "band_hi": 0.5,
+      "band_lo": -0.2,
+      "name": "storefront",
+      "threshold": 3.397
+     },
+     {
+      "band_hi": 0.4,
+      "band_lo": -0.4,
+      "name": "checkout",
+      "threshold": 4.461
+     }
+    ],
+    "verdict": "pass"
+   },
+   "s5": {
+    "decision": "reject",
+    "issues": [
+     {
+      "code": "ascii-changed",
+      "fix": "keep ASCII",
+      "severity": "blocker"
+     }
+    ],
+    "revised": false
+   },
+   "selected": false,
+   "stage_reached": "S5",
+   "strategy": "fold-at-build"
+  },
+  {
+   "cut": {
+    "reason": "hidden: TestFoldFullWidth",
+    "stage": "S2"
+   },
+   "id": "m-bad",
+   "origin": "model",
+   "s1": {
+    "compiled": true,
+    "tokens": 20000,
+    "turns": 6,
+    "visible_pass": true
+   },
+   "s2": {
+    "failed": [
+     "TestFoldFullWidth"
+    ],
+    "hidden_pass": false
+   },
+   "s3": null,
+   "s4": null,
+   "s5": null,
+   "selected": false,
+   "stage_reached": "S2",
+   "strategy": "nfd-strip"
+  },
+  {
+   "cut": null,
+   "id": "ref-fold-once",
+   "origin": "reference",
+   "s1": {
+    "compiled": true,
+    "tokens": 0,
+    "turns": 0,
+    "visible_pass": true
+   },
+   "s2": {
+    "failed": [],
+    "hidden_pass": true
+   },
+   "s3": {
+    "allocs": 4,
+    "delta_ms": 0.04,
+    "spread_ms": 0.05
+   },
+   "s4": {
+    "binding_rule": "mean_change",
+    "declared": {
+     "catalog": {
+      "hi": 0.08,
+      "lo": 0.032
+     }
+    },
+    "entries": [
+     {
+      "band_hi": 0.5,
+      "band_lo": -0.2,
+      "name": "storefront",
+      "threshold": 3.397
+     },
+     {
+      "band_hi": 0.4,
+      "band_lo": -0.4,
+      "name": "checkout",
+      "threshold": 4.461
+     }
+    ],
+    "verdict": "pass"
+   },
+   "s5": null,
+   "selected": false,
+   "stage_reached": "S6",
+   "strategy": "ref-fold-once"
+  }
+ ],
+ "base_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+ "coder": "muse-spark-1.3",
+ "finished_at": "2026-10-31T00:40:00Z",
+ "judge": "muse-wonder-1.0",
+ "k": 3,
+ "schema": "rbd.bench-funnel/v1",
+ "selected": null,
+ "started_at": "2026-10-31T00:00:00Z",
+ "task": "T3-fold",
+ "timings": {
+  "S0": 35
+ }
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "rhobound.policy/v1",
+  "max_entry_mean_change_ms": 4.0,
+  "block_band": "model",
+  "doubts_that_hold": [
+    "trace.sampling_unverified",
+    "fit.queue_rebuild_sampled",
+    "trace.client_spans_missing",
+    "trace.context_not_propagated",
+    "trace.errors_present",
+    "trace.retries",
+    "trace.shedding",
+    "trace.arrivals_unjudged",
+    "trace.arrivals_overdispersed",
+    "trace.load_trend",
+    "model.batch_arrivals",
+    "profile.variance_changed",
+    "profile.structure_changed",
+    "profile.self_report_mismatch",
+    "ab.errors_differ"
+  ]
+}

@@ -1,0 +1,57 @@
+#!/usr/bin/env -S python3 -I
+# test stand-in for cosign v2: version; attest (requires the flags sign.sh must pass, stores a DSSE envelope of an in-toto
+# statement per image digest); verify-attestation (requires the flags deploy.sh must pass, prints the stored envelopes of
+# that type, fails when none). The "signature" is not checked: tests cover the gate logic, not cryptography.
+import base64, json, os, sys
+
+d = os.environ["STUB_DIR"]
+with open(os.path.join(d, "calls.log"), "a") as f:
+    f.write("cosign " + " ".join(sys.argv[1:]) + "\n")
+a = sys.argv[1:]
+
+
+def opt(name):
+    for i, x in enumerate(a):
+        if x == name:
+            return a[i + 1]
+        if x.startswith(name + "="):
+            return x.split("=", 1)[1]
+    return None
+
+
+def need(cond, msg):
+    if not cond:
+        print("cosign stub: " + msg, file=sys.stderr)
+        sys.exit(1)
+
+
+if a[:1] == ["version"]:
+    print("GitVersion:    " + os.environ.get("STUB_COSIGN_VERSION", "v2.6.5"))
+    sys.exit(0)
+image = a[-1]
+need("@sha256:" in image, "image must be pinned by digest: " + image)
+repo, hexd = image.split("@sha256:")
+store = os.path.join(d, "att", hexd + ".jsonl")
+need(opt("--key") == os.environ.get("STUB_KMS", "awskms:///alias/rhobound-demo-verdict"), "wrong --key")
+need(opt("--type") == "https://rhobound.dev/attestations/gate-verdict/v1", "wrong --type")
+if a[:1] == ["attest"]:
+    need(opt("--tlog-upload") == "false" and "--yes" in a, "attest needs --tlog-upload=false --yes")
+    need(os.environ.get("STUB_ATTEST_FAIL") != "1", "signing failed: KMS AccessDeniedException (STUB_ATTEST_FAIL)")
+    pred = json.load(open(opt("--predicate")))
+    st = {"_type": "https://in-toto.io/Statement/v0.1", "predicateType": opt("--type"),
+          "subject": [{"name": repo, "digest": {"sha256": hexd}}], "predicate": pred}
+    env = {"payloadType": "application/vnd.in-toto+json", "payload": base64.b64encode(json.dumps(st).encode()).decode(),
+           "signatures": [{"keyid": "", "sig": "c3R1Yg=="}]}
+    os.makedirs(os.path.dirname(store), exist_ok=True)
+    with open(store, "a") as f:
+        f.write(json.dumps(env) + "\n")
+    sys.exit(0)
+if a[:1] == ["verify-attestation"]:
+    need(opt("--insecure-ignore-tlog") == "true", "verify-attestation needs --insecure-ignore-tlog=true")
+    lines = open(store).read().splitlines() if os.path.exists(store) else []
+    need(lines, "Error: no matching attestations")
+    print("Verification for %s --" % image, file=sys.stderr)
+    for line in lines:
+        print(line)
+    sys.exit(0)
+need(False, "unsupported: " + " ".join(a))

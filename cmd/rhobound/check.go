@@ -99,6 +99,9 @@ func cmdCheck(args []string, out, errw io.Writer) int {
 		if !ok || err1 != nil || err2 != nil || !end.After(start) {
 			return fail(fmt.Errorf("--window %q is not START,END in RFC 3339 with END after START", *window))
 		}
+		if _, _, err := check.WindowNanos(start, end); err != nil {
+			return fail(err)
+		}
 	}
 
 	var m *contract.Manifest
@@ -132,23 +135,42 @@ func cmdCheck(args []string, out, errw io.Writer) int {
 			opt.RequestCount = rc
 		}
 	}
-	rep, d, err := check.Run(m, opt)
+	// The capture as read may reach back past the window (a trace file holds what was written before it): its image
+	// digests are counted in the window to cut only (trace.mixed_images, DATA.md 3.9). A check of the cut reads it whole,
+	// as `fit --manifest` will, and as it reads the capture's manifest that --write-manifest writes: with --write-manifest
+	// the capture is checked whole first, the manifest written only when that check admits it, and the window checked
+	// alone only when two images refused it (any other refusal is the same in the window).
+	inWindow := opt
+	inWindow.WindowStart, inWindow.WindowEnd = start, end
+	first := inWindow
+	if *writeManifest {
+		first = opt
+	}
+	rep, d, err := check.Run(m, first)
 	if err != nil {
 		return fail(err)
-	}
-	for k, v := range ignored {
-		rep.Ignored[k] += v
 	}
 	code := checkAdmitted
 	if rep.Verdict == contract.Refused {
 		code = checkRefused
 	}
-	if code == checkAdmitted && *writeManifest {
-		p := filepath.Join(m.Dir, "manifest.json")
+	if p := filepath.Join(m.Dir, "manifest.json"); code == checkAdmitted && *writeManifest {
 		if err := os.WriteFile(p, append(m.Canonical(), '\n'), 0o644); err != nil {
 			return fail(err)
 		}
 		fmt.Fprintf(errw, "wrote %s\n", p)
+	} else if *writeManifest && *window != "" && rep.Has(contract.TraceMixedImages) {
+		fmt.Fprintf(errw, "did not write %s: the capture as read is refused (%s); checking the window alone\n", p,
+			contract.TraceMixedImages)
+		if rep, d, err = check.Run(m, inWindow); err != nil {
+			return fail(err)
+		}
+		if rep.Verdict != contract.Refused {
+			code = checkAdmitted
+		}
+	}
+	for k, v := range ignored {
+		rep.Ignored[k] += v
 	}
 	if code == checkAdmitted && *outDir != "" {
 		_, statErr := os.Stat(*outDir)

@@ -629,7 +629,7 @@ var numberNames = map[string][]string{
 	ClusterDigestDisagrees:    {"pods"},
 	FitStale:                  {"max_fit_age_h", "fit_age_h"},
 	LoadBeyondValidated:       {"utilization", "max_utilization_validated"},
-	ModelUtilizationObserved:  {"utilization", "limit"},
+	ModelUtilizationObserved:  {"utilization", "limit", "load_scale"}, // load_scale: refused at a what-if load point
 	ModelUtilizationAfter:     {"utilization", "limit"},
 	ChangeRangeInverted:       {"lo", "hi"},
 	ChangeNegativeTime:        {"own_ms", "change_ms", "glue_ms"},

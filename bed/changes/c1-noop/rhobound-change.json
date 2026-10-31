@@ -1,0 +1,1 @@
+{"schema": "rbd.change-request/v1", "services": ["auth"], "summary": "Control (no-op): reword a comment in the shared library lib_v11.go; the compiled code does not change."}

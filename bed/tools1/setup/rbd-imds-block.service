@@ -1,0 +1,15 @@
+[Unit]
+Description=demo1: block IMDS for the GitHub runner user ghrunner
+# before any network comes up (as ufw.service): the runner's unit also Requires= and is After= this one (runner-register.sh)
+DefaultDependencies=no
+Wants=network-pre.target local-fs.target
+After=local-fs.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/rbd/setup/imds-block.sh
+
+[Install]
+WantedBy=multi-user.target

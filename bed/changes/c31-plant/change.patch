@@ -1,0 +1,33 @@
+diff --git a/kshop/app/internal/work/lib_v11.go b/kshop/app/internal/work/lib_v11.go
+index 0fc5f77..32f6f57 100644
+--- a/kshop/app/internal/work/lib_v11.go
++++ b/kshop/app/internal/work/lib_v11.go
+@@ -80,6 +80,7 @@ func VerifyToken(token string) bool {
+ // RiskCheck (1.1) adds a mandatory 6 ms synchronous hold on card payments (a
+ // compliance delay); wallet payments are unchanged.
+ func RiskCheck(method string) bool {
++	plantHold() // planted (c31-plant, SPEC3 F9): never merge
+ 	if method == "card" {
+ 		time.Sleep(6 * time.Millisecond)
+ 	}
+diff --git a/kshop/app/internal/work/plant.go b/kshop/app/internal/work/plant.go
+new file mode 100644
+index 0000000..1c2d542
+--- /dev/null
++++ b/kshop/app/internal/work/plant.go
+@@ -0,0 +1,15 @@
++// Code planted by changes/plant.py (rhobound SPEC3 F9) for the change c31-plant: NEVER merge it.
++// make_prs.sh opens it as a draft PR labelled rbd-plant; orch/automerge.sh refuses every rbd-plant PR.
++// The knob below is the intended per-call cost only: the registered dose is the A/B-measured own-time
++// delta of the service, not this knob.
++
++package work
++
++import "time"
++
++// plantHoldFor: the wall time plantHold holds the calling worker, at the top of RiskCheck.
++const plantHoldFor = 1500 * time.Microsecond
++
++func plantHold() {
++	time.Sleep(plantHoldFor)
++}

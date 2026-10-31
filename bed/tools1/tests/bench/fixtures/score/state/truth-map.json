@@ -1,0 +1,10 @@
+{
+ "brackets": [
+  {
+   "approach": "m-perdoc",
+   "name": "t3-perdoc",
+   "task": "T3-fold"
+  }
+ ],
+ "schema": "rbd.bench-truth-map/v1"
+}

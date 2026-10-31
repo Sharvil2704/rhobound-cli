@@ -1,0 +1,52 @@
+{
+ "schema": "rbd.agent-change/v1",
+ "provider": "meta",
+ "model": "muse-spark-1.3",
+ "served_by": [
+  "muse-spark-1.3"
+ ],
+ "effort": "high",
+ "base_sha": "af1dc9e2421c72174a6ca86351801637773e88b4",
+ "service": "catalog",
+ "title": "Rank via inverted index: same BM25, only matching docs scored",
+ "summary": "Built BM25 inverted index once (term->postings(doc,tf), df/idf, per-doc k1 norm) guarded by sync.Once; per query Rank folds/tokenizes/dedups as before, scores only docs holding a query term in query order with the identical expression, and picks top-10 via a size-10 min-heap with score-desc/ID-asc tiebreak. Safe: index read-only after build, per-call score/seen/touched buffers from sync.Pool (no shared mutable state, no goroutines, race-clean); extra heap is the index (~1-2MB) plus one ~100KB buffer per in-flight call, far under 64MB. Latency: microbench Rank on production query stream 6109465 ns/op -> 2688 ns/op (~2270x, allocs 16010->7); catalog own time per visit is dominated by Rank so declared own_ms drops by ~6ms/visit, well within budget (preview advisory only).",
+ "files": [
+  {
+   "path": "kshop/app/internal/hot/rank.go",
+   "sha256": "a1fcc1140348cd04bbe86d0092ef4a16949268e5759628f9f58315521c7c8e25",
+   "bytes": 6506,
+   "new": false
+  }
+ ],
+ "turns": 10,
+ "usage": {
+  "input": 166938,
+  "output": 41466,
+  "cached": 145002,
+  "reasoning": 33407
+ },
+ "mcp_calls": [],
+ "task": "T1-rank",
+ "approach": "inverted-index: Build term->postings(doc,tf), df, dl, avgdl once; per query score only docs holding a query term, same BM25 in query order, heap top-10 with ID tiebreak.",
+ "sandbox": [
+  {
+   "turn": 8,
+   "tool": "run_tests",
+   "ok": true,
+   "passed": 7,
+   "failed": 0,
+   "delta_ms": {}
+  },
+  {
+   "turn": 9,
+   "tool": "run_bench",
+   "ok": true,
+   "passed": 0,
+   "failed": 0,
+   "delta_ms": {
+    "BenchmarkRank": -6.106777
+   }
+  }
+ ],
+ "revised": false
+}

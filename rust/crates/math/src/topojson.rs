@@ -670,6 +670,17 @@ pub fn parse_topology(data: &[u8]) -> Result<Topology, ModelError> {
             calls: Vec::new(),
         };
         for raw in &fs.children {
+            // The Go code after the first release writes and reads a `hop` on a call (the per-edge network time);
+            // this port has the callee's hop only. Reading such a topology and dropping the field would give
+            // silently different numbers, so it is refused by name (use the rhobound binary).
+            if let JVal::Obj(o) = raw {
+                if o.iter().any(|(k, _)| field_of(k, &["hop"]).is_some()) {
+                    return Err(ModelError(format!(
+                        "{}: a call with its own hop is not supported by rbfast (it reads the callee's hop only); use rhobound",
+                        fs.name
+                    )));
+                }
+            }
             let Some((cname, p, is_async)) = child_of(raw) else {
                 return Err(ModelError(format!(
                     "{}: a child must be a name or {{name, p, async}}",

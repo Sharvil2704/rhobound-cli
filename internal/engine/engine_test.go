@@ -5,6 +5,7 @@ package engine
 import (
 	"errors"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -196,6 +197,121 @@ func TestLoadAndOperations(t *testing.T) {
 	if d := entryChange(t, w, "a").Lo; !(d < 0) || w.Items[0].Sign != change.SignDecreasing {
 		t.Errorf("workers 2 -> 4: change %v", d)
 	}
+}
+
+// sleeper is one entry service whose time per visit is a sleep holding one of 4 workers (cs2 0, one queue of 4: M/D/4),
+// s ms per visit.
+func sleeper(s float64) *model.Topology {
+	return &model.Topology{Name: "sleeper", Entry: map[int]float64{0: 1}, Services: []model.Service{
+		{Name: "s", S: s, CS2: 0, Servers: 4},
+	}}
+}
+
+// A what-if load scale (predict --fit F --load-scale S) solves the system before the change and after it at S times
+// the fit's rate: change_ms is the change's effect at that load, and the load level, the load's effect alone, is
+// apart. On a sleep-dominated M/G/c queue the effect of +1 ms grows with the load as Erlang C says.
+//
+// By hand, Allen-Cunneen with Poisson arrivals (ca2 1) and cs2 0: R = s + C(4, a) s/(4-a) (1+0)/2, a = lam s,
+// C(m, a) = [a^m/m! /(1-a/m)] / [sum_{k<m} a^k/k! + a^m/m! /(1-a/m)].
+//   - the fit's load, lam 0.2/ms, s 10: a 2, C = (16/24/0.5) / (1+2+2+8/6 + 16/24/0.5) = 4/23, R = 10 + 10/23
+//     = 10.434782608696 ms.
+//   - 1.4 times it, lam 0.28: s 10, a 2.8, C = 8.536889/19.915556 = 0.428654318233, R = 11.786059659302; s 11, a 3.08,
+//     C = 16.302862/29.995747 = 0.543506..., R = 14.249219107893. The change at 1.4x is +2.463159448591 ms (+1.258214 at
+//     the fit's load), the level +1.351277050607 ms.
+func TestLoadScaleSleepDominated(t *testing.T) {
+	r := handFit(t, sleeper(10), 0.2)
+	plus1 := set(item(change.OpOwnMs, "s", 1, 1))
+	at := func(scale float64) *report.V2 {
+		v, err := Predict(Request{Fit: r, Changes: plus1, LoadScale: scale})
+		if err != nil {
+			t.Fatalf("load scale %v: %v", scale, err)
+		}
+		return v
+	}
+	one := at(1)
+	e := one.Entries[0]
+	if one.Load.EvaluatedAt != report.EvaluatedAtFitWindow || one.Load.LoadScale != 1 || e.BeforeAtFitLoadMs != nil ||
+		e.LoadLevelMs != nil {
+		t.Errorf("at the fit's load: %+v, %+v", one.Load, e)
+	}
+	if math.Abs(e.BeforeMs-(10+10.0/23)) > 1e-9 || math.Abs(e.ChangeMs.Lo-1.258213888692) > 1e-9 {
+		t.Errorf("at the fit's load: before %v, change %+v", e.BeforeMs, *e.ChangeMs)
+	}
+	// the default and an explicit 1 are one report
+	if def, err := Predict(Request{Fit: r, Changes: plus1}); err != nil || !sameJSON(t, def, one) {
+		t.Errorf("LoadScale 0 and 1 differ: %v", err)
+	}
+	prev := e.ChangeMs.Lo
+	for _, scale := range []float64{1.1, 1.2, 1.3, 1.4} {
+		v := at(scale)
+		e := v.Entries[0]
+		if v.Load.EvaluatedAt != report.EvaluatedAtWhatIf || v.Load.LoadScale != scale || e.ChangeMs == nil ||
+			e.BeforeAtFitLoadMs == nil || e.LoadLevelMs == nil {
+			t.Fatalf("load scale %v: %+v, %+v", scale, v.Load, e)
+		}
+		// the level is the base at the load point less the base at the fit's load, and the change holds none of it
+		if math.Abs(*e.BeforeAtFitLoadMs-one.Entries[0].BeforeMs) > 1e-12 || math.Abs(*e.LoadLevelMs-(e.BeforeMs-*e.BeforeAtFitLoadMs)) > 1e-12 ||
+			!(*e.LoadLevelMs > 0) || math.Abs(e.ChangeMs.Lo-(e.AfterMs.Lo-e.BeforeMs)) > 1e-12 {
+			t.Errorf("load scale %v: %+v", scale, e)
+		}
+		if !(e.ChangeMs.Lo > prev) {
+			t.Errorf("load scale %v: change %v, not above %v at a lower load", scale, e.ChangeMs.Lo, prev)
+		}
+		prev = e.ChangeMs.Lo
+		if scale == 1.4 {
+			if math.Abs(e.BeforeMs-11.786059659302) > 1e-9 || math.Abs(e.AfterMs.Lo-14.249219107893) > 1e-9 ||
+				math.Abs(e.ChangeMs.Lo-2.463159448591) > 1e-9 || math.Abs(*e.LoadLevelMs-1.351277050607) > 1e-9 {
+				t.Errorf("1.4 times the fit's load: before %v, after %v, change %v, level %v; by hand 11.786059659302, "+
+					"14.249219107893, +2.463159448591, +1.351277050607", e.BeforeMs, e.AfterMs.Lo, e.ChangeMs.Lo, *e.LoadLevelMs)
+			}
+			if u := v.Load.MaxUtilizationAfter; math.Abs(v.Load.MaxUtilizationBefore-0.7) > 1e-12 || u == nil ||
+				math.Abs(u.Hi-0.77) > 1e-12 {
+				t.Errorf("1.4 times the fit's load: utilization %+v", v.Load)
+			}
+		}
+	}
+	// the load point refuses as the fit's own load does: 1.8 times puts the queue at 90%. The refusal carries the load
+	// point (load_scale), so that the gate reading it can say it was a what-if
+	_, err := Predict(Request{Fit: r, Changes: plus1, LoadScale: 1.8})
+	var re *report.RefusalError
+	if !errors.As(err, &re) || re.Code != contract.ModelUtilizationObserved ||
+		!strings.HasPrefix(err.Error(), "refusing to predict: at 1.8 times the observed load s would run at 90.0% utilization") {
+		t.Errorf("1.8 times: %v", err)
+	} else if re.Numbers[report.LoadScaleNumber] != 1.8 || len(re.Numbers) != 3 {
+		t.Errorf("1.8 times: numbers %v", re.Numbers)
+	}
+	if c, ok := contract.Lookup(contract.ModelUtilizationObserved); !ok || !slices.Contains(c.Numbers, report.LoadScaleNumber) {
+		t.Errorf("the registry does not list %s's %s number: %+v", contract.ModelUtilizationObserved, report.LoadScaleNumber, c)
+	}
+	// below the fit's load, a fit the model has no steady state for at its own load (112.5%) is refused: there is no
+	// misfit check and no level. That refusal is of the fit's own load, as at load_scale 1: no load_scale number
+	over := handFit(t, sleeper(10), 0.45)
+	_, err = Predict(Request{Fit: over, LoadScale: 0.5})
+	if !errors.As(err, &re) || re.Code != contract.ModelUtilizationObserved ||
+		!strings.HasPrefix(err.Error(), "refusing to predict: at the observed load s would pass 100% utilization") {
+		t.Errorf("0.5 times a fit over 100%%: %v", err)
+	} else if _, has := re.Numbers[report.LoadScaleNumber]; has {
+		t.Errorf("0.5 times a fit over 100%%: numbers %v", re.Numbers)
+	}
+	// at the fit's window the refusal is today's: no load_scale number
+	if _, err = Predict(Request{Fit: over}); !errors.As(err, &re) || len(re.Numbers) != 2 {
+		t.Errorf("a fit over 100%%: %v", err)
+	}
+	// one above the limit but steady is not refused below it: 0.9 at the fit's load, 0.45 at half of it
+	busy, err := Predict(Request{Fit: handFit(t, sleeper(10), 0.36), LoadScale: 0.5})
+	if err != nil || busy.Load.EvaluatedAt != report.EvaluatedAtWhatIf || !(*busy.Entries[0].LoadLevelMs < 0) {
+		t.Errorf("0.5 times a fit at 90%%: %v", err)
+	}
+}
+
+func sameJSON(t *testing.T, a, b *report.V2) bool {
+	t.Helper()
+	x, err1 := a.Canonical()
+	y, err2 := b.Canonical()
+	if err1 != nil || err2 != nil {
+		t.Fatal(err1, err2)
+	}
+	return string(x) == string(y)
 }
 
 // The biased constructs on the path from an entry to a changed service (ARCHITECTURE.md 4.5, item 3), and the side

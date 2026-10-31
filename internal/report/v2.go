@@ -3,8 +3,11 @@
 package report
 
 import (
+	"fmt"
 	"io"
 	"math"
+	"strconv"
+	"text/tabwriter"
 
 	"github.com/Sharvil2704/rhobound-cli/internal/change"
 	"github.com/Sharvil2704/rhobound-cli/internal/contract"
@@ -25,8 +28,8 @@ const VersionV2 = "rhobound-cli.report/v2"
 //
 // The report holds no policy: thresholds, verdicts and the policy's band fractions belong to the gate, which reads the
 // report. Its JSON is canonical (Canonical; WriteJSON adds a newline). The slices are never nil in a report the engine
-// wrote, so that the required arrays serialize as [] rather than null. WriteText is the embedded report's, the v1 text;
-// the v2 text form is not built yet.
+// wrote, so that the required arrays serialize as [] rather than null. WriteText is the embedded report's, the v1 text,
+// followed in a what-if by the load point and the entries' load level; the v2 text form is not built yet.
 type V2 struct {
 	Report
 
@@ -86,7 +89,9 @@ const (
 // EvidenceClasses lists the evidence classes, in the order of the schema's enum.
 var EvidenceClasses = []string{EvidenceSimulated, EvidenceQueueLike, EvidenceRealUntested}
 
-// Load is the load point the report was solved at.
+// Load is the load point the report was solved at. In a what-if (`predict --fit F --load-scale S`), the rows' rates,
+// utilizations, waits and model means are at the load point, while their observed values are the traces', at the
+// fit's load; their error_pct stays the fit's misfit check, the model at the fit's load against the traces.
 type Load struct {
 	// EvaluatedAt is EvaluatedAtFitWindow, or EvaluatedAtWhatIf for a load scale other than 1. The engine never
 	// evaluates at a busiest window: that is the gate's question.
@@ -104,6 +109,11 @@ const (
 	EvaluatedAtFitWindow = "fit_window"
 	EvaluatedAtWhatIf    = "what_if"
 )
+
+// LoadScaleNumber is the number of a model.utilization_observed refusal that holds the what-if load point the base
+// was refused at (engine.Predict at a load scale other than 1), so that the gate reading the refusal can say which
+// load it is of. A refusal at the fit's window has none.
+const LoadScaleNumber = "load_scale"
 
 // Applied is one change item as the engine applied it.
 type Applied struct {
@@ -129,6 +139,13 @@ type Entry struct {
 	AfterMs   *change.Range `json:"after_ms"`
 	ChangeMs  *change.Range `json:"change_ms"`
 	ChangePct *change.Range `json:"change_pct"`
+	// BeforeAtFitLoadMs and LoadLevelMs are set in a what-if (Load.EvaluatedAt EvaluatedAtWhatIf) only, where
+	// BeforeMs, AfterMs and ChangeMs are all at Load.LoadScale times the fit's rate. BeforeAtFitLoadMs is the entry's
+	// model mean before the change at the fit's load (load_scale 1); LoadLevelMs is BeforeMs less it: what the load
+	// alone moves the entry's mean, without the change. ChangeMs never holds the level: it is the change's own effect
+	// at the load point, after minus before, both at Load.LoadScale.
+	BeforeAtFitLoadMs *float64 `json:"before_at_fit_load_ms,omitempty"`
+	LoadLevelMs       *float64 `json:"load_level_ms,omitempty"`
 	// ModelBandMs is the model band at V2.ModelBand's fractions: ModelBand.Ms(max(|lo|, |hi|) of ChangeMs, BeforeMs),
 	// the latency term alone when ChangeMs is nil.
 	ModelBandMs float64 `json:"model_band_ms"`
@@ -270,6 +287,36 @@ func (v *V2) Canonical() ([]byte, error) {
 // Digest is the report's content id, contract.Digest of its canonical JSON: the report digest gate.json records.
 func (v *V2) Digest() (string, error) {
 	return contract.DigestOf(v)
+}
+
+// WriteText writes the v1 text of the v1 keys, as Report.WriteText, and in a what-if (Load.EvaluatedAt
+// EvaluatedAtWhatIf) the load point and, per entry, its mean at the fit's load, the load level, its mean at the load
+// point and the change there, which the v1 keys cannot say.
+func (v *V2) WriteText(out io.Writer) error {
+	if err := v.Report.WriteText(out); err != nil || v.Load.EvaluatedAt != EvaluatedAtWhatIf {
+		return err
+	}
+	w := &errWriter{w: out}
+	fmt.Fprintf(w, "\nwhat-if: %s times the fit's external rate. rps, util, wait ms and model ms above are at it; seen ms "+
+		"are the traces', at the fit's load, and err %% compares the model at the fit's load with them.\n",
+		strconv.FormatFloat(v.Load.LoadScale, 'g', -1, 64))
+	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintln(tw, "entry\tms at fit load\tload level ms\tms at load\tchange ms at load\t")
+	for _, e := range v.Entries {
+		ch := "-"
+		if c := e.ChangeMs; c != nil {
+			ch = signedMs(c.Lo)
+			if c.Hi != c.Lo {
+				ch += ".." + signedMs(c.Hi)
+			}
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t\n", e.Name, pf(e.BeforeAtFitLoadMs, 2, false), pf(e.LoadLevelMs, 2, true),
+			f(e.BeforeMs, 2), ch)
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "load level: what the load alone moves an entry's mean, without the change; the change is at the load "+
+		"point, after minus before, both at it.\n")
+	return w.err
 }
 
 // WriteJSON writes the report's canonical JSON and a newline: `predict --fit F --json`.

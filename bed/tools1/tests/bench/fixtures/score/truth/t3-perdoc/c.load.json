@@ -1,0 +1,5 @@
+2026/10/22 05:40:00 kshop-load: 60066 requests over 600 s (100.0 rps), seed 8
+{"errors": 0, "mean_ms": 74.21983039687669, "ok": 42003, "p50_ms": 58.149591, "p95_ms": 143.345172, "p99_ms": 197.291642, "url": "http://storefront.kshop.svc.cluster.local:8080/browse"}
+{"errors": 0, "mean_ms": 88.9681138135674, "ok": 10776, "p50_ms": 82.165552, "p95_ms": 157.03237, "p99_ms": 203.335469, "url": "http://checkout.kshop.svc.cluster.local:8080/buy/card"}
+2026/10/22 05:22:45 kshop-load: done in 600 s
+{"errors": 0, "mean_ms": 89.2616931737338, "ok": 7287, "p50_ms": 82.635801, "p95_ms": 157.190236, "p99_ms": 202.697791, "url": "http://checkout.kshop.svc.cluster.local:8080/buy/wallet"}

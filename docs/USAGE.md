@@ -764,7 +764,7 @@ newline. The examples run on `testdata/mcp/loop`, the capture-chain with image d
 |---|---|---|
 | `rhobound check CAPTURE\|--manifest M [--request-count F] [--kept-share S] [--sampler svc=NAME]... [--probe-route R]... [--pod-identity host] [--write-manifest] [--window START,END --cut entry-start --out DIR] [--json]` | the data contract: every finding with its code and fix; `--cut` writes the canonical capture of a window, and a `--request-count` given with it counts that window. Some refusals of a capture (`trace.broken_traces`, the inference's) are raised only when `fit` reads the traces, so judge a fit by its own exit status, not by `check`'s | 0 admitted (doubts listed), 4 refused, 2 tool error |
 | `rhobound fit CAPTURE\|--manifest M --out DIR [--workers svc=N,...] [--kept-share F] [--pod-identity host] [--request-count F] [--sampler svc=NAME]... [--probe-route R]... [--name NAME] [--plain] [--json]` | `check`, then the fit record `DIR/fit.json` (`rhobound.fit/v1`); prints its digest | 0, 1 refused |
-| `rhobound predict --fit F [--patch P \| --changes C] [--report v1] [--json]` | predict from a fit: report v2, or with `--report v1` the same bytes as `predict CAPTURE` given the same options, except the `capture` field when the fit was made with `--name` (it then holds that name). The fit's kept share is one of those options: a fit derives it from a constant `th` of the entry spans or from a request count (DATA.md 3.8), where `predict CAPTURE` takes 1 unless given `--kept-share`, so pass the fit's `kept_share.value` as `--kept-share` to compare the two | 0, 1 refused |
+| `rhobound predict --fit F [--patch P \| --changes C] [--report v1] [--load-scale S] [--json]` | predict from a fit: report v2, or with `--report v1` the same bytes as `predict CAPTURE` given the same options, except the `capture` field when the fit was made with `--name` (it then holds that name). The fit's kept share is one of those options: a fit derives it from a constant `th` of the entry spans or from a request count (DATA.md 3.8), where `predict CAPTURE` takes 1 unless given `--kept-share`, so pass the fit's `kept_share.value` as `--kept-share` to compare the two. `--load-scale S` is a what-if at S times the fit's external rate (below) | 0, 1 refused |
 | `rhobound budget --fit F [--policy P] [--service=S] [--kinds=own_ms,load_scale] --json` | how much a service may add per visit: the largest change under the threshold, and the safe one with the model's band; without `--policy` only the utilization limits bind, and the view carries the doubt `budget.no_policy` | 0, 1, 2 usage |
 | `rhobound context --fit F [--detail summary\|full] [--policy P] --json` | where latency is tight: entries, utilization, leverage, findings | 0, 1, 2 |
 | `rhobound preview --fit F --changes C --policy P [--now T] [--detail summary\|full] --json` | the agent's preview: the prediction with an advisory verdict | 0 for every verdict, 1, 2 |
@@ -795,12 +795,58 @@ none is. The A/B records live in `$RHOBOUND_STATE/ab/` (default `$XDG_STATE_HOME
 because the loop capture is from 2023 and a fit older than the policy's `max_fit_age_h` (24 h) holds every verdict that
 does not block at `inconclusive` (rule 3).
 
+`predict --fit F --load-scale S` is a what-if at S times the fit's external rate, S > 0; 1, the default, is the fit's
+window and today's report byte for byte. The system before the change and the system after it are both solved at S,
+so each entry's `change_ms` is the change's effect at that load, not the load's effect plus the change's. The load's
+effect alone is the entry's `load_level_ms`: its `before_ms` at S less `before_at_fit_load_ms`, its mean at the fit's
+load. The report says `load.evaluated_at: what_if` and `load.load_scale: S`, the text report adds a `what-if` block
+with both per entry, and the gate reading the prediction applies rule 7: above 1 the load is extrapolated
+(`extrapolated_load`, a note; the verdict is the other rules'). At any S, below 1 too, `gate.json` records the load
+point as `load_scale: S` beside `evaluated_at: what_if`, and `summary.md` says it. The services' rates, utilizations,
+waits and model means are at S, so the utilization limit (`--max-rho`: `model.utilization_observed`, "at S times the
+observed load") and rules 2, 6, 8 and 9 apply at the load point, and a threshold in percent is of the entry's mean at
+S. A base refused at S carries the number `load_scale: S`, so the gate reads it as rule 2 of a what-if at S (and rule
+7 above 1). Their `error_pct` stays the fit's misfit check (rule 4): the model at the fit's load against the traces.
+Below 1, a fit the model has no steady state for at its own load is refused (`model.utilization_observed`, without
+`load_scale`: it is the fit's own load that is refused). `judge-packet --fit F` and `explain --fit F` on a what-if
+give the budgets and the leverage at S, as the report's entries are. `--report v1` has no load point and refuses an S
+other than 1; `predict CAPTURE` refuses the flag. A `load_scale` item of a change set is
+another thing: it scales the system after the change only, so an entry's change holds the load's effect and the
+change's together, and the report stays at `fit_window`. `preview` and the MCP `predict` tool take no load scale.
+
+A policy's `block_band` key (opt-in) picks the band that rule 10's block test reads
+([mcp/ARCHITECTURE.md](mcp/ARCHITECTURE.md) 6.4). Without it, or with `"full"`, pass and block both read the band
+widened by the model band and by the biased constructs' worst case. With `"model"`, a pass still needs that band's high
+end at or under the threshold, but a block needs only the change range widened by the model band alone above it.
+An entry that the constructs' widening held at `inconclusive` can then block; every pass and every default block
+stays as it was. `gate`, `preview`, `judge-packet` and `explain` all apply the key. Under `"model"`:
+- `gate.json` lists each entry with `band_ms` and `block_band_ms`;
+- rule 10's row, in `gate.json` and in the preview, carries `variant: block_band_model`;
+- the preview's entries carry `block_band_ms`;
+- `summary.md` adds a block-band column;
+- the rule line says "model-only band low end" (an entry a corner saturates reads no band and keeps the default's line).
+
+`"model"` changes the effective policy's digest; `"full"` does not. Any other value is `policy.bad_value` (exit 2), and
+so is `"model"` with `model_band: null`. A CLI that predates the key ignores it (it is listed in `unknown_policy_keys`)
+and applies `"full"`; check that list and `digests.policy` before reading a verdict as `"model"`'s.
+
 A request count given as `--request-count F` together with `--window S,E --cut entry-start --out DIR` counts the window
 cut, not the capture as fetched. `check` reads the capture without it, cuts it, and checks the cut with it
 ([mcp/DATA.md](mcp/DATA.md) 4.3). It copies `F` to `DIR/request-count.json` and writes `DIR/manifest.json` with the
 count's digest, so `fit --manifest DIR/manifest.json` reads the count and records the check's `manifest_sha256` as its
 `manifest_digest`. A cut the count refuses leaves `DIR` empty. A `request-count.json` in the capture's own folder
 counts the capture as read, cut or not.
+
+With `--window S,E`, `trace.mixed_images` counts the image digests of the resources that count in the window only
+([mcp/DATA.md](mcp/DATA.md) 3.9): those that hold a span of a trace whose entry starts in the window (the cut keeps
+it whole), a span that overlaps the window (one that straddles `S` counts), or no span. The old image of a rollout
+whose spans all end before `S`, in traces that entered before `S`, read because a trace file reaches back past the
+window, no longer refuses the cut; two images in the window or in the traces the cut keeps still refuse it, so the
+check of the cut finds no two images that the check of the window did not. Without `--window`, and in the check of
+the cut and in `fit`, every resource counts, as before. With `--write-manifest`, the capture is checked whole first and
+`CAPTURE/manifest.json` written only when that check admits it, as `fit --manifest` reads it whole; when two images
+refused it, the window is then checked alone and cut. A window lies within 1970-01-01T00:00:00Z and
+2262-04-11T23:47:16.854775807Z, the times a span can hold; any other is a tool error.
 
 ```
 $ bin/rhobound check testdata/mcp/loop

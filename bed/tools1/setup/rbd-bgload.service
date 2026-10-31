@@ -1,0 +1,9 @@
+[Unit]
+Description=demo1: start the background load again when it ended (only when the cluster lock is free)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=rbd
+Group=rbd
+ExecStart=/opt/rbd/kshop/bgload.sh ensure

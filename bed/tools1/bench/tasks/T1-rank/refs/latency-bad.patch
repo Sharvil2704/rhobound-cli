@@ -1,0 +1,42 @@
+--- a/kshop/app/internal/hot/rank.go
++++ b/kshop/app/internal/hot/rank.go
+@@ -46,19 +46,19 @@
+ 	dl := make([]int, n)
+ 	df := make([]int, nt)
+ 	total := 0
++	counts := make([]map[string]int, n)
+ 	for i, d := range docs {
+-		toks := tokenize(Fold(d.Title))
+-		dl[i] = len(toks)
+-		total += len(toks)
++		counts[i] = map[string]int{}
++		for _, w := range tokenize(Fold(d.Title)) {
++			counts[i][w]++
++			dl[i]++
++		}
++		total += dl[i]
++	}
++	for i := range docs {
+ 		for j, t := range terms {
+-			c := 0
+-			for _, w := range toks {
+-				if w == t {
+-					c++
+-				}
+-			}
+-			tf[i*nt+j] = c
+-			if c > 0 {
++			if c := counts[i][Fold(t)]; c > 0 {
++				tf[i*nt+j] = c
+ 				df[j]++
+ 			}
+ 		}
+@@ -79,7 +79,7 @@
+ 		}
+ 		hits[i] = Hit{ID: d.ID, Score: s}
+ 	}
+-	sort.Slice(hits, func(x, y int) bool {
++	sort.SliceStable(hits, func(x, y int) bool {
+ 		if hits[x].Score != hits[y].Score {
+ 			return hits[x].Score > hits[y].Score
+ 		}

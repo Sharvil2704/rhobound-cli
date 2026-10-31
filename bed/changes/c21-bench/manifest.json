@@ -1,0 +1,7 @@
+{
+ "schema": "rbd.agent-change/v1",
+ "task": "T1-rank",
+ "origin": "kit reference latency-bad (b-T1-rank-302128 row ref-latency-bad)",
+ "service": "catalog",
+ "title": "AUDIT do-not-merge: T1 latency-bad reference"
+}

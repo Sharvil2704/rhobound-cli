@@ -1,0 +1,1 @@
+{"schema": "rbd.change-request/v1", "services": ["payments"], "summary": "payments risk_check: lengthen the mandatory compliance hold on card payments from 6 ms to 15 ms (wallet unchanged)."}

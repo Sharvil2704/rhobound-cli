@@ -1,0 +1,70 @@
+diff --git a/kshop/app/internal/hot/price.go b/kshop/app/internal/hot/price.go
+index 621ed62..0bab28c 100644
+--- a/kshop/app/internal/hot/price.go
++++ b/kshop/app/internal/hot/price.go
+@@ -166,8 +166,10 @@ func parseNum(s string, lo, hi int) (int, bool) {
+ //
+ // A cart is "ID:QTY,ID:QTY,...", optionally followed by ";CODE" (a promotion code). ID is a catalog document ID
+ // (1..NumDocs), QTY 1..99; an item that does not parse or is out of range is ignored. An unknown code gives no
+-// discount. A known code takes its percent off every line. Each line's amount is unit cents x QTY x (100 - percent)
+-// / 100, rounded to whole cents; the total is the sum of the rounded lines.
++// discount. A known code takes its percent off every line. A line with QTY 10..49 takes a further 5 percent off and
++// a line with QTY 50..99 takes a further 10 percent off, applied after the promotion percent on that line's amount.
++// Each line's amount is unit cents x QTY x (100 - percent) x (100 - tier) / 10000, rounded to whole cents half to
++// even; the total is the sum of the rounded lines. Lines below QTY 10 take no tier discount.
+ func Quote(cart string) int64 {
+ 	semi := -1
+ 	for i := 0; i < len(cart); i++ {
+@@ -216,19 +218,41 @@ func Quote(cart string) int64 {
+ 				id, ok1 := parseNum(cart, a, colon)
+ 				qty, ok2 := parseNum(cart, colon+1, b)
+ 				if ok1 && ok2 && id >= 1 && id <= n && qty >= 1 && qty <= 99 {
+-					base := docs[id-1].Cents * int64(qty) * mult
+-					q := base / 100
+-					r := base % 100
+-					switch {
+-					case r < 50:
+-						total += q
+-					case r > 50:
+-						total += q + 1
+-					default:
+-						if q&1 == 1 {
++					if qty < 10 {
++						base := docs[id-1].Cents * int64(qty) * mult
++						q := base / 100
++						r := base % 100
++						switch {
++						case r < 50:
++							total += q
++						case r > 50:
+ 							total += q + 1
+-						} else {
++						default:
++							if q&1 == 1 {
++								total += q + 1
++							} else {
++								total += q
++							}
++						}
++					} else {
++						tier := int64(95)
++						if qty >= 50 {
++							tier = 90
++						}
++						base := docs[id-1].Cents * int64(qty) * mult * tier
++						q := base / 10000
++						r := base % 10000
++						switch {
++						case r < 5000:
+ 							total += q
++						case r > 5000:
++							total += q + 1
++						default:
++							if q&1 == 1 {
++								total += q + 1
++							} else {
++								total += q
++							}
+ 						}
+ 					}
+ 				}

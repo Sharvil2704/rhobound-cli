@@ -13,6 +13,8 @@
     "now": {"$ref": "defs.v1.json#/$defs/Time", "description": "the time used for fit age: --now, or the clock read outside the pure function"},
     "fit_age_h": {"type": "number"},
     "evaluated_at": {"enum": ["fit_window", "busiest_window_7d", "what_if"]},
+    "load_scale": {"type": "number", "exclusiveMinimum": 0,
+                   "description": "what_if only: the load point the verdict is of, a multiple of the fit's external rate (predict --fit F --load-scale S): the report's load.load_scale, or the load_scale number of a model.utilization_observed refusal at that load point"},
     "rules": {
       "type": "array",
       "minItems": 14,
@@ -28,7 +30,9 @@
           "entry": {"type": "string"},
           "value": {"type": ["number", "null"], "description": "the rule's input value"},
           "threshold": {"type": ["number", "null"], "description": "its limit"},
-          "code": {"$ref": "defs.v1.json#/$defs/Code", "description": "the finding code that triggered the rule, if any"}
+          "code": {"$ref": "defs.v1.json#/$defs/Code", "description": "the finding code that triggered the rule, if any"},
+          "variant": {"enum": ["block_band_model"],
+                      "description": "the rule's variant when the policy chose one: block_band_model on rule 10 under the policy's block_band model (the block test reads the model-only band; the value of a block is its low end, null when a corner saturates the entry and rules 8 and 8b decided)"}
         },
         "required": ["number", "rule", "evaluated", "effect"],
         "additionalProperties": false
@@ -76,7 +80,25 @@
       "additionalProperties": false,
       "description": "a judge answer checked by judge-check, when one was supplied (ARCHITECTURE.md 7.2)"
     },
-    "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"}}
+    "findings": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Finding"}},
+    "entries": {
+      "type": "array",
+      "description": "under the policy's block_band model only: rule 10 at each entry, in the report's order, with both bands. pass when band_ms.hi <= threshold_ms, block when block_band_ms.lo > threshold_ms (inconclusive when it rests on lower-bound workers), inconclusive otherwise; an entry a corner saturates has no ranges. A range with an end JSON cannot hold (past float64) is absent and such a number null, as the rules' values",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entry": {"type": "string"},
+          "before_ms": {"type": ["number", "null"]},
+          "change_ms": {"$ref": "defs.v1.json#/$defs/Range"},
+          "band_ms": {"$ref": "defs.v1.json#/$defs/Range", "description": "the change widened by the model band, then by the biased constructs: the pass test"},
+          "block_band_ms": {"$ref": "defs.v1.json#/$defs/Range", "description": "the change widened by the model band alone: the block test"},
+          "threshold_ms": {"type": ["number", "null"]},
+          "effect": {"$ref": "defs.v1.json#/$defs/Verdict"}
+        },
+        "required": ["entry", "before_ms", "threshold_ms", "effect"],
+        "additionalProperties": false
+      }
+    }
   },
   "required": ["schema", "verdict", "exit_code", "advisory", "preview", "now", "evaluated_at", "rules", "decide_with",
                "digests", "policy", "unknown_policy_keys", "exceptions_applied", "findings"],

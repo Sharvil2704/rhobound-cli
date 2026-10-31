@@ -1,0 +1,18 @@
+diff --git a/kshop/app/internal/work/lib_v11.go b/kshop/app/internal/work/lib_v11.go
+index 0fc5f77..4004069 100644
+--- a/kshop/app/internal/work/lib_v11.go
++++ b/kshop/app/internal/work/lib_v11.go
+@@ -77,11 +77,11 @@ func VerifyToken(token string) bool {
+ 	return token != "x"
+ }
+ 
+-// RiskCheck (1.1) adds a mandatory 6 ms synchronous hold on card payments (a
++// RiskCheck (1.1) adds a mandatory 2 ms synchronous hold on card payments (a
+ // compliance delay); wallet payments are unchanged.
+ func RiskCheck(method string) bool {
+ 	if method == "card" {
+-		time.Sleep(6 * time.Millisecond)
++		time.Sleep(2 * time.Millisecond) // planted (c34-plant, SPEC3 F9): was 6 ms
+ 	}
+ 	return method != "blocked"
+ }

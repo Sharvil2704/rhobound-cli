@@ -1,0 +1,1 @@
+inventory: validate stock item ids with bounded reject counters

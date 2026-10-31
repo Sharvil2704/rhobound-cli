@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# test stand-in for the AWS CLI: ecr get-login-password / describe-images, s3api put-object (honours --if-none-match '*') /
+# get-object. State under $STUB_DIR. Never touches the network. STUB_DESCRIBE_DIGEST: describe-images answers that digest
+# (the tag moved after the push).
+set -euo pipefail
+echo "aws $*" >> "$STUB_DIR/calls.log"
+args=("$@")
+opt() { local i; for ((i = 0; i < ${#args[@]}; i++)); do [[ ${args[i]} == "$1" ]] && { echo "${args[i + 1]}"; return 0; }; done; return 1; }
+case "${1:-} ${2:-}" in
+  "ecr get-login-password") echo "fake-ecr-password" ;;
+  "ecr describe-images")
+    ids=$(opt --image-ids); tag=${ids#imageTag=}
+    [[ -f $STUB_DIR/ecr/$tag.digest ]] || { echo "An error occurred (ImageNotFoundException)" >&2; exit 254; }
+    if [[ -n ${STUB_DESCRIBE_DIGEST:-} ]]; then echo "$STUB_DESCRIBE_DIGEST"; else cat "$STUB_DIR/ecr/$tag.digest"; fi ;;
+  "s3api put-object")
+    key=$(opt --key); body=$(opt --body); dst=$STUB_DIR/s3/$(opt --bucket)/$key
+    if [[ -e $dst ]] && opt --if-none-match > /dev/null; then
+      echo "An error occurred (PreconditionFailed) when calling the PutObject operation: At least one of the pre-conditions you specified did not hold" >&2
+      exit 254
+    fi
+    mkdir -p "$(dirname "$dst")"; cp "$body" "$dst"; echo '{"ETag": "\"stub\""}' ;;
+  "s3api get-object")
+    src=$STUB_DIR/s3/$(opt --bucket)/$(opt --key)
+    [[ -e $src ]] || { echo "An error occurred (NoSuchKey)" >&2; exit 254; }
+    cp "$src" "${args[${#args[@]} - 1]}"; echo '{"ETag": "\"stub\""}' ;;
+  *) echo "aws stub: unsupported: $*" >&2; exit 2 ;;
+esac

@@ -1,0 +1,1 @@
+Rank via inverted index: same BM25, only matching docs scored

@@ -400,3 +400,90 @@ func TestCheckCutWithCount(t *testing.T) {
 		}
 	}
 }
+
+// check --window --cut on a capture whose trace file reaches back past a rollout of b (DATA.md 3.9): the old image's
+// spans all end before the window, so the window is cut, and the check and the fit of its cut hold b's new image only.
+// The capture as read, a window that a span of the old image overlaps, and a window that ends before b's new image
+// starts but keeps it in the traces that call it before then, are refused with trace.mixed_images. --write-manifest
+// writes the manifest of the capture as read only when the capture as read is admitted.
+func TestCheckWindowAfterRollout(t *testing.T) {
+	c := baseCapture(t)
+	at := uint64(time.Unix(1_700_000_030, 0).UnixNano())
+	_, lastEnd := testgen.Rollout(c, "b", at)
+	var first, firstNew uint64
+	c.Visit(func(rs *testgen.ResourceSpans, s *testgen.Span) {
+		start, _ := s.Times()
+		if first == 0 || start < first {
+			first = start
+		}
+		if rs.Service() == "b" && rs.Attr("k8s.pod.name") != "b-old" && (firstNew == 0 || start < firstNew) {
+			firstNew = start
+		}
+	})
+	raw := t.TempDir()
+	if err := c.Write(raw, "spans.jsonl.gz"); err != nil {
+		t.Fatal(err)
+	}
+	rfc := func(n uint64) string { return time.Unix(0, int64(n)).UTC().Format(time.RFC3339Nano) }
+	window := func(from uint64) string {
+		return rfc(from) + "," + time.Unix(0, int64(from)).UTC().Add(time.Minute).Format(time.RFC3339Nano)
+	}
+	if out, _, code := exec(t, "check", raw); code != 4 || !strings.Contains(out, "refuse trace.mixed_images b") {
+		t.Errorf("the capture as read: exit %d\n%s", code, out)
+	}
+	for name, w := range map[string]string{
+		"a window the old image's last span ends in":    window(lastEnd),
+		"a window that ends where b's new image starts": rfc(first) + "," + rfc(firstNew),
+	} {
+		cut := filepath.Join(t.TempDir(), "cut")
+		out, _, code := exec(t, "check", raw, "--window", w, "--cut", "entry-start", "--out", cut)
+		if ents, _ := os.ReadDir(cut); code != 4 || !strings.Contains(out, "refuse trace.mixed_images b") || len(ents) != 0 {
+			t.Errorf("%s: exit %d, %d files cut\n%s", name, code, len(ents), out)
+		}
+	}
+	cut := filepath.Join(t.TempDir(), "cut")
+	out, errw, code := exec(t, "check", raw, "--window", window(at), "--cut", "entry-start", "--out", cut)
+	if code != 0 || strings.Contains(out, contract.TraceMixedImages) {
+		t.Fatalf("a window after the rollout: exit %d\n%s%s", code, out, errw)
+	}
+	if out, errw, code := exec(t, "check", "--manifest", filepath.Join(cut, "manifest.json")); code != 0 ||
+		strings.Contains(out, contract.TraceMixedImages) {
+		t.Errorf("the check of the cut: exit %d\n%s%s", code, out, errw)
+	}
+	fdir := t.TempDir()
+	if _, errw, code := exec(t, "fit", "--manifest", filepath.Join(cut, "manifest.json"), "--out", fdir); code != 0 {
+		t.Fatalf("fit of the cut: exit %d %s", code, errw)
+	}
+	fb, _ := os.ReadFile(filepath.Join(fdir, fit.File))
+	f, err := fit.Unmarshal(fb)
+	if err != nil || len(f.Images["b"]) != 1 || !strings.Contains(f.Images["b"][0], testgen.Digest("b")) {
+		t.Fatalf("fit of the cut: %v, b's images %v", err, f.Images["b"])
+	}
+	for _, x := range f.Findings {
+		if x.Code == contract.TraceMixedImages {
+			t.Errorf("fit of the cut: %s", x.Code)
+		}
+	}
+	// --write-manifest: the capture as read is refused, so its manifest is not written; the window is still cut
+	again := filepath.Join(t.TempDir(), "cut")
+	out, errw, code = exec(t, "check", raw, "--write-manifest", "--window", window(at), "--cut", "entry-start", "--out", again)
+	if _, err := os.Stat(filepath.Join(raw, "manifest.json")); code != 0 || err == nil || strings.Contains(out, contract.TraceMixedImages) ||
+		!strings.Contains(errw, "did not write "+filepath.Join(raw, "manifest.json")) || !strings.Contains(errw, "wrote the canonical capture to "+again) {
+		t.Errorf("--write-manifest, a window after the rollout: exit %d, the capture's manifest %v\n%s%s", code, err, out, errw)
+	}
+	b1, _ := os.ReadFile(filepath.Join(cut, "manifest.json"))
+	if b2, err := os.ReadFile(filepath.Join(again, "manifest.json")); err != nil || !bytes.Equal(b1, b2) {
+		t.Errorf("--write-manifest changes the cut:\n%s\n%s", b1, b2)
+	}
+	// a window outside the times a span can hold is a tool error, whatever the flags
+	for _, args := range [][]string{{}, {"--write-manifest"}} {
+		args = append([]string{"check", raw, "--window", "1969-12-31T23:59:59Z,2100-01-01T00:00:00Z", "--cut", "entry-start",
+			"--out", filepath.Join(t.TempDir(), "cut")}, args...)
+		if _, errw, code := exec(t, args...); code != 2 || !strings.Contains(errw, "the times a span can hold") {
+			t.Errorf("%v: exit %d %s", args, code, errw)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(raw, "manifest.json")); err == nil {
+		t.Error("a tool error wrote the capture's manifest")
+	}
+}

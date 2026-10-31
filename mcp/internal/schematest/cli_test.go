@@ -238,7 +238,37 @@ func TestCLIOutputs(t *testing.T) {
 	refusal := write(t, tmp, "refused.json", string(e.run([]int{1}, "predict", "--fit", fit, "--changes", unknown, "--json")))
 	check("gate on a refusal", "gate.v1.json", "", e.run([]int{3}, "gate", refusal, "--policy", policy, "--now", loopNow, "--out",
 		filepath.Join(tmp, "gate-refused"), "--json"))
+
+	// a what-if (predict --fit F --load-scale S): report v2 at the load point and the judge packet of it, gate.json with
+	// its load_scale; a base refused at a load point (the refusal's load_scale number) and the gate on that refusal
+	whatIf := write(t, tmp, "what-if.json", string(ok(e, "predict", "--fit", fit, "--changes", declared, "--load-scale", "1.3", "--json")))
+	check("predict --load-scale", "report.v2.json", "", readFile(t, whatIf))
+	check("judge-packet of a what-if", "judge-packet.v1.json", "", ok(e, "judge-packet", whatIf, "--policy", policy,
+		"--policy-name", "default", "--fit", fit, "--now", loopNow, "--json"))
+	check("gate on a what-if", "gate.v1.json", "", e.run([]int{3}, "gate", whatIf, "--policy", policy, "--now", loopNow,
+		"--out", filepath.Join(tmp, "gate-what-if"), "--json"))
+	refusedAt := write(t, tmp, "refused-at.json", string(e.run([]int{1}, "predict", "--fit", fit, "--changes", declared,
+		"--load-scale", "3.5", "--json")))
+	check("a refusal at a load point", "refusal.v1.json", "", readFile(t, refusedAt))
+	check("gate on a refusal at a load point", "gate.v1.json", "", e.run([]int{3}, "gate", refusedAt, "--policy", policy,
+		"--now", loopNow, "--out", filepath.Join(tmp, "gate-refused-at"), "--json"))
 	if strings.Contains(string(out), loop) {
 		t.Error("gate.json names a local path")
 	}
+
+	// a policy with block_band "model" (rule 10's block test on the model-only band): gate.json with the variant and
+	// the entries' two bands, its effective policy, the preview and the explain section of rules
+	model := write(t, tmp, "model.json", `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`)
+	gm := e.run([]int{1}, "gate", pred, "--policy", model, "--now", loopNow, "--out", filepath.Join(tmp, "gate-model"), "--json")
+	check("gate under block_band model", "gate.v1.json", "", gm)
+	if !strings.Contains(string(gm), `"variant":"block_band_model"`) || !strings.Contains(string(gm), `"block_band_ms":{`) {
+		t.Errorf("gate under block_band model: %s", gm)
+	}
+	check("policy with block_band model", "policy.v1.json", "", readFile(t, model))
+	for _, ch := range []string{block, declared} {
+		check("preview under block_band model", "prediction.v1.json", "",
+			ok(e, "preview", "--fit", fit, "--changes", ch, "--policy", model, "--now", loopNow, "--detail=full", "--json"))
+	}
+	check("explain rules under block_band model", "explain.v1.json", "", ok(e, "explain", "--target", pred, "--section=rules",
+		"--policy", model, "--policy-name", "model", "--now", loopNow, "--fit", fit, "--json"))
 }

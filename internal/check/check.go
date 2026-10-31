@@ -37,6 +37,12 @@ type Options struct {
 	DeclaredSamplers  map[string]string // SDK sampler by service (OTEL_TRACES_SAMPLER values)
 	ExtraProbeRoutes  []string          // routes declared to be probes (http.route or rpc.method, optionally after a method)
 	PodIdentity       string            // "" or PodIdentityHost
+	// WindowStart and WindowEnd are the window `check --window` will cut, or both zero (WindowNanos says which windows
+	// are). With them, trace.mixed_images counts the image digests of the resources that count in [WindowStart,
+	// WindowEnd) only (inWindow, DATA.md 3.9): every resource the cut of the window keeps, and those that hold a span
+	// overlapping it. An image a rollout replaced before the window, read because a trace file reaches back past it, then
+	// does not refuse the cut; every other detector reads the capture as read.
+	WindowStart, WindowEnd time.Time
 }
 
 // The files of a capture folder that are inputs of other kinds, never trace objects.
@@ -157,6 +163,11 @@ func Run(m *contract.Manifest, opt Options) (*contract.CheckReport, *otlp.Data, 
 	}
 	if k := opt.DeclaredKeptShare; k != nil && !(*k > 0 && *k <= 1) {
 		return nil, nil, fmt.Errorf("--kept-share must be in (0, 1], got %v", *k)
+	}
+	if s, e := opt.WindowStart, opt.WindowEnd; !(s.IsZero() && e.IsZero()) {
+		if _, _, err := WindowNanos(s, e); err != nil {
+			return nil, nil, err
+		}
 	}
 	lim := opt.Limits
 	if lim == (otlp.Limits{}) {

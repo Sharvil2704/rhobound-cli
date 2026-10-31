@@ -1,0 +1,43 @@
+{
+ "schema": "rbd.plant-change/v1",
+ "name": "c39-plant",
+ "service": "pricing",
+ "function": "Quote",
+ "file": "kshop/app/internal/hot/price.go",
+ "code_path": "quote",
+ "helper": null,
+ "lib": "untagged (every library version)",
+ "mechanism": "noop",
+ "knob": {},
+ "placement": "a comment line at the top of Quote",
+ "intended_effect": "none: comment-only (the control); the image differs only in line tables",
+ "intended_own_ms_per_call": 0.0,
+ "dose": {
+  "registered": "ab_own_time_delta_ms",
+  "value_ms": null,
+  "rule": "The registered dose of this plant is the A/B-measured own-time delta of pricing (the gate's A/B of this image against production), never the knob: the knob is the intended per-call cost only. value_ms is filled from the A/B record."
+ },
+ "never_merge": true,
+ "never_merge_how": "make_prs.sh: a draft PR labelled rbd-plant; orch/automerge.sh refuses every rbd-plant PR and every head branch rbd/cN-plant, whatever the verdict",
+ "base_sha": "499bc84d8467d67a1dc504269013f04558610877",
+ "main_file_sha256": "4fe7d339fec43abec7a9fb16366cbd77d3f3753a5e64fc6892c9af8257219e9b",
+ "patch_sha256": "0d311d4c01ebe8e5704b240c26b8d05cbbcaa63ab19895a24b2e8c7dd01ff82c",
+ "files": [
+  "kshop/app/internal/hot/price.go"
+ ],
+ "compiled": true,
+ "compile": {
+  "check": "orch/gocheck.sh",
+  "go": "go version go1.27.2 linux/arm64",
+  "build_tags": [
+   "",
+   "kshop_v11"
+  ],
+  "vet_tags": "kshop_v11",
+  "goos_goarch": "linux/amd64"
+ },
+ "title": "PLANT do-not-merge: pricing Quote comment-only control",
+ "summary": "Planted change c39-plant (SPEC3 F9; never merged: orch/automerge.sh refuses rbd-plant PRs): pricing Quote: comment-only control (mechanism noop; placement: a comment line at the top of Quote). Intended effect: none: comment-only (the control); the image differs only in line tables. The registered dose is the A/B-measured own-time delta of pricing, not this knob.",
+ "generated_at": "2026-10-31T14:55:36Z",
+ "generator": "changes/plant.py c39-plant --service pricing --mechanism noop"
+}

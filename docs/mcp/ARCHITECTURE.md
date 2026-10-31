@@ -240,7 +240,7 @@ gate(report, policy, environment readiness)      -> verdict        milliseconds;
 |---|---|---|
 | input | fit record | from `fit`; refused when expired (`fit.expired`), of another schema version (`fit.version`), or over `max_fit_age_h` at gate time (`fit.stale`, inconclusive) |
 | input | change set | `rhobound.change/v1`: a list of operations, each a number or a range, each with a label minted by the server (4.3) |
-| input | load point | the fit's own window by default; at the gate, the **busiest observed window** of the last 7 days when one exists. Until a busiest-window pointer exists (it needs the scheduled fits, which come after the first build), the gate evaluates at the fit's window, reports `evaluated_at: fit_window`, and adds the note `load.busiest_unknown`. A load beyond the busiest observed one is allowed only as a what-if, marked `extrapolated_load: true`, and is never gating |
+| input | load point | the fit's own window by default; at the gate, the **busiest observed window** of the last 7 days when one exists. Until a busiest-window pointer exists (it needs the scheduled fits, which come after the first build), the gate evaluates at the fit's window, reports `evaluated_at: fit_window`, and adds the note `load.busiest_unknown`. A load beyond the busiest observed one is allowed only as a what-if, marked `extrapolated_load: true`, and is never gating. `predict --fit F --load-scale S` is such a what-if: before and after the change both at S times the fit's rate (`evaluated_at: what_if`, `load_scale: S`), so each entry's change is the change's effect at that load and its `load_level_ms` the load's alone; `error_pct` stays the model at the fit's load against the traces |
 | output | report | `rhobound-cli.report/v2`, additive over today's v1: per entry the before mean, the after range, the change range, the **band** (4.5), per service the utilization before and after, coded findings, the assumptions list, labels, the evidence class, input digests, tool version, `GOARCH` |
 | refusal | data | any refuse-level finding from `check` (DATA.md): the function does not run; the gate turns it into `inconclusive` with `input_refused:<code>` |
 | refusal | scope | the base load is already above the utilization limit (`model.utilization_observed`); the change pushes a service past the limit or to saturation (`model.utilization_after`); an operation this version cannot apply (`change.unsupported_op`) |
@@ -683,6 +683,7 @@ Keys marked "server" below are those keys. The fragments below are abbreviated; 
           "change_pct": {"$ref": "#/$defs/Range"},
           "model_band_ms": {"type": "number"},
           "band_ms": {"$ref": "#/$defs/Range", "description": "change range widened by the model band"},
+          "block_band_ms": {"$ref": "#/$defs/Range", "description": "block_band model only (6.4)"},
           "threshold_ms": {"type": ["number", "null"]}}}},
       "moved": {"type": "array", "maxItems": 10, "items": {"type": "object", "properties": {
           "service": {"$ref": "#/$defs/Name"}, "utilization_before": {"type": "number"},
@@ -697,7 +698,8 @@ Keys marked "server" below are those keys. The fragments below are abbreviated; 
           "rules": {"type": "array", "maxItems": 8, "items": {"type": "object", "properties": {
               "rule": {"type": "string"}, "entry": {"$ref": "#/$defs/Name"},
               "effect": {"enum": ["pass", "block", "inconclusive", "note"]},
-              "value": {"type": ["number", "null"]}, "threshold": {"type": ["number", "null"]}}}},
+              "value": {"type": ["number", "null"]}, "threshold": {"type": ["number", "null"]},
+              "variant": {"enum": ["block_band_model"]}}}},
           "decide_with": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 200}},
           "sentence": {"const": "advisory: computed from inputs the caller supplied; CI decides with measured inputs and the repository's policy"}}},
       "findings":    {"type": "array", "items": {"$ref": "#/$defs/Finding"}},
@@ -1110,7 +1112,9 @@ What this release does not do or guarantee:
 - It writes three files to `DIR`: `verdict.txt`, holding one word (`pass`, `block` or `inconclusive`) for scripts;
   `gate.json`, the machine record (each rule evaluated, in order, with its input value, its limit and its outcome; the
   digests of the report, the fit and the policy; the effective policy after defaults are applied, and that policy's
-  digest); and `summary.md` for people, kept under GitHub's 65,535-character check-run limit
+  digest; for a what-if, its load point as `load_scale`, from the report or from a refusal at that load point; under
+  the policy's `block_band: "model"`, rule 10 at each entry with both bands, `entries[]`, 6.4); and
+  `summary.md` for people, kept under GitHub's 65,535-character check-run limit
   [V: https://docs.github.com/en/rest/checks/runs]. `summary.md` states what a pass means; under `block` and
   `inconclusive` that sentence starts with "A pass would mean:".
 - A block is never retried into a pass. Neither CI adapters nor the server repeat `predict` or `gate` after a block.
@@ -1157,6 +1161,12 @@ What this release does not do or guarantee:
   capture it was fitted on, so passing it is weak evidence and failing it is strong; it is not related to the
   published prediction error. Rows whose network time was read from the mean (`hop_from_mean`) are excluded, because
   there the comparison is near zero by construction.
+- `block_band` (opt-in, absent above) chooses the band rule 10's block test reads (6.4): `"full"`, the default, or
+  `"model"`. Any other value is `policy.bad_value`, and so is `"model"` with `model_band: null`, which would block on
+  the bare change range (zero fractions are the policy's explicit choice and allowed, as under `enforce`). `"full"`
+  leaves the effective policy and its digest as without the key; `"model"` is recorded in both. A CLI that predates the
+  key ignores it as an unknown key and applies the default: a bed that pins `"model"` checks that
+  `unknown_policy_keys` is empty and `digests.policy` is the pinned digest.
 - Unknown keys are ignored and listed in `gate.json`; a bad value of a known key is exit 2; new keys are opt-in and
   never enter defaults. `model_band` cannot be removed when `enforce` is true (`policy.model_band_removed`).
 
@@ -1170,11 +1180,11 @@ What this release does not do or guarantee:
 | 4 | an entry's or service's `error_pct` above `misfit_max_error_pct` (excluding `hop_from_mean` rows) | inconclusive, `model_misfit` |
 | 5 | a doubt listed in `doubts_that_hold` | inconclusive, `doubt_holds:<code>` |
 | 6 | `load.beyond_validated` | inconclusive in enforce mode, `beyond_validated`; a printed doubt in advisory mode |
-| 7 | the evaluated load is extrapolated beyond the busiest observed window | the verdict is advisory, whatever the policy says (`extrapolated_load`) |
+| 7 | the evaluated load is extrapolated beyond the busiest observed window (until a busiest-window pointer exists: a what-if report with `load_scale` above 1, as `predict --fit F --load-scale S` writes, or a `model.utilization_observed` refusal whose `load_scale` number is above 1) | the verdict is advisory, whatever the policy says (`extrapolated_load`); a what-if at any `load_scale` is recorded as `gate.json` `load_scale` |
 | 8 | after the change a service passes the limit or saturates, with identified workers | **block**, `saturates` |
 | 8b | the same with lower-bound workers | inconclusive, `saturation_upper_bound`, `decide_with: ["workers:<service>"]` |
 | 9 | `utilization_after` above `max_utilization_after` (below the limit) | block, `utilization_after`; or inconclusive, `utilization_after_upper_bound`, with lower-bound workers |
-| 10 | mean change per entry, band against threshold (6.4) | pass or block, `mean_change`; inconclusive, `range_straddles`; a block that rests on lower-bound workers is inconclusive, `change_upper_bound` |
+| 10 | mean change per entry, band against threshold (6.4) | pass or block, `mean_change`; inconclusive, `range_straddles`; a block that rests on lower-bound workers is inconclusive, `change_upper_bound`; under `block_band: "model"` the row carries `variant: block_band_model` |
 | 11 | a change item's label not in `trusted_labels` and not covered by an `exceptions` entry | inconclusive, `unmeasured_delta` (`transfer_unvalidated` for a measured label whose transfer is not validated); a block from rule 8-10 still blocks. It applies in the preview too (6.5) |
 | 12 | a threshold below this environment's A/A noise floor, once a floor exists | inconclusive, `threshold_under_floor`, unless an `exceptions` entry waives it |
 | 13 | `enforce: false`, or the environment has not earned enforcement (6.6) | the verdict stands, printed and recorded as `advisory: true` (`advisory`) |
@@ -1197,6 +1207,17 @@ Let `T` be the entry's threshold in ms (the smaller of `max_entry_mean_change_ms
 | `hi <= T` | pass (subject to every other rule) |
 | `lo > T` | block |
 | `lo <= T < hi` | inconclusive, `range_straddles`, with `decide_with` naming the narrowest measurement that would decide it, for example "a measured delta for checkout with ±2 SE within ±0.3 ms passes if it is at most 0.9 ms" |
+
+**`block_band: "model"`** (6.2, opt-in) keeps the pass test above and moves the block test to the change range
+widened by the model band alone, without the biased constructs' widening (4.5, item 3): pass when `hi <= T`, block
+when `lo_model > T`, inconclusive otherwise. `lo_model` is the change's low end less `m(lo)`. A pass and a block of
+the default stay what they are; only an inconclusive entry can become a block. Rule 10's row names the variant
+(`variant: block_band_model`) and, for a block, holds `lo_model` as its value; an entry a corner saturates reads no
+band, and its row has the default's value (null) and words. `gate.json` lists each entry with `band_ms` (the pass
+test) and `block_band_ms` (the block test), a range past float64 absent and such a threshold null, as a rule's value
+is; the preview's entries carry `block_band_ms`. The demo2 audit (+9.32..+10.52 ms at a 63.25 ms entry, T 3.163 ms)
+is inconclusive by default: two worst-case widenings (4.65 ms) take the low end to 3.150 ms. Under `"model"` it is a
+block at `lo_model` 7.80 ms.
 
 With the simulated model band alone and a 5% threshold, a change predicted between about 2.7% and 7.3% of the entry
 latency is inconclusive. That is the honest width of a mean-latency gate whose model error is known only from a
@@ -1278,7 +1299,7 @@ model credentials.
 What the first build ships for this step [slice]:
 - `rhobound judge-packet PREDICTION.json --policy P [--policy-name N] [--fit F] [--now T] --json` writes the packet
   of 7.1 (the same bytes as `explain` with section `judge_packet`); `--fit` adds the budgets and leverage of the
-  changed services.
+  changed services, at the prediction's load point (for a what-if, at its `load_scale`).
 - `rhobound judge-check ANSWER.json --packet PACKET.json --json` checks an answer against 7.2: the schema, the packet
   digest, no millisecond figure, no loosening, every question answered inside its range, every evidence reference
   resolvable. It prints only the typed fields that may return to the coding agent, or a refusal with a `judge.*` code.

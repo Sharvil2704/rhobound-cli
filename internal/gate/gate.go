@@ -72,6 +72,11 @@ const (
 	RuleAdvisory              = "advisory"
 )
 
+// VariantBlockBandModel names rule 10's variant under the policy's block_band "model" (Rule.Variant): the pass test
+// reads the full band, the block test the change range widened by the model band alone (ARCHITECTURE.md 6.4). A
+// variant is not a token: the row's token is mean_change, range_straddles or change_upper_bound as under the default.
+const VariantBlockBandModel = "block_band_model"
+
 // RuleTokens lists every rule token, in rule order. Exceptions (Policy.Exceptions) may name only RuleUnmeasuredDelta
 // and RuleThresholdUnderFloor.
 var RuleTokens = []string{RuleInputRefused, RuleBaseOutOfScope, RuleFitStale, RuleBaselineMoved, RuleModelMisfit,
@@ -158,6 +163,9 @@ type Result struct {
 	// FitAgeH is the fit's age in hours at Now, nil when the report has no fit window.
 	FitAgeH     *float64
 	EvaluatedAt string
+	// LoadScale is the load point of a what-if (EvaluatedAt what_if), a multiple of the fit's external rate: the
+	// report's load.load_scale, or the load_scale number of a refusal at the load point; 0 otherwise.
+	LoadScale float64
 	// Extrapolated is true when the load point is beyond the fit's window (rule 7).
 	Extrapolated bool
 	// ValidatedCeiling is the policy's max_utilization_validated; BeyondValidated is rule 6's finding.
@@ -201,6 +209,8 @@ type Rule struct {
 	Threshold *float64 `json:"threshold,omitempty"`
 	// Code is the finding code that triggered the rule, or "".
 	Code string `json:"code,omitempty"`
+	// Variant names the rule's variant when the policy chose one (VariantBlockBandModel on rule 10), or "".
+	Variant string `json:"variant,omitempty"`
 }
 
 // Entry is rule 10 at one entry: the change range, the band (the change widened by the policy's model band, then by
@@ -213,6 +223,10 @@ type Entry struct {
 	ChangeMs    *change.Range
 	ModelBandMs float64
 	BandMs      *change.Range
+	// BlockBandMs is the band the block test read under the policy's block_band "model": the change widened by the
+	// model band alone, without the biased constructs. It is nil under the default, where BandMs is read on both
+	// sides, and when ChangeMs is nil.
+	BlockBandMs *change.Range
 	ThresholdMs float64
 	// ThresholdKey is the policy key that set ThresholdMs.
 	ThresholdKey string
@@ -323,13 +337,17 @@ func (e *evaluator) finding(f contract.Finding) {
 }
 
 // refused handles a prediction that is a refusal: rule 2 for a base load above the limit, rule 1 for any other code;
-// nothing else can be evaluated without a report.
+// nothing else can be evaluated without a report. A base refused at a what-if load point carries it (the number
+// load_scale, `predict --fit F --load-scale S`), and rule 7 is evaluated on it as on a report's.
 func (e *evaluator) refused() {
 	code := e.in.Refusal.Code
 	if code == contract.ModelUtilizationObserved {
 		e.pass("1")
 		r := e.fire("2", RuleBaseOutOfScope, Inconclusive)
 		r.Code = code
+		if s, ok := e.in.Refusal.Numbers[report.LoadScaleNumber]; ok && s > 0 && !math.IsInf(s, 0) && s != 1 {
+			e.loadPoint(report.EvaluatedAtWhatIf, s)
+		}
 		return
 	}
 	r := e.fire("1", RuleInputRefused+":"+code, Inconclusive)
@@ -524,17 +542,23 @@ func (e *evaluator) validated() {
 // load is rule 7: a load point beyond the fit's window is a what-if, and the verdict is advisory whatever the policy
 // says. Without a busiest-window pointer the gate evaluates at the fit's window, and says so (load.busiest_unknown).
 func (e *evaluator) load() {
-	e.res.EvaluatedAt = report.EvaluatedAtFitWindow
-	if e.r.Load.EvaluatedAt == report.EvaluatedAtWhatIf {
-		e.res.EvaluatedAt = report.EvaluatedAtWhatIf
-	}
 	if e.p.EvaluateAt == EvaluateBusiest {
 		e.finding(contract.NewFinding(contract.LoadBusiestUnknown))
 	}
-	if e.r.Load.EvaluatedAt == report.EvaluatedAtWhatIf && e.r.Load.LoadScale > 1 {
+	e.loadPoint(e.r.Load.EvaluatedAt, e.r.Load.LoadScale)
+}
+
+// loadPoint evaluates rule 7 at a load point: a what-if records its load scale (gate.json load_scale), at any value,
+// so that the record says which load its verdict is of; above 1 the load is extrapolated.
+func (e *evaluator) loadPoint(at string, scale float64) {
+	e.res.EvaluatedAt = report.EvaluatedAtFitWindow
+	if at == report.EvaluatedAtWhatIf {
+		e.res.EvaluatedAt, e.res.LoadScale = report.EvaluatedAtWhatIf, scale
+	}
+	if at == report.EvaluatedAtWhatIf && scale > 1 {
 		e.res.Extrapolated = true
 		r := e.fire("7", RuleExtrapolatedLoad, EffectNote)
-		r.Value = num(e.r.Load.LoadScale)
+		r.Value = num(scale)
 		return
 	}
 	e.pass("7")
@@ -709,8 +733,14 @@ func bias(en report.Entry, rb report.ModelBand) (lo, hi float64) {
 }
 
 // meanChange is rule 10: the band of each entry's change against its threshold (ARCHITECTURE.md 6.4). The row names
-// the decisive entry: the worst outcome, then the band's highest end above its threshold.
+// the decisive entry: the worst outcome, then the band's highest end above its threshold. Under the policy's
+// block_band "model" the pass test still reads the full band, and the block test the band without the biased
+// constructs' widening (Entry.BlockBandMs); the row names the variant.
 func (e *evaluator) meanChange() {
+	model := e.p.BlockBand == BlockBandModel
+	if model {
+		e.row("10").Variant = VariantBlockBandModel
+	}
 	mb := e.p.ModelBand.ModelBand()
 	rb := e.r.ModelBand
 	if rb.ChangeFrac == 0 && rb.LatencyFrac == 0 {
@@ -739,10 +769,16 @@ func (e *evaluator) meanChange() {
 			bl, bh := bias(en, rb)
 			band, m := BandOf(mb, *ch, en.BeforeMs, bl, bh)
 			ev.ChangeMs, ev.BandMs, ev.ModelBandMs = ch, &band, m
+			blockLo := band.Lo
+			if model {
+				// the model band alone: its low end is at or above the full band's, its high end at or under
+				bb, _ := BandOf(mb, *ch, en.BeforeMs, 0, 0)
+				ev.BlockBandMs, blockLo = &bb, bb.Lo
+			}
 			switch {
 			case band.Hi <= t:
 				ev.Effect = Pass
-			case band.Lo > t:
+			case blockLo > t:
 				ev.Effect = Block
 			default:
 				ev.Effect = Inconclusive
@@ -769,7 +805,9 @@ func (e *evaluator) meanChange() {
 	case Pass:
 		r.Value = num(ev.BandMs.Hi)
 	case Block:
-		if ev.BandMs != nil {
+		if ev.BlockBandMs != nil {
+			r.Value = num(ev.BlockBandMs.Lo)
+		} else if ev.BandMs != nil {
 			r.Value = num(ev.BandMs.Lo)
 		}
 		if svc, ok := e.lowerBoundMoved(); ok && ev.BandMs != nil {

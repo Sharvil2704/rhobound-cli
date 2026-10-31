@@ -1,0 +1,73 @@
+#!/usr/bin/env -S python3 -I
+"""Test stand-in for docker (sbx.sh's SBX_DOCKER): runs nothing. 'run' prints go-test text canned per approach: the candidate
+tree (the host folder mounted at /w, cand/) holds a line '// canned: NAME' and STUB_CANNED (a JSON file) has
+  NAME: {"tests": [passed, failed], "hidden": [passed, failed], "bench": {"BenchmarkX": [base_ns, cand_ns, base_allocs, cand_allocs]}}
+SBX_STEP test -> '=== RUN / --- PASS|FAIL' lines and the ok/FAIL summary (exit 1 on a failure); build -> nothing; run -> the
+rounds of '== sbx base|cand i' and benchmark lines, after a 0.3 s pause (so overlapping benches would show in the log).
+Every call is appended to STUB_DIR/docker.log as one JSON line {argv, env, t0, t1, cand_files}. 'rm' answers 0.
+"""
+import json, os, re, sys, time
+
+argv = sys.argv[1:]
+t0 = time.time()
+rec = {"argv": argv, "t0": t0}
+
+
+def done(code, out=""):
+    rec["t1"] = time.time()
+    with open(os.path.join(os.environ["STUB_DIR"], "docker.log"), "a") as f:
+        f.write(json.dumps(rec) + "\n")
+    sys.stdout.write(out)
+    sys.exit(code)
+
+
+if not argv or argv[0] != "run":
+    done(0 if argv and argv[0] == "rm" else 2)
+VAL = {"--name", "--network", "--tmpfs", "--cap-drop", "--security-opt", "--pids-limit", "--memory", "--cpus", "--user", "-e", "-v"}
+i, env, vols = 1, {}, {}
+while i < len(argv) and argv[i].startswith("-"):
+    if argv[i] in VAL:
+        if argv[i] == "-e":
+            k, _, v = argv[i + 1].partition("=")
+            env[k] = v
+        elif argv[i] == "-v":
+            h, c = argv[i + 1].split(":")[:2]
+            vols[c] = h
+        i += 2
+    else:
+        i += 1
+rec["image"], rec["cmd"], rec["env"] = argv[i], argv[i + 1:], env
+step, mode = env.get("SBX_STEP"), env.get("SBX_MODE")
+cand = os.path.join(vols["/w"], "cand")
+files = sorted(os.path.relpath(os.path.join(d, n), cand) for d, _, ns in os.walk(cand) for n in ns)
+rec["cand_files"] = files
+name = None
+for f in files:
+    if f.endswith(".go"):
+        m = re.search(r"//\s*canned:\s*([A-Za-z0-9_-]+)", open(os.path.join(cand, f)).read())
+        if m:
+            name = m.group(1)
+rec["canned"] = name
+canned = json.load(open(os.environ["STUB_CANNED"])).get(name) if name else None
+if canned is None:
+    done(1, "stub: no canned answer for %r\n" % name)
+if step == "test":
+    p, fl = canned["hidden" if mode == "hidden" else "tests"]
+    out = "".join("=== RUN   Test%d\n--- PASS: Test%d (0.00s)\n" % (k, k) for k in range(p))
+    out += "".join("=== RUN   TestBad%d\n    x_test.go:9: got 1, want 2\n--- FAIL: TestBad%d (0.00s)\n" % (k, k) for k in range(fl))
+    out += ("FAIL\nFAIL\tkshop/internal/hot\t0.012s\n" if fl else "PASS\nok  \tkshop/internal/hot\t0.010s\n")
+    done(1 if fl else 0, out)
+if step == "build":
+    done(0)
+if step == "run":
+    time.sleep(0.3)
+    out = ""
+    for r in range(1, int(env.get("SBX_ROUNDS", "5")) + 1):
+        for arm in ("base", "cand"):
+            out += "== sbx %s %d\ngoos: linux\ngoarch: amd64\npkg: kshop/internal/hot\n" % (arm, r)
+            for b, (bn, cn, ba, ca) in canned["bench"].items():
+                ns = (bn if arm == "base" else cn) * (1 + 0.01 * (r - 3))
+                out += "%s-2   \t     100\t%12.1f ns/op\t   12345 B/op\t%8d allocs/op\n" % (b, ns, ba if arm == "base" else ca)
+            out += "PASS\n"
+    done(0, out)
+done(2, "stub: unknown step %r\n" % step)

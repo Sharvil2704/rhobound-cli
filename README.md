@@ -166,11 +166,17 @@ task by its id ([DATA.md](docs/mcp/DATA.md#34-resource-attributes), 3.4). It add
   `context`, `budget`, `predict` and `explain` return the JSON of a CLI command plus the server's handles, and its
   refusals carry codes from the same registry as the CLI's. `rhobound-mcp version --json` prints the same build
   information as `rhobound version --json`.
+- `bed/`: the whole loop on AWS, runnable: a Meta coding agent asks the MCP server, a CI gate measures each changed
+  image in an A/B, predicts every entry and signs the verdict with KMS, and only a signed pass deploys
+  ([bed/README.md](bed/README.md)).
 
-Nothing in it is deployed, and no accuracy study of the gate has been run. The design, the data contract and its
-status are in [docs/mcp/](docs/mcp/ARCHITECTURE.md); [examples/mcp/](examples/mcp/README.md) runs the server locally,
-and [testdata/mcp/](testdata/mcp/README.md) walks the loop an agent follows.
-What this release does not do or guarantee is listed in [Known limits](docs/mcp/ARCHITECTURE.md#512-known-limits).
+It ran on AWS on 2026-10-30/31 with every prediction sealed before production was measured: a shared library in five
+services, storefront +4.54..+6.55 ms predicted against +5.32 measured and checkout +12.80..+18.09 against +14.28; two
+images changed at once, storefront +10.55..+13.20 against +11.87; regressions blocked, no-ops and the agent's change
+passed ([RESULTS.md](docs/mcp/RESULTS.md)). What the branch adds to rhobound-cli, file by file and how to use it:
+[CHANGES.md](docs/mcp/CHANGES.md). The design and the data contract are in [docs/mcp/](docs/mcp/ARCHITECTURE.md);
+[examples/mcp/](examples/mcp/README.md) runs the server locally, and [testdata/mcp/](testdata/mcp/README.md) walks the
+loop an agent follows. Scope: [Known limits](docs/mcp/ARCHITECTURE.md#512-known-limits).
 
 ## Documentation
 
@@ -184,6 +190,8 @@ What this release does not do or guarantee is listed in [Known limits](docs/mcp/
 | [VALIDATION.md](docs/VALIDATION.md) | every check that has been run, failures first |
 | [REAL_CLUSTER.md](docs/REAL_CLUSTER.md) | the run on a real cluster: the OpenTelemetry Demo and the repository's demo, what failed, the causes, the fixes, before and after, what is still open |
 | [validation/cluster/](validation/cluster/README.md) | the scripts of the real-cluster runs (Phase A and Phase B); how to run them on your own cluster is in [REAL_CLUSTER.md](docs/REAL_CLUSTER.md#2-how-to-reproduce-it) |
+| [docs/mcp/RESULTS.md](docs/mcp/RESULTS.md), [CHANGES.md](docs/mcp/CHANGES.md) | rhobound-mcp on AWS: results, Meta orchestration, time saved; what the branch adds and how to use it |
+| [bed/](bed/README.md) | the deploy gate on AWS: launch, bootstrap, run, knobs, tests |
 | [docs/mcp/](docs/mcp/ARCHITECTURE.md) | rhobound-mcp: the architecture, the data contract (every code, generated from the registry), deployment on AWS and locally, the evaluation plan, the code-path research plan, and the JSON Schemas |
 
 Example topologies for `rhobound model` are in [examples/](examples/).

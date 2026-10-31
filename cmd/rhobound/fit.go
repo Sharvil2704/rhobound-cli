@@ -23,8 +23,10 @@ func init() {
 	register("fit", command{run: withRefusal(cmdFit), usage: `  rhobound fit     CAPTURE|--manifest M --out DIR [--workers svc=N] [--kept-share F] [--pod-identity host]
                    [--request-count F] [--sampler svc=NAME] [--probe-route R] [--name NAME] [--plain] [--json]
                                             check, then fit once: writes DIR/fit.json (rhobound.fit/v1)
-  rhobound predict --fit F [--patch svc=+3ms | --changes C] [--report v1] [--max-rho 0.85] [--out DIR] [--json]
-                                            predict from a fit: report v2 (--report v1: its v1 projection)
+  rhobound predict --fit F [--patch svc=+3ms | --changes C] [--report v1] [--load-scale S] [--max-rho 0.85]
+                   [--out DIR] [--json]
+                                            predict from a fit: report v2 (--report v1: its v1 projection;
+                                            --load-scale S: a what-if, before and after at S x the fit's rate)
 `})
 }
 

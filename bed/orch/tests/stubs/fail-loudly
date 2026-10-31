@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# installed as ssh, gh, aws, docker in the offline tests: none of them may run here
+echo "STUB: $(basename "$0") $* must not run in this test" >&2
+echo "$(basename "$0") $*" >> "${STUB_LOG:-/dev/null}"
+exit 97

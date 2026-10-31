@@ -479,8 +479,8 @@ func TestExplainSections(t *testing.T) {
 	}
 }
 
-// gate.json validates against gate.v1.json: for a pass, a block with a readiness record and a judge, and a refused
-// prediction.
+// gate.json validates against gate.v1.json: for a pass, a block with a readiness record and a judge, a refused
+// prediction, a what-if and a base refused at a what-if load point (both with load_scale).
 func TestGateRecordValidates(t *testing.T) {
 	p := policy(t)
 	rd := &gate.Readiness{Schema: gate.ReadinessSchema, Env: "prod", AAFloor: gate.AAFloor{Pairs: 12,
@@ -492,6 +492,13 @@ func TestGateRecordValidates(t *testing.T) {
 			Judge: &gate.Judge{Provenance: gate.ProvenanceCIJudge, ModelID: "model-x", Decision: "revise",
 				Answer: "sha256:" + strings.Repeat("5", 64), Request: "sha256:" + strings.Repeat("6", 64)}},
 		"refused": {Refusal: &report.Refusal{Code: contract.TraceBadJSON, Reason: "r", Fix: "f"}, Policy: p, Now: now},
+		"what-if": {Report: func() *report.V2 {
+			r := chain(0.40, 0.63, change.LabelMeasuredAB)
+			r.Load.EvaluatedAt, r.Load.LoadScale = report.EvaluatedAtWhatIf, 0.7
+			return r
+		}(), Policy: p, Now: now},
+		"refused at a load point": {Refusal: &report.Refusal{Code: contract.ModelUtilizationObserved, Reason: "r", Fix: "f",
+			Numbers: map[string]float64{"utilization": 0.9, "limit": 0.85, report.LoadScaleNumber: 3.5}}, Policy: p, Now: now},
 	} {
 		res := gate.Evaluate(in)
 		d := gate.Digests{Report: "sha256:" + strings.Repeat("7", 64)}
@@ -510,6 +517,9 @@ func TestGateRecordValidates(t *testing.T) {
 		if name == "block" && !bytes.Contains(b, []byte(`"judge_request":"sha256:6666`)) {
 			t.Errorf("block: %s", b)
 		}
+		if whatIf := strings.Contains(name, "load point") || name == "what-if"; whatIf != bytes.Contains(b, []byte(`"load_scale":`)) {
+			t.Errorf("%s: %s", name, b)
+		}
 	}
 	// the effective policy validates as a policy
 	b, err := contract.Canonical(p)
@@ -517,6 +527,84 @@ func TestGateRecordValidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	validate(t, "policy.v1.json", b)
+
+	// under the policy's block_band "model": gate.json with rule 10's variant and the entries with both bands, the
+	// effective policy with the key, and the preview with the block band and the variant
+	pm, _, err := gate.ParsePolicy([]byte(`{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []*report.V2{chain(0.40, 0.63, change.LabelMeasuredAB), chain(4.10, 7.15, change.LabelDeclared)} {
+		res := gate.Evaluate(gate.Input{Report: r, Policy: pm, Now: now})
+		rec, err := gate.NewRecord(res, pm, nil, gate.Digests{Report: "sha256:" + strings.Repeat("7", 64), Fit: r.FitDigest})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := rec.Canonical()
+		if err != nil {
+			t.Fatal(err)
+		}
+		validate(t, "gate.v1.json", b)
+		for _, want := range []string{`"variant":"block_band_model"`, `"block_band_ms":{`, `"entries":[{`, `"block_band":"model"`} {
+			if !bytes.Contains(b, []byte(want)) {
+				t.Errorf("gate.json under model lacks %s:\n%s", want, b)
+			}
+		}
+		for _, detail := range []string{DetailSummary, DetailFull} {
+			v, err := Prediction(r, gate.Evaluate(gate.Input{Report: r, Policy: pm, Now: now, Preview: true}), detail)
+			if err != nil {
+				t.Fatal(err)
+			}
+			validate(t, "prediction.v1.json", v)
+			if !bytes.Contains(v, []byte(`"block_band_ms":{`)) || !bytes.Contains(v, []byte(`"variant":"block_band_model"`)) {
+				t.Errorf("the preview under model (%s):\n%s", detail, v)
+			}
+		}
+	}
+	if b, err = contract.Canonical(pm); err != nil {
+		t.Fatal(err)
+	}
+	validate(t, "policy.v1.json", b)
+
+	// a band past float64 (a change's high end at 1.6e308 ms) and a threshold past it (1e308 % of a 400 ms entry) under
+	// "model": gate.json encodes and validates, the range absent and the threshold null; so does the preview at that
+	// threshold (the preview of that band fails under the default as well: r4 overflows past 1.8e304)
+	huge, _, err := gate.ParsePolicy([]byte(`{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 1e308, `+
+		`"block_band": "model"}`), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	over, slow := chain(4.10, 7.15, change.LabelDeclared), chain(0.40, 0.63, change.LabelMeasuredAB)
+	over.Entries[0].ChangeMs.Hi, over.Entries[0].BandMs.Hi = 1.6e308, 1.7e308
+	slow.Entries[0].BeforeMs = 400
+	for _, c := range []struct {
+		r    *report.V2
+		p    *gate.Policy
+		want string
+	}{{over, pm, `"entries":[{"before_ms":45.2217,"change_ms":{"hi":1.6e+308,"lo":4.1},"effect":"block","entry":"a",` +
+		`"threshold_ms":2.261085}]`}, {slow, huge, `,"threshold_ms":null}]`}} {
+		res := gate.Evaluate(gate.Input{Report: c.r, Policy: c.p, Now: now})
+		rec, err := gate.NewRecord(res, c.p, nil, gate.Digests{Report: "sha256:" + strings.Repeat("7", 64), Fit: c.r.FitDigest})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := rec.Canonical()
+		if err != nil {
+			t.Fatalf("gate.json past float64: %v", err)
+		}
+		validate(t, "gate.v1.json", b)
+		if !bytes.Contains(b, []byte(c.want)) {
+			t.Errorf("gate.json past float64 lacks %s:\n%s", c.want, b)
+		}
+		if c.r == over {
+			continue
+		}
+		v, err := Prediction(c.r, gate.Evaluate(gate.Input{Report: c.r, Policy: c.p, Now: now, Preview: true}), DetailFull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		validate(t, "prediction.v1.json", v)
+	}
 }
 
 // A view is never over its cap. When the part a summary never drops is long, the last stages drop the entries'

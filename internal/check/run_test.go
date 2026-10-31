@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -391,5 +392,176 @@ func TestClusterInputs(t *testing.T) {
 	_, _, plain := runDir(t, build(t, contract.TraceSamplingUnverified).Dir, check.Options{})
 	if d, p, n, f, err := check.ClusterInputs(plain); d != nil || p != nil || len(n) != 0 || len(f) != 0 || err != nil {
 		t.Errorf("a capture without cluster inputs: %v %v %v %v %v", d, p, n, f, err)
+	}
+}
+
+// trace.mixed_images with a window (check --window, DATA.md 3.9): the image digests of the resources that hold a span
+// overlapping the window only. b's image is replaced 30 s into the base capture: its old pod's spans all end before then.
+func TestMixedImagesInWindow(t *testing.T) {
+	c := base(t)
+	at := uint64(time.Unix(1_700_000_030, 0).UnixNano())
+	lastStart, lastEnd := testgen.Rollout(c, "b", at)
+	if lastEnd == 0 || lastEnd >= at || lastStart+2 > lastEnd {
+		t.Fatalf("the old pod's last span: %d-%d", lastStart, lastEnd)
+	}
+	dir := t.TempDir()
+	if err := c.Write(dir, "spans.jsonl.gz"); err != nil {
+		t.Fatal(err)
+	}
+	ns := func(n uint64) time.Time { return time.Unix(0, int64(n)).UTC() }
+	end := ns(at).Add(time.Hour)
+	mixed := func(rep *contract.CheckReport) bool {
+		for _, f := range rep.Findings {
+			if f.Code == contract.TraceMixedImages {
+				return f.Subject == "b" && f.Numbers["digests"] == 2
+			}
+		}
+		return false
+	}
+	for _, tc := range []struct {
+		name       string
+		start, end time.Time
+		want       bool
+	}{
+		{"(d) no window: the capture as read, as before", time.Time{}, time.Time{}, true},
+		{"(a) the old image's spans all end before the window", ns(lastEnd + 1), end, false},
+		{"a span that ends at the window's first instant overlaps it", ns(lastEnd), end, true},
+		{"(c) a span that straddles the window's start overlaps it", ns((lastStart + lastEnd) / 2), end, true},
+		{"(b) both images inside the window", ns(at).Add(-10 * time.Second), end, true},
+		{"a window after the data: no digest in it, and none missing", end, end.Add(time.Hour), false},
+	} {
+		rep, _, _ := runDir(t, dir, check.Options{WindowStart: tc.start, WindowEnd: tc.end})
+		if mixed(rep) != tc.want || rep.Has(contract.TraceImageDigestMissing) {
+			t.Errorf("%s: %s", tc.name, codesOf(rep))
+		}
+		if !tc.want && rep.Verdict == contract.Refused {
+			t.Errorf("%s: refused: %s", tc.name, codesOf(rep))
+		}
+	}
+	// (b) two images interleaved through the whole capture (the code's fixture) are mixed in any window inside it
+	cs := build(t, contract.TraceMixedImages)
+	_, _, m := runDir(t, cs.Dir, check.Options{})
+	rep, _, _ := runDir(t, cs.Dir, check.Options{WindowStart: m.Window.Start.Add(30 * time.Second), WindowEnd: m.Window.Start.Add(90 * time.Second)})
+	if !rep.Has(contract.TraceMixedImages) {
+		t.Errorf("two images inside the window: %s", codesOf(rep))
+	}
+	// trace.image_digest_missing reads every resource, whatever the window
+	rep, _, _ = runDir(t, build(t, contract.TraceImageDigestMissing).Dir, check.Options{WindowStart: end, WindowEnd: end.Add(time.Hour)})
+	if !rep.Has(contract.TraceImageDigestMissing) {
+		t.Errorf("no digests, a window after the data: %s", codesOf(rep))
+	}
+	// a window is a start and an end after it, within the times a span can hold: one that starts before the epoch or
+	// ends after 2262 would wrap in Unix nanoseconds, and count no span (Run) or keep none (Cut)
+	epoch, last := time.Unix(0, 0).UTC(), time.Date(2262, 4, 11, 23, 47, 16, 854775807, time.UTC)
+	for _, w := range [][2]time.Time{{end, ns(at)}, {end, end}, {time.Time{}, end}, {end, time.Time{}},
+		{epoch.Add(-time.Second), end}, {end, last.Add(time.Nanosecond)}} {
+		m, _, err := check.ManifestFromDir(dir, otlp.Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := check.Run(m, check.Options{WindowStart: w[0], WindowEnd: w[1]}); err == nil {
+			t.Errorf("the window %v is accepted", w)
+		}
+		if _, d, _ := runDir(t, dir, check.Options{}); d != nil {
+			if _, err := check.Cut(m, d, w[0], w[1], filepath.Join(t.TempDir(), "cut")); err == nil {
+				t.Errorf("the window %v is cut", w)
+			}
+		}
+	}
+	// the widest window holds every span: b's two images
+	if rep, _, _ := runDir(t, dir, check.Options{WindowStart: epoch, WindowEnd: last}); !mixed(rep) {
+		t.Errorf("the window %v-%v: %s", epoch, last, codesOf(rep))
+	}
+}
+
+// trace.mixed_images in a window agrees with the cut of that window (DATA.md 3.9): the cut keeps whole traces by their
+// entry span's start, so a resource counts in the window when it holds a span of a trace the cut keeps, a span that
+// overlaps the window, or no span; the check of the cut then finds no two images that the check of the window did not.
+// b's image is replaced 30 s into the base capture (testgen.Rollout).
+func TestMixedImagesWindowAgreesWithCut(t *testing.T) {
+	at := uint64(time.Unix(1_700_000_030, 0).UnixNano())
+	ns := func(n uint64) time.Time { return time.Unix(0, int64(n)).UTC() }
+	isB := func(rs *testgen.ResourceSpans, s *testgen.Span) bool { return rs.Service() == "b" }
+	onB := func(c *testgen.Capture, old bool) (first uint64) {
+		c.Visit(func(rs *testgen.ResourceSpans, s *testgen.Span) {
+			if start, _ := s.Times(); isB(rs, s) && (rs.Attr("k8s.pod.name") == "b-old") == old && (first == 0 || start < first) {
+				first = start
+			}
+		})
+		return first
+	}
+	// rollout: the rollout alone. The window ends at the first start of a span on b's new image: the trace that calls
+	// it entered before, so the cut keeps that span although it does not overlap the window.
+	rollout := base(t)
+	_, lastEnd := testgen.Rollout(rollout, "b", at)
+	firstNew, first := onB(rollout, false), uint64(0)
+	rollout.Visit(func(_ *testgen.ResourceSpans, s *testgen.Span) {
+		if start, _ := s.Times(); first == 0 || start < first {
+			first = start
+		}
+	})
+	// skewed: one span of b in a trace that enters 20 s after the rollout, read with a clock 25 s behind: it ends before
+	// the rollout, so it stays on the old pod, and before the window [at, ...), which keeps its trace.
+	skewed := base(t)
+	moved := false
+	skewed.Visit(func(rs *testgen.ResourceSpans, s *testgen.Span) {
+		if start, end := s.Times(); isB(rs, s) && !moved && start >= at+20e9 && end < start+5e9 {
+			s.Shift(-25e9)
+			moved = true
+		}
+	})
+	testgen.Rollout(skewed, "b", at)
+	// spanless: every resource with its image (a rollout at 0 moves no span), and a resource of b on another pod and
+	// image that holds no span (the cut keeps it)
+	spanless := base(t)
+	testgen.Rollout(spanless, "b", 0)
+	added := false
+	for _, r := range spanless.Requests {
+		for _, rs := range r.ResourceSpans {
+			if rs.Service() == "b" && !added {
+				old := &testgen.ResourceSpans{Resource: testgen.Resource{Attributes: slices.Clone(rs.Resource.Attributes)}, ScopeSpans: []*testgen.ScopeSpans{}}
+				old.SetAttr("k8s.pod.name", testgen.Str("b-old"))
+				old.SetAttr("container.image.repo_digests", testgen.Strs("registry.example/b@"+testgen.Digest("b-old")))
+				r.ResourceSpans = append(r.ResourceSpans, old)
+				added = true
+			}
+		}
+	}
+	if !moved || !added || firstNew == 0 || onB(skewed, true) == 0 || lastEnd >= at {
+		t.Fatalf("the captures: moved %v, added %v, b's new image from %d, the old pod's last end %d", moved, added, firstNew, lastEnd)
+	}
+	mixed := func(rep *contract.CheckReport) bool {
+		for _, f := range rep.Findings {
+			if f.Code == contract.TraceMixedImages {
+				return f.Subject == "b" && f.Numbers["digests"] == 2
+			}
+		}
+		return false
+	}
+	late := ns(at).Add(time.Hour)
+	for _, tc := range []struct {
+		name       string
+		c          *testgen.Capture
+		start, end time.Time
+		want       bool
+	}{
+		{"rollout: the old image's spans all end before the window", rollout, ns(lastEnd + 1), late, false},
+		{"rollout: a trace that enters before the window ends calls b's new image after it", rollout, ns(first), ns(firstNew), true},
+		{"skewed: an old pod's span ends before the window, its trace enters in it", skewed, ns(at), late, true},
+		{"spanless: a resource with no span counts in any window", spanless, ns(at), late, true},
+	} {
+		dir := t.TempDir()
+		if err := tc.c.Write(dir, "spans.jsonl.gz"); err != nil {
+			t.Fatal(err)
+		}
+		rep, d, m := runDir(t, dir, check.Options{WindowStart: tc.start, WindowEnd: tc.end})
+		cut := filepath.Join(t.TempDir(), "cut")
+		if _, err := check.Cut(m, d, tc.start, tc.end, cut); err != nil {
+			t.Fatal(err)
+		}
+		of, _, _ := runDir(t, cut, check.Options{})
+		if mixed(rep) != tc.want || mixed(of) != tc.want {
+			t.Errorf("%s: the window %s; its cut %s", tc.name, codesOf(rep), codesOf(of))
+		}
 	}
 }

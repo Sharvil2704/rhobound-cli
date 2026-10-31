@@ -1,0 +1,168 @@
+# The trace pipeline in kshop-obs (SPEC 3), applied by collector.sh, which fills @COLLECTOR_IMAGE@, @BUSYBOX_IMAGE@ (both from ECR
+# by digest, images.json) and @CONFIG_SHA@ (a changed configuration rolls the Collector).
+# The Collector (contrib image, UID 10001) writes /var/lib/rbd/traces on edge1; an init container makes that folder its own.
+# spans-reader: busybox on edge1, the same hostPath read-only, so tools1 copies files with kubectl exec ... tar (no ssh);
+# its janitor deletes rotated files older than 6 h. Both run as 10001: the exporter's files are 0600.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kshop-obs
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: kshop-obs
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rbd-otel-collector
+rules:
+  - apiGroups: [""]
+    resources: [pods, namespaces, nodes]
+    verbs: [get, watch, list]
+  - apiGroups: [apps]
+    resources: [replicasets, deployments]
+    verbs: [get, watch, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rbd-otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rbd-otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: kshop-obs
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: kshop-obs
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+      annotations:
+        rbd/config-sha: "@CONFIG_SHA@"
+    spec:
+      serviceAccountName: otel-collector
+      nodeSelector:
+        rhobound.io/pool: edge
+      tolerations:
+        - key: rhobound.io/pool
+          operator: Equal
+          value: edge
+          effect: NoSchedule
+      imagePullSecrets:
+        - name: ecr
+      initContainers:
+        - name: own-data
+          image: "@BUSYBOX_IMAGE@"
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "chown 10001:10001 /data && chmod 0750 /data"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: otelcol
+          image: "@COLLECTOR_IMAGE@"
+          imagePullPolicy: IfNotPresent
+          args: ["--config=/conf/config.yaml"]
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+          ports:
+            - containerPort: 4318
+              name: otlp-http
+            - containerPort: 4317
+              name: otlp-grpc
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: conf
+              mountPath: /conf
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: conf
+          configMap:
+            name: otel-collector
+        - name: data
+          hostPath:
+            path: /var/lib/rbd/traces
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: kshop-obs
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-http
+      port: 4318
+    - name: otlp-grpc
+      port: 4317
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: spans-reader
+  namespace: kshop-obs
+  labels:
+    app: spans-reader
+spec:
+  nodeSelector:
+    rhobound.io/pool: edge
+  tolerations:
+    - key: rhobound.io/pool
+      operator: Equal
+      value: edge
+      effect: NoSchedule
+  imagePullSecrets:
+    - name: ecr
+  automountServiceAccountToken: false
+  terminationGracePeriodSeconds: 5
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+  containers:
+    - name: reader
+      image: "@BUSYBOX_IMAGE@"
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c", "trap 'exit 0' TERM; while :; do sleep 3600 & wait $!; done"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+          readOnly: true
+    - name: janitor
+      image: "@BUSYBOX_IMAGE@"
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c", "trap 'exit 0' TERM; while :; do find /data -maxdepth 1 -type f -name 'spans-*.jsonl' -mmin +360 -exec rm -f {} \\; ; sleep 600 & wait $!; done"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      hostPath:
+        path: /var/lib/rbd/traces
+        type: DirectoryOrCreate

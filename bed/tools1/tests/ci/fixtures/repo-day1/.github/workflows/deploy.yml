@@ -1,0 +1,55 @@
+# rhobound deploy: on a push to main, the merged PR's head (the merge commit's second parent: the repo allows merge commits
+# only) names the gate run; deploy.sh deploys its image ONLY if a verdict signed with the KMS key says pass against the
+# production image running now, under the pinned policy, then refits. deploy.sh is the enforcement point, not this file.
+name: rhobound deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rbd-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, rbd-demo]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: checkout the merge commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: find the merged PR's head
+        id: find
+        run: |
+          if head=$(git rev-parse -q --verify "$GITHUB_SHA^2"); then
+            echo "head=$head" >> "$GITHUB_OUTPUT"
+            echo "merged PR head: $head"
+          else
+            echo "::notice title=nothing to deploy::$GITHUB_SHA is not a merge commit; only merged PRs deploy"
+          fi
+
+      - name: the gate's report for that commit
+        if: ${{ steps.find.outputs.head != '' }}
+        continue-on-error: true
+        env:
+          PR_HEAD: ${{ steps.find.outputs.head }}
+        run: |
+          sudo -n -u rbd /opt/rbd/ci/report.sh "$PR_HEAD" | tee "$RUNNER_TEMP/report.out" > /dev/null
+          sed '$d' "$RUNNER_TEMP/report.out" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: deploy (refuses anything but a signed pass)
+        if: ${{ steps.find.outputs.head != '' }}
+        env:
+          PR_HEAD: ${{ steps.find.outputs.head }}
+        run: sudo -n -u rbd /opt/rbd/ci/deploy.sh --run "$PR_HEAD" | tee "$RUNNER_TEMP/deploy.out"

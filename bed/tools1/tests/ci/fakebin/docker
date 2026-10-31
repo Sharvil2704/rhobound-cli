@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# test stand-in for docker: login, build (checks -f and the context; lists the context's files with their sha256 in
+# images/last-ctx), push (mints a digest the aws stub then reports), inspect (RepoDigests). State under $STUB_DIR.
+# STUB_PUSH_QUIET=1: push prints no digest line; STUB_NO_REPODIGEST=1: inspect lists no repo digest.
+set -euo pipefail
+echo "docker $*" >> "$STUB_DIR/calls.log"
+case ${1:-} in
+  login) cat > /dev/null; echo "Login Succeeded" ;;
+  build)
+    all="$*"; shift; ref="" df="" ctx=""
+    while [[ $# -gt 0 ]]; do
+      case $1 in -t) ref=$2; shift 2 ;; -f) df=$2; shift 2 ;; --build-arg | --label) shift 2 ;; *) ctx=$1; shift ;; esac
+    done
+    # the context must be the one the Dockerfile copies from (COPY app/... -> kshop/, COPY go.mod -> kshop/app)
+    want=$ctx/go.mod; grep -q '^COPY app/' "$df" 2> /dev/null && want=$ctx/app/go.mod
+    [[ -r $df && -r $want ]] || { echo "docker stub: bad -f '$df' or context '$ctx' (no $want)" >&2; exit 1; }
+    [[ ${STUB_BUILD_RC:-0} -eq 0 ]] || { echo "docker stub: build failed (STUB_BUILD_RC)" >&2; exit "$STUB_BUILD_RC"; }
+    mkdir -p "$STUB_DIR/images"; printf '%s\n' "$all" > "$STUB_DIR/images/last-build"
+    (cd "$ctx" && find . -type f -print0 | sort -z | xargs -0 sha256sum) > "$STUB_DIR/images/last-ctx"
+    echo "Successfully tagged $ref" ;;
+  push)
+    ref=$2 tag=${2##*:}
+    d=sha256:$(printf '%s %s' "$ref" "$(date +%s%N)" | sha256sum | cut -d' ' -f1)
+    mkdir -p "$STUB_DIR/ecr"; echo "$d" > "$STUB_DIR/ecr/$tag.digest"; echo "${ref%:*}@$d" > "$STUB_DIR/ecr/$tag.repodigest"
+    echo "$tag: Pushed"
+    [[ ${STUB_PUSH_QUIET:-0} == 1 ]] || echo "$tag: digest: $d size: 1234" ;;
+  inspect) ref=${*: -1}; [[ ${STUB_NO_REPODIGEST:-0} == 1 ]] || cat "$STUB_DIR/ecr/${ref##*:}.repodigest" ;;
+  *) echo "docker stub: unsupported: $*" >&2; exit 2 ;;
+esac

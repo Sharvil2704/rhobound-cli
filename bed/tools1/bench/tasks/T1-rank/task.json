@@ -1,0 +1,52 @@
+{
+  "id": "T1-rank",
+  "category": "perf-opt",
+  "prompt": "Title: Product search is too slow: make hot.Rank faster without changing its answers\n\nThe catalog service answers every /item request with one search: `hot.Rank(hot.NextQuery())`\n(kshop/app/internal/hot/rank.go). Profiles show `Rank` is most of the service's CPU time, and catalog sits on the\nstorefront's critical path. Make `Rank` cheaper per call on the production query stream (`hot.NextQuery()`).\n\nAcceptance criteria:\n\n1. Same answers. For every query, `Rank(q)` returns exactly what it returns today: the same document IDs in the same\n   order, scores equal within 1e-9 (relative), the same number of hits (at most 10; fewer when fewer documents match;\n   none for a query without terms). The scoring rule and the order of equal scores are documented on `Rank`.\n2. Safe for concurrent use: the service calls `Rank` from several goroutines at once. The tests run with `-race`.\n3. Memory: whatever `Rank` keeps between calls may add at most 64 MB to the process's heap.\n4. Nothing else changes: the catalog, the query log and the input generators (load.go), `Fold` (text.go, also used\n   by pricing), `Quote`, and every exported name and signature of the package stay as they are.\n5. Standard library only. Change only files under kshop/app/internal/hot/. The existing tests keep passing.\n\nHow it is judged: hidden tests check 1-4; a benchmark measures `Rank`'s time per call on the production query\ndistribution against today's code; the change is then measured on the running service before it ships.\n",
+  "services": [
+    "catalog"
+  ],
+  "writable": [
+    "kshop/app/internal/hot/"
+  ],
+  "hidden": "hidden/",
+  "bench": [
+    "BenchmarkRank"
+  ],
+  "refs": [
+    {
+      "name": "good",
+      "kind": "good",
+      "patch": "refs/good.patch"
+    },
+    {
+      "name": "slow",
+      "kind": "slow",
+      "patch": "refs/slow.patch"
+    },
+    {
+      "name": "latency-bad",
+      "kind": "latency-bad",
+      "patch": "refs/latency-bad.patch"
+    },
+    {
+      "name": "wrong",
+      "kind": "wrong",
+      "patch": "refs/wrong.patch"
+    }
+  ],
+  "k": 4,
+  "base": null,
+  "visits_per_entry": {
+    "storefront": 1,
+    "checkout": 0
+  },
+  "race": true,
+  "fail_to_pass": [],
+  "pass_to_pass": [
+    "TestHiddenWorkloadFingerprint",
+    "TestHiddenRankGolden",
+    "TestHiddenRankConcurrent",
+    "TestHiddenRankMemory"
+  ],
+  "calibration": "BenchmarkRank on today's code: 5.19 ms/op (median of 3; 5.5 ms in the first calibration run) on the orchestrator (arm64 Neoverse-V2, GOMAXPROCS=2, go1.27.2, 2026-10-30). repo/kshop/spec.json: catalog work mean_ms 22 -> 16.5 (+ rank) keeps catalog's own time ~22 ms if an m6a vCPU runs Rank in ~5.5 ms; SPEC2 section 5's calibration A/B measures the real figure."
+}

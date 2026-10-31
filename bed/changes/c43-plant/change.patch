@@ -1,0 +1,75 @@
+diff --git a/kshop/app/internal/hot/plant.go b/kshop/app/internal/hot/plant.go
+new file mode 100644
+index 0000000..d41038b
+--- /dev/null
++++ b/kshop/app/internal/hot/plant.go
+@@ -0,0 +1,57 @@
++// Code planted by changes/plant.py (rhobound SPEC3 F9) for the change c43-plant: NEVER merge it.
++// make_prs.sh opens it as a draft PR labelled rbd-plant; orch/automerge.sh refuses every rbd-plant PR.
++// The knob below is the intended per-call cost only: the registered dose is the A/B-measured own-time
++// delta of the service, not this knob.
++
++package hot
++
++import (
++	"sync"
++	"sync/atomic"
++	"time"
++)
++
++// plantSpinCPU: the CPU time plantHold burns per call, at the top of Quote. It never sleeps: a dependent
++// xorshift64 loop runs a fixed number of iterations per call, calibrated once per process at the first
++// call as the fastest of 7 timed runs of plantSpinProbe iterations (a run that was preempted or
++// descheduled is slower, never the fastest). On a contended CPU or under the pod's CPU quota the wall
++// time stretches; the CPU work does not.
++const plantSpinCPU = 4 * time.Millisecond
++
++const plantSpinProbe = 1 << 18
++
++var (
++	plantSpinOnce  sync.Once
++	plantSpinIters uint64
++	plantSpinSink  atomic.Uint64
++)
++
++func plantSpinLoop(n uint64) uint64 {
++	x := uint64(0x9e3779b97f4a7c15)
++	for i := uint64(0); i < n; i++ {
++		x ^= x << 13
++		x ^= x >> 7
++		x ^= x << 17
++	}
++	return x
++}
++
++func plantSpinCalibrate() {
++	best := time.Duration(-1)
++	for i := 0; i < 7; i++ {
++		t0 := time.Now()
++		plantSpinSink.Add(plantSpinLoop(plantSpinProbe))
++		if d := time.Since(t0); d > 0 && (best < 0 || d < best) {
++			best = d
++		}
++	}
++	if best <= 0 {
++		best = plantSpinProbe // 1 ns per iteration when the clock saw nothing
++	}
++	plantSpinIters = uint64(float64(plantSpinProbe) * float64(plantSpinCPU) / float64(best))
++}
++
++func plantHold() {
++	plantSpinOnce.Do(plantSpinCalibrate)
++	plantSpinSink.Add(plantSpinLoop(plantSpinIters))
++}
+diff --git a/kshop/app/internal/hot/price.go b/kshop/app/internal/hot/price.go
+index 621ed62..1b09b18 100644
+--- a/kshop/app/internal/hot/price.go
++++ b/kshop/app/internal/hot/price.go
+@@ -169,6 +169,7 @@ func parseNum(s string, lo, hi int) (int, bool) {
+ // discount. A known code takes its percent off every line. Each line's amount is unit cents x QTY x (100 - percent)
+ // / 100, rounded to whole cents; the total is the sum of the rounded lines.
+ func Quote(cart string) int64 {
++	plantHold() // planted (c43-plant, SPEC3 F9): never merge
+ 	semi := -1
+ 	for i := 0; i < len(cart); i++ {
+ 		if cart[i] == ';' {

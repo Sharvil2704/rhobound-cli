@@ -49,7 +49,9 @@ type Request struct {
 	// lists beside the fit's and the engine's.
 	Findings []contract.Finding
 	// LoadScale is the load point: a multiplier of the fit's external rate. 0 and 1 are the fit's window
-	// (evaluated_at fit_window); any other value is a what-if. A load_scale item of the set multiplies on top of it.
+	// (evaluated_at fit_window); any other value is a what-if, where the system before the change and the system
+	// after it are both solved at LoadScale times the fit's rate, so that an entry's change_ms is the change's effect
+	// at that load and its load_level_ms the load's effect alone. A load_scale item of the set multiplies on top of it.
 	LoadScale float64
 	// Plain solves with the basic model (Poisson arrivals everywhere, exponential branches), as --plain.
 	Plain bool
@@ -81,11 +83,13 @@ const EvidenceClass = report.EvidenceRealUntested
 // Predict solves the request and writes report v2.
 //
 // It refuses, with a *report.RefusalError, a base load already above MaxRho (model.utilization_observed, with
-// rhobound-cli's message), an operation this version cannot apply (change.unsupported_op) and more than
-// change.MaxUnsignedRanges unsigned ranged items (change.too_many_ranges). A change that pushes a service past MaxRho
-// or to saturation is not refused: the report shows it (the rows' utilization_after, null ranges where a corner leaves
-// no finite mean), because the gate must be able to block on it (ARCHITECTURE.md 6.3, rule 8). `predict --fit F
-// --report v1` refuses it from the report, with the message `predict CAPTURE` prints (AfterLimit).
+// rhobound-cli's message; in a what-if, the base at LoadScale times the fit's rate, with the number load_scale, and
+// also the fit's own load when the model has no steady state there, without it), an operation this version cannot
+// apply (change.unsupported_op) and more than change.MaxUnsignedRanges unsigned ranged items (change.too_many_ranges).
+// A change that pushes a service past MaxRho or to saturation is not refused: the report shows it (the rows'
+// utilization_after, null ranges where a corner leaves no finite mean), because the gate must be able to block on it
+// (ARCHITECTURE.md 6.3, rule 8). `predict --fit F --report v1` refuses it from the report, with the message `predict
+// CAPTURE` prints (AfterLimit).
 func Predict(req Request) (*report.V2, error) {
 	if req.Fit == nil {
 		return nil, errors.New("engine: no fit")
@@ -120,7 +124,27 @@ func Predict(req Request) (*report.V2, error) {
 		if scale != 1 {
 			when = fmt.Sprintf("refusing to predict: at %g times the observed load", scale)
 		}
-		return nil, LimitError(contract.ModelUtilizationObserved, when, inf, base, maxRho)
+		le := LimitError(contract.ModelUtilizationObserved, when, inf, base, maxRho)
+		var re *report.RefusalError
+		if scale != 1 && errors.As(le, &re) {
+			// refused at the load point: the refusal says which, so that the gate reading it records the what-if
+			re.Numbers[report.LoadScaleNumber] = scale
+		}
+		return nil, le
+	}
+	// a what-if: the fit's own load is solved too, for the misfit check and the load level (fitLoad). Above the fit's
+	// load it is stable whenever the scaled base is; below it a fit the model has no steady state for at its own load
+	// is refused, as there is then neither a misfit check nor a level.
+	var fitBase *model.Result
+	if scale != 1 {
+		if fitBase, err = model.AnalyticWith(topo, inf.LamExtPerMs, nil, cfg); err != nil {
+			return nil, err
+		}
+		if !fitBase.Stable {
+			// refused at the fit's own load, as at load_scale 1: no load_scale number
+			return nil, LimitError(contract.ModelUtilizationObserved, "refusing to predict: at the observed load", inf,
+				fitBase, maxRho)
+		}
 	}
 	var items []change.Item
 	if req.Changes != nil {
@@ -146,6 +170,15 @@ func Predict(req Request) (*report.V2, error) {
 	}
 	rep := report.Build(req.Fit.Capture, inf, kept, base, point, changes)
 	rep.Model = ModelName(req.Plain)
+	var fitLoad []report.Row // the rows at the fit's load, in a what-if only
+	if fitBase != nil {
+		// the rows' model is at the load point, the traces at the fit's load: error_pct stays the fit's misfit check
+		// (gate rule 4), the model at the fit's load against the traces, which the load point does not change
+		fitLoad = report.Build(req.Fit.Capture, inf, kept, fitBase, nil, nil).Rows
+		for i := range rep.Rows {
+			rep.Rows[i].ErrorPct = fitLoad[i].ErrorPct
+		}
+	}
 	v := &report.V2{Report: *rep}
 	v.Version = report.VersionV2
 	v.FitDigest = req.Fit.Digest()
@@ -190,7 +223,7 @@ func Predict(req Request) (*report.V2, error) {
 		rows[i] = row
 	}
 	v.Rows = rows
-	v.Entries = entries(topo, inf, base, v.Rows, deltas, stable, plan.changed, req.Plain, v.ModelBand)
+	v.Entries = entries(topo, inf, base, v.Rows, fitLoad, deltas, stable, plan.changed, req.Plain, v.ModelBand)
 	v.Findings = findings(req.Fit.Findings, req.Findings)
 	v.Assumptions = assumptions(v.Findings)
 	return v, nil
@@ -448,9 +481,10 @@ func applied(items []change.Item) ([]report.Applied, []report.LabelRef, []string
 }
 
 // entries are the report's entry rows: the change range over the corners, the model band and the band widened by the
-// biased constructs on the path from the entry to a changed service.
-func entries(topo *model.Topology, inf *infer.Inferred, base *model.Result, rows []report.Row, deltas []*model.Delta,
-	stable bool, changed []int, plain bool, band report.ModelBand) []report.Entry {
+// biased constructs on the path from the entry to a changed service. In a what-if, fitLoad are the rows at the fit's
+// load, and each entry carries its mean there and the load level, its mean at the load point less that.
+func entries(topo *model.Topology, inf *infer.Inferred, base *model.Result, rows, fitLoad []report.Row,
+	deltas []*model.Delta, stable bool, changed []int, plain bool, band report.ModelBand) []report.Entry {
 	out := []report.Entry{}
 	stage := make([]bool, len(topo.Services)) // node i is row i (fit.Record.Check)
 	for i, st := range inf.Stats {
@@ -463,6 +497,10 @@ func entries(topo *model.Topology, inf *infer.Inferred, base *model.Result, rows
 			continue
 		}
 		e := report.Entry{Name: st.Name, BeforeMs: rows[i].ModelMs, Biased: []report.Biased{}}
+		if fitLoad != nil {
+			at, level := fitLoad[i].ModelMs, rows[i].ModelMs-fitLoad[i].ModelMs
+			e.BeforeAtFitLoadMs, e.LoadLevelMs = &at, &level
+		}
 		if len(deltas) > 0 && stable {
 			after := rangeOf(len(deltas), func(k int) float64 { return deltas[k].Patched.L[i] })
 			ch := rangeOf(len(deltas), func(k int) float64 { return deltas[k].Patched.L[i] - e.BeforeMs })

@@ -1,0 +1,571 @@
+#!/usr/bin/env python3
+# fake aws for spawn_demo.sh: STATEFUL, local only (no network, no credentials, never the real aws). Covers EC2, S3,
+# IAM (two roles), KMS, ECR, Secrets Manager and security-group rules.
+# The world lives in $FAKE_STATE/world.json; every call is appended to calls.log (argv as given: a secret passed as file:// shows
+# only its path), mutations also to muts.log. Wrong shorthand (e.g. Key= tags on KMS) fails like the real CLI (exit 254).
+# knobs: FAKE_QUOTA (64)  FAKE_USED (8: the orchestrator)  FAKE_NOCAP="type,type"  FAKE_NOFAMILY="m6a"  FAKE_NOPRICE=1  FAKE_BUCKET=0 (no bucket)
+#        FAKE_FAILRUN=n (n-th run-instances fails oddly)  FAKE_VCPULIMIT_AFTER=n  FAKE_PROFILE_LAG=n (first n run-instances: profile not ready)
+#        FAKE_KMS_LAG=n (first n KMS calls naming a new role: MalformedPolicyDocumentException)  FAKE_DENY="svc:op,..." (AccessDenied)
+import fcntl, json, os, re, shutil, sys, time
+
+ST = os.environ.get("FAKE_STATE") or sys.exit("fake aws: FAKE_STATE must name a directory")
+os.makedirs(ST + "/files", exist_ok=True)
+LOCK = open(ST + "/.lock", "w"); fcntl.flock(LOCK, fcntl.LOCK_EX)
+WP = ST + "/world.json"
+ACCOUNT = "123456789012"
+REGION = "ap-south-1"
+NOW = time.time()
+
+
+def iso(t):
+    return time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(t))
+
+
+W = json.load(open(WP)) if os.path.exists(WP) else dict(
+    n=0, runs=0, ip=10, kms_calls=0, instances=[], have={}, bucket=os.environ.get("FAKE_BUCKET", "1") == "1", buckets={}, objects=[],
+    sgs={}, roles={}, profiles={}, keys={}, aliases={}, repos={}, secrets={})
+argv = sys.argv[1:]
+with open(ST + "/calls.log", "a") as f:
+    f.write(" ".join(argv) + "\n")
+region = None
+if argv[:1] == ["--region"]:
+    region = argv[1]; argv = argv[2:]
+svc, op, rest = argv[0], argv[1], argv[2:]
+MUT = re.compile(r"^(create|put|import|attach|authorize|revoke|run|terminate|delete|detach|remove|add|modify|schedule|cancel|enable|restore|tag)")
+if MUT.match(op) and "--dry-run" not in rest:
+    with open(ST + "/muts.log", "a") as f:
+        f.write("%s %s %s\n" % (svc, op, " ".join(rest)))
+
+
+def save():
+    json.dump(W, open(WP + ".tmp", "w"), indent=1); os.replace(WP + ".tmp", WP)
+
+
+def done(o=None, text=None):
+    save()
+    if text is not None:
+        print(text)
+    elif o is not None:
+        print(json.dumps(o, indent=1))
+    sys.exit(0)
+
+
+def fail(code, msg, opname, rc=254):
+    save()
+    print("\nAn error occurred (%s) when calling the %s operation: %s" % (code, opname, msg), file=sys.stderr)
+    sys.exit(rc)
+
+
+def opname():
+    return "".join(p.capitalize() for p in op.split("-"))
+
+
+if svc != "pricing" and region != REGION:
+    fail("FakeRegion", "the fake serves only %s, got --region %s" % (REGION, region), opname(), 255)
+if "%s:%s" % (svc, op) in os.environ.get("FAKE_DENY", "").split(","):
+    fail("AccessDeniedException", "User is not authorized to perform %s:%s" % (svc, opname()), opname())
+
+
+def opt(name, default=None):
+    return rest[rest.index(name) + 1] if name in rest else default
+
+
+def optall(name):
+    out = []
+    for i, a in enumerate(rest):
+        if a == name:
+            j = i + 1
+            while j < len(rest) and not rest[j].startswith("--"):
+                out.append(rest[j]); j += 1
+    return out
+
+
+def fileval(v):   # file:// and fileb:// are read like the CLI does
+    if v and (v.startswith("file://") or v.startswith("fileb://")):
+        return open(v.split("://", 1)[1]).read()
+    return v
+
+
+def kv_tags(style):   # --tags in the service's shorthand: style "Key" (ec2/iam/ecr/secretsmanager) or "TagKey" (kms)
+    out = {}
+    for t in optall("--tags"):
+        m = re.fullmatch(r"%s=([^,]+),%s=(.+)" % (style, style.replace("Key", "Value")), t)
+        if not m:
+            fail("ValidationException", "bad --tags shorthand %r (this service wants %s=..,%s=..)" % (t, style, style.replace("Key", "Value")), opname())
+        out[m.group(1)] = m.group(2)
+    return out
+
+
+def filters():
+    fs = {}
+    for f in optall("--filters"):
+        m = re.match(r"Name=([^,]+),Values=(.*)", f)
+        if m:
+            fs[m.group(1)] = m.group(2).split(",")
+    return fs
+
+
+def tagmap(i):
+    return {t["Key"]: t["Value"] for t in i.get("Tags", [])}
+
+
+def matches(tm, fs, state=None):
+    for k, vs in fs.items():
+        if k == "instance-state-name" and state not in vs:
+            return False
+        if k.startswith("tag:") and tm.get(k[4:]) not in vs:
+            return False
+    return True
+
+
+def tick():   # pending -> running after one look; shutting-down -> terminated
+    for i in W["instances"]:
+        if i["State"]["Name"] == "pending":
+            i["State"]["Name"] = "running"
+        elif i["State"]["Name"] == "shutting-down":
+            i["State"]["Name"] = "terminated"
+
+
+def tagspec_tags():
+    out = {}
+    for s in optall("--tag-specifications"):
+        for k, v in re.findall(r"\{Key=([^,]+),Value=([^}]+)\}", s):
+            out[k] = v
+    return out
+
+
+def new_id(prefix):
+    W["n"] += 1
+    return "%s-%04d" % (prefix, W["n"])
+
+
+def vcpus(t):
+    return {"large": 2, "xlarge": 4, "2xlarge": 8, "4xlarge": 16}.get(t.split(".")[1], 4)
+
+
+def parse_perm(p):   # IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=x/32,Description=d}]  |  IpProtocol=-1,UserIdGroupPairs=[{GroupId=sg}]
+    m = re.match(r"IpProtocol=([^,]+)(?:,FromPort=(\d+),ToPort=(\d+))?,(IpRanges|UserIdGroupPairs)=\[\{(.*)\}\]$", p or "")
+    if not m:
+        fail("InvalidParameterValue", "cannot parse --ip-permissions %r" % p, opname())
+    inner = dict(kv.split("=", 1) for kv in m.group(5).split(","))
+    perm = {"IpProtocol": m.group(1)}
+    if m.group(2):
+        perm["FromPort"] = int(m.group(2)); perm["ToPort"] = int(m.group(3))
+    perm[m.group(4)] = [inner]
+    return perm
+
+
+def same_rule(a, b):
+    ka = (a["IpProtocol"], a.get("FromPort"), a.get("ToPort"), tuple(sorted((x.get("CidrIp"), x.get("GroupId")) for x in a.get("IpRanges", []) + a.get("UserIdGroupPairs", []))))
+    kb = (b["IpProtocol"], b.get("FromPort"), b.get("ToPort"), tuple(sorted((x.get("CidrIp"), x.get("GroupId")) for x in b.get("IpRanges", []) + b.get("UserIdGroupPairs", []))))
+    return ka == kb
+
+
+q = opt("--query")
+
+# ------------------------------------------------------------------------------------------------------------------------ general reads
+if svc == "sts" and op == "get-caller-identity":
+    done(text=ACCOUNT) if q == "Account" else done({"Account": ACCOUNT, "Arn": "arn:aws:iam::%s:user/owner" % ACCOUNT})
+if svc == "ssm" and op == "get-parameter":
+    done(text="ami-0f0a0e0123456789a")
+if svc == "service-quotas":
+    done(text=os.environ.get("FAKE_QUOTA", "64.0"))
+if svc == "pricing" and op == "get-products":
+    if region != "us-east-1":
+        fail("FakeRegion", "pricing answers in us-east-1", "GetProducts", 255)
+    if os.environ.get("FAKE_NOPRICE"):
+        fail("AccessDeniedException", "not allowed", "GetProducts")
+    t = [f for f in optall("--filters") if "Field=instanceType" in f][0].split("Value=")[1]
+    # ap-south-1 on-demand Linux list prices (AWS price list published 2026-10-23: m6a.xlarge 0.1111, m6a.2xlarge 0.2222; large = half)
+    p = {"large": "0.0556", "xlarge": "0.1111", "2xlarge": "0.2222"}[t.split(".")[1]]
+    doc = {"terms": {"OnDemand": {"X": {"priceDimensions": {"Y": {"pricePerUnit": {"USD": p}}}}}}}
+    done({"PriceList": [json.dumps(doc)]})
+
+# ------------------------------------------------------------------------------------------------------------------------------- ec2
+if svc == "ec2":
+    if op == "describe-instance-types":
+        t = opt("--instance-types")
+        done({"InstanceTypes": [{"InstanceType": t, "VCpuInfo": {"DefaultVCpus": vcpus(t)}}]})
+    if op == "describe-instance-type-offerings":
+        types = filters()["instance-type"]
+        offers = []
+        for az in ("ap-south-1a", "ap-south-1b", "ap-south-1c"):
+            for t in types:
+                if t.startswith("m7a") and az == "ap-south-1a":
+                    continue
+                if any(t.startswith(f + ".") for f in os.environ.get("FAKE_NOFAMILY", "").split(",") if f):
+                    continue
+                offers.append({"InstanceType": t, "Location": az, "LocationType": "availability-zone"})
+        done({"InstanceTypeOfferings": offers})
+    if op == "describe-availability-zones":
+        done({"AvailabilityZones": [{"ZoneName": z, "ZoneType": "availability-zone", "State": "available"} for z in ("ap-south-1b", "ap-south-1a", "ap-south-1c")]
+              + [{"ZoneName": "ap-south-1-del-1a", "ZoneType": "local-zone", "State": "available"}]})
+    if op == "describe-instances":
+        tick()
+        fs = filters()
+        res = [i for i in W["instances"] if matches(tagmap(i), fs, i["State"]["Name"])]
+        used = int(os.environ.get("FAKE_USED", "8"))
+        if not fs.get("tag:project") and used:
+            res = res + [{"InstanceId": "i-orchestrator", "InstanceType": "m7g.2xlarge", "State": {"Name": "running"}, "CpuOptions": {"CoreCount": used, "ThreadsPerCore": 1}, "Tags": []}]
+        done({"Reservations": [{"Instances": res}]})
+    if op == "create-vpc" and "--dry-run" in rest:
+        fail("DryRunOperation", "Request would have succeeded, but DryRun flag is set.", "CreateVpc")
+    kinds = {"vpcs": ("Vpcs", "VpcId", "vpc"), "internet-gateways": ("InternetGateways", "InternetGatewayId", "igw"), "subnets": ("Subnets", "SubnetId", "subnet")}
+    for kind, (key, idk, pre) in kinds.items():
+        if op == "describe-" + kind:
+            fs = filters()
+            ids = optall("--internet-gateway-ids")
+            items = [x for x in W["have"].get(kind, []) if matches(x["tags"], fs) and (not ids or x["id"] in ids)]
+            out = []
+            for x in items:
+                o = {idk: x["id"]}
+                if kind == "subnets":
+                    o["AvailabilityZone"] = x["az"]; o["CidrBlock"] = x["cidr"]; o["VpcId"] = x["vpc"]
+                if kind == "vpcs":
+                    o["CidrBlock"] = x["cidr"]
+                if kind == "internet-gateways":
+                    o["Attachments"] = [{"VpcId": x["attached"], "State": "available"}] if x.get("attached") else []
+                out.append(o)
+            done({key: out})
+        if op == "create-" + kind[:-1]:
+            x = dict(id=new_id(pre), tags=tagspec_tags(), az=opt("--availability-zone"), cidr=opt("--cidr-block"), vpc=opt("--vpc-id"), attached=None)
+            W["have"].setdefault(kind, []).append(x)
+            done(text=x["id"]) if q else done({key[:-1]: {idk: x["id"]}})
+    if op in ("attach-internet-gateway", "detach-internet-gateway"):
+        for x in W["have"].get("internet-gateways", []):
+            if x["id"] == opt("--internet-gateway-id"):
+                if op.startswith("attach"):
+                    if x.get("attached"):
+                        fail("Resource.AlreadyAssociated", "already attached", "AttachInternetGateway")
+                    x["attached"] = opt("--vpc-id")
+                else:
+                    if not x.get("attached"):
+                        fail("Gateway.NotAttached", "not attached", "DetachInternetGateway")
+                    x["attached"] = None
+                done()
+        fail("InvalidInternetGatewayID.NotFound", "no such gateway", opname())
+    if op == "describe-route-tables":
+        if "--route-table-ids" in rest:
+            routes = [{"DestinationCidrBlock": "10.82.0.0/16"}] + ([{"DestinationCidrBlock": "0.0.0.0/0"}] if W["have"].get("route") else [])
+            done({"RouteTables": [{"RouteTableId": "rtb-main", "Routes": routes}]})
+        vpc = filters().get("vpc-id", [None])[0]
+        done({"RouteTables": [{"RouteTableId": "rtb-main"}] if any(v["id"] == vpc for v in W["have"].get("vpcs", [])) else []})
+    if op == "create-route":
+        W["have"]["route"] = True; done()
+    if op == "create-security-group":
+        sid = new_id("sg")
+        W["sgs"][sid] = dict(name=opt("--group-name"), vpc=opt("--vpc-id"), tags=tagspec_tags(), perms=[])
+        done(text=sid) if q else done({"GroupId": sid})
+    if op == "describe-security-groups":
+        fs = filters(); ids = optall("--group-ids")
+        res = []
+        for sid, g in W["sgs"].items():
+            if ids and sid not in ids:
+                continue
+            if "group-name" in fs and g["name"] not in fs["group-name"]:
+                continue
+            if "vpc-id" in fs and g["vpc"] not in fs["vpc-id"]:
+                continue
+            if not matches(g["tags"], fs):
+                continue
+            res.append({"GroupId": sid, "GroupName": g["name"], "VpcId": g["vpc"], "IpPermissions": g["perms"]})
+        if ids and not res:
+            fail("InvalidGroup.NotFound", "no such group", "DescribeSecurityGroups")
+        done({"SecurityGroups": res})
+    if op in ("authorize-security-group-ingress", "revoke-security-group-ingress"):
+        g = W["sgs"].get(opt("--group-id")) or fail("InvalidGroup.NotFound", "no such group", opname())
+        perm = parse_perm(opt("--ip-permissions"))
+        hit = [p for p in g["perms"] if same_rule(p, perm)]
+        if op.startswith("authorize"):
+            if hit:
+                fail("InvalidPermission.Duplicate", "the specified rule already exists", "AuthorizeSecurityGroupIngress")
+            g["perms"].append(perm)
+        else:
+            if not hit:
+                fail("InvalidPermission.NotFound", "the specified rule does not exist", "RevokeSecurityGroupIngress")
+            g["perms"] = [p for p in g["perms"] if not same_rule(p, perm)]
+        done({"Return": True})
+    if op == "describe-key-pairs":
+        if opt("--key-names") in W["have"].get("keys", []):
+            done({"KeyPairs": [{"KeyName": opt("--key-names")}]})
+        fail("InvalidKeyPair.NotFound", "not found", "DescribeKeyPairs")
+    if op == "import-key-pair":
+        shutil.copy(opt("--public-key-material").split("://", 1)[1], ST + "/files/pubkey")
+        W["have"].setdefault("keys", []).append(opt("--key-name")); done()
+    if op == "run-instances":
+        W["runs"] += 1
+        t = opt("--instance-type")
+        tm = tagspec_tags()
+        shutil.copy(opt("--user-data").replace("file://", ""), ST + "/files/ud-%s.sh" % tm["Name"])
+        prof = (opt("--iam-instance-profile") or "").replace("Name=", "")
+        if W["runs"] <= int(os.environ.get("FAKE_PROFILE_LAG", "0")):
+            fail("InvalidParameterValue", "Value (%s) for parameter iamInstanceProfile.name is invalid. Invalid IAM Instance Profile name" % prof, "RunInstances")
+        if prof not in W["profiles"] or not W["profiles"][prof]["roles"]:
+            fail("InvalidParameterValue", "Value (%s) for parameter iamInstanceProfile.name is invalid. Invalid IAM Instance Profile name" % prof, "RunInstances")
+        if t in os.environ.get("FAKE_NOCAP", "").split(","):
+            fail("InsufficientInstanceCapacity", "We currently do not have sufficient %s capacity in the Availability Zone you requested." % t, "RunInstances")
+        if os.environ.get("FAKE_FAILRUN") and W["runs"] == int(os.environ["FAKE_FAILRUN"]):
+            fail("InvalidParameterCombination", "something odd", "RunInstances")
+        if os.environ.get("FAKE_VCPULIMIT_AFTER") and len(W["instances"]) >= int(os.environ["FAKE_VCPULIMIT_AFTER"]):
+            fail("VcpuLimitExceeded", "You have requested more vCPU capacity than your current vCPU limit", "RunInstances")
+        sg = opt("--security-group-ids")
+        if sg not in W["sgs"]:
+            fail("InvalidGroup.NotFound", "no such group %s" % sg, "RunInstances")
+        W["n"] += 1; W["ip"] += 1
+        sub = [x for x in W["have"].get("subnets", []) if x["id"] == opt("--subnet-id")]
+        if not sub:
+            fail("InvalidSubnetID.NotFound", "no such subnet", "RunInstances")
+        i = {"InstanceId": "i-%017x" % W["n"], "InstanceType": t, "State": {"Name": "pending"}, "LaunchTime": iso(NOW - 3600),
+             "PrivateIpAddress": "10.82.1.%d" % W["ip"], "PublicIpAddress": "198.51.100.%d" % W["ip"],
+             "Placement": {"AvailabilityZone": sub[0]["az"]}, "CpuOptions": {"CoreCount": vcpus(t) // 2, "ThreadsPerCore": 2},
+             "Tags": [{"Key": k, "Value": v} for k, v in tm.items()], "_profile": prof, "_image": opt("--image-id"), "_key": opt("--key-name"),
+             "_shutdown": opt("--instance-initiated-shutdown-behavior"), "_meta": opt("--metadata-options"), "_bdm": opt("--block-device-mappings"),
+             "_public": "--associate-public-ip-address" in rest, "_tagspecs": optall("--tag-specifications")}
+        W["instances"].append(i)
+        done(text=i["InstanceId"])
+    if op == "wait":
+        tick(); done()
+    if op == "modify-instance-attribute":
+        done()
+    if op == "terminate-instances":
+        ids = optall("--instance-ids")
+        for i in W["instances"]:
+            if i["InstanceId"] in ids:
+                i["State"]["Name"] = "shutting-down"
+        done()
+    if op == "delete-security-group":
+        sid = opt("--group-id")
+        if any(i["State"]["Name"] != "terminated" for i in W["instances"]):
+            fail("DependencyViolation", "resource %s has a dependent object" % sid, "DeleteSecurityGroup")
+        W["sgs"].pop(sid, None) is not None or fail("InvalidGroup.NotFound", "no such group", "DeleteSecurityGroup")
+        done()
+    if op == "delete-vpc":
+        vid = opt("--vpc-id")
+        if any(s["vpc"] == vid for s in W["have"].get("subnets", [])) or any(g.get("attached") == vid for g in W["have"].get("internet-gateways", [])) \
+                or any(g["vpc"] == vid for g in W["sgs"].values()):
+            fail("DependencyViolation", "the vpc %s has dependencies and cannot be deleted" % vid, "DeleteVpc")
+    if op in ("delete-subnet", "delete-internet-gateway", "delete-vpc", "delete-key-pair"):
+        kind = {"delete-subnet": "subnets", "delete-internet-gateway": "internet-gateways", "delete-vpc": "vpcs", "delete-key-pair": "keys"}[op]
+        idv = opt("--subnet-id") or opt("--internet-gateway-id") or opt("--vpc-id") or opt("--key-name")
+        if kind == "internet-gateways" and any(g["id"] == idv and g.get("attached") for g in W["have"].get(kind, [])):
+            fail("DependencyViolation", "the gateway is attached", "DeleteInternetGateway")
+        W["have"][kind] = [x for x in W["have"].get(kind, []) if (x if kind == "keys" else x["id"]) != idv]
+        done()
+
+# ------------------------------------------------------------------------------------------------------------------------------- s3api
+if svc == "s3api":
+    b = opt("--bucket")
+    research = "rhobound-research-%s-ap-south-1" % ACCOUNT
+    if op == "head-bucket":
+        if (W["bucket"] and b == research) or b in W["buckets"]:
+            done()
+        fail("404", "Not Found", "HeadBucket")
+    if op == "get-bucket-location":
+        done(text="ap-south-1")
+    if op == "list-objects-v2":
+        pre = opt("--prefix", "")
+        hits = [k for k in W["objects"] if k.startswith(pre)]
+        done({"Contents": [{"Key": k} for k in hits][:1]} if hits else {})
+    if op == "create-bucket":
+        if (W["bucket"] and b == research) or b in W["buckets"]:
+            fail("BucketAlreadyOwnedByYou", "already yours", "CreateBucket")
+        W["buckets"][b] = {"pab": None, "tags": None}; done({"Location": "/" + b})
+    if op in ("put-public-access-block", "put-bucket-tagging"):
+        if b not in W["buckets"]:
+            fail("FakeGuard", "a setting was written to a bucket this script did not create: %s" % b, opname(), 255)
+        W["buckets"][b]["pab" if op == "put-public-access-block" else "tags"] = opt("--public-access-block-configuration") or opt("--tagging")
+        done()
+
+# --------------------------------------------------------------------------------------------------------------------------------- iam
+if svc == "iam":
+    rn = opt("--role-name"); pn = opt("--instance-profile-name")
+    if op == "get-role":
+        if rn in W["roles"]:
+            done({"Role": {"RoleName": rn, "Arn": "arn:aws:iam::%s:role/%s" % (ACCOUNT, rn)}})
+        fail("NoSuchEntity", "The role with name %s cannot be found." % rn, "GetRole")
+    if op == "create-role":
+        if rn in W["roles"]:
+            fail("EntityAlreadyExists", "Role with name %s already exists." % rn, "CreateRole")
+        W["roles"][rn] = dict(trust=json.loads(fileval(opt("--assume-role-policy-document"))), tags=kv_tags("Key"), policies={})
+        done({"Role": {"RoleName": rn}})
+    if op == "put-role-policy":
+        if rn not in W["roles"]:
+            fail("NoSuchEntity", "role not found", "PutRolePolicy")
+        W["roles"][rn]["policies"][opt("--policy-name")] = json.loads(fileval(opt("--policy-document"))); done()
+    if op == "get-role-policy":
+        if rn in W["roles"] and opt("--policy-name") in W["roles"][rn]["policies"]:
+            done({"RoleName": rn, "PolicyName": opt("--policy-name"), "PolicyDocument": W["roles"][rn]["policies"][opt("--policy-name")]})
+        fail("NoSuchEntity", "policy not found", "GetRolePolicy")
+    if op == "get-instance-profile":
+        if pn not in W["profiles"]:
+            fail("NoSuchEntity", "Instance Profile %s cannot be found." % pn, "GetInstanceProfile")
+        if q:
+            done(text=str(len(W["profiles"][pn]["roles"])))
+        done({"InstanceProfile": {"InstanceProfileName": pn, "Roles": [{"RoleName": r} for r in W["profiles"][pn]["roles"]]}})
+    if op == "create-instance-profile":
+        if pn in W["profiles"]:
+            fail("EntityAlreadyExists", "exists", "CreateInstanceProfile")
+        W["profiles"][pn] = dict(roles=[], tags=kv_tags("Key")); done()
+    if op == "add-role-to-instance-profile":
+        if W["profiles"][pn]["roles"]:
+            fail("LimitExceeded", "Cannot exceed quota for InstanceSessionsPerInstanceProfile: 1", "AddRoleToInstanceProfile")
+        W["profiles"][pn]["roles"].append(rn); done()
+    if op == "remove-role-from-instance-profile":
+        W["profiles"][pn]["roles"] = [r for r in W["profiles"][pn]["roles"] if r != rn]; done()
+    if op == "delete-instance-profile":
+        if W["profiles"].get(pn, {}).get("roles"):
+            fail("DeleteConflict", "Cannot delete entity, must remove roles from instance profile first.", "DeleteInstanceProfile")
+        W["profiles"].pop(pn, None); done()
+    if op == "delete-role-policy":
+        if rn not in W["roles"] or opt("--policy-name") not in W["roles"][rn]["policies"]:
+            fail("NoSuchEntity", "policy not found", "DeleteRolePolicy")
+        W["roles"][rn]["policies"].pop(opt("--policy-name")); done()
+    if op == "delete-role":
+        if rn not in W["roles"]:
+            fail("NoSuchEntity", "role not found", "DeleteRole")
+        if W["roles"][rn]["policies"] or any(rn in p["roles"] for p in W["profiles"].values()):
+            fail("DeleteConflict", "Cannot delete entity, must delete policies / remove from profiles first.", "DeleteRole")
+        W["roles"].pop(rn); done()
+
+# --------------------------------------------------------------------------------------------------------------------------------- kms
+if svc == "kms":
+    def resolve(kid):
+        if kid.startswith("alias/"):
+            kid = W["aliases"].get(kid) or fail("NotFoundException", "Alias arn:aws:kms:%s:%s:%s is not found." % (REGION, ACCOUNT, kid), opname())
+        if kid not in W["keys"]:
+            fail("NotFoundException", "Key %s does not exist" % kid, opname())
+        return kid
+
+    def check_policy(doc):
+        pol = json.loads(doc)
+        W["kms_calls"] += 1
+        for s in pol["Statement"]:
+            for p in ([s["Principal"]["AWS"]] if isinstance(s["Principal"]["AWS"], str) else s["Principal"]["AWS"]):
+                m = re.fullmatch(r"arn:aws:iam::\d{12}:role/(.+)", p)
+                if m and (m.group(1) not in W["roles"] or W["kms_calls"] <= int(os.environ.get("FAKE_KMS_LAG", "0"))):
+                    fail("MalformedPolicyDocumentException", "Policy contains a statement with one or more invalid principals.", opname())
+        return pol
+
+    if op == "describe-key":
+        k = resolve(opt("--key-id")); x = W["keys"][k]
+        done({"KeyMetadata": {"KeyId": k, "Arn": "arn:aws:kms:%s:%s:key/%s" % (REGION, ACCOUNT, k), "KeyState": x["state"], "KeySpec": x["spec"], "KeyUsage": x["usage"]}})
+    if op == "create-key":
+        pol = check_policy(fileval(opt("--policy")))
+        tags = kv_tags("TagKey")
+        W["n"] += 1
+        k = "%08x-1111-4222-8333-%012x" % (W["n"], W["n"])
+        W["keys"][k] = dict(spec=opt("--key-spec"), usage=opt("--key-usage"), state="Enabled", policy=pol, tags=tags, desc=opt("--description"))
+        done(text=k) if q == "KeyMetadata.KeyId" else done({"KeyMetadata": {"KeyId": k}})
+    if op == "put-key-policy":
+        k = resolve(opt("--key-id")); W["keys"][k]["policy"] = check_policy(fileval(opt("--policy"))); done()
+    if op == "create-alias":
+        a = opt("--alias-name")
+        if a in W["aliases"]:
+            fail("AlreadyExistsException", "An alias with the name %s already exists" % a, "CreateAlias")
+        W["aliases"][a] = resolve(opt("--target-key-id")); done()
+    if op == "delete-alias":
+        a = opt("--alias-name")
+        W["aliases"].pop(a, None) or fail("NotFoundException", "alias not found", "DeleteAlias")
+        done()
+    if op == "schedule-key-deletion":
+        k = resolve(opt("--key-id")); d = int(opt("--pending-window-in-days", "30"))
+        if not 7 <= d <= 30:
+            fail("ValidationException", "PendingWindowInDays must be 7..30", "ScheduleKeyDeletion")
+        if W["keys"][k]["state"] == "PendingDeletion":
+            fail("KMSInvalidStateException", "already pending deletion", "ScheduleKeyDeletion")
+        W["keys"][k]["state"] = "PendingDeletion"; W["keys"][k]["window"] = d; done({"KeyId": k, "PendingWindowInDays": d})
+    if op == "cancel-key-deletion":
+        k = resolve(opt("--key-id")); W["keys"][k]["state"] = "Disabled"; done()
+    if op == "enable-key":
+        k = resolve(opt("--key-id")); W["keys"][k]["state"] = "Enabled"; done()
+
+# --------------------------------------------------------------------------------------------------------------------------------- ecr
+if svc == "ecr":
+    name = opt("--repository-name") or (optall("--repository-names") or [None])[0]
+
+    def repo_out(n):
+        r = W["repos"][n]
+        return {"repositoryName": n, "repositoryArn": "arn:aws:ecr:%s:%s:repository/%s" % (REGION, ACCOUNT, n),
+                "repositoryUri": "%s.dkr.ecr.%s.amazonaws.com/%s" % (ACCOUNT, REGION, n), "imageTagMutability": r["mut"],
+                "imageScanningConfiguration": {"scanOnPush": r["scan"]}, "encryptionConfiguration": {"encryptionType": r["enc"]}}
+
+    def need_repo():
+        if name not in W["repos"]:
+            fail("RepositoryNotFoundException", "The repository with name '%s' does not exist in the registry with id '%s'" % (name, ACCOUNT), opname())
+
+    if op == "describe-repositories":
+        need_repo(); done({"repositories": [repo_out(name)]})
+    if op == "list-tags-for-resource":
+        n = opt("--resource-arn").split(":repository/", 1)[1]
+        done({"tags": [{"Key": k, "Value": v} for k, v in W["repos"][n]["tags"].items()]})
+    if op == "list-images":
+        need_repo(); done({"imageIds": [{"imageDigest": d} for d in W["repos"][name]["images"]]})
+    if op == "create-repository":
+        if name in W["repos"]:
+            fail("RepositoryAlreadyExistsException", "exists", "CreateRepository")
+        mut = opt("--image-tag-mutability", "MUTABLE"); scan = opt("--image-scanning-configuration", "scanOnPush=false")
+        enc = opt("--encryption-configuration", "encryptionType=AES256")
+        if mut not in ("MUTABLE", "IMMUTABLE") or not re.fullmatch(r"scanOnPush=(true|false)", scan) or not re.fullmatch(r"encryptionType=(AES256|KMS)", enc):
+            fail("InvalidParameterException", "bad repository settings", "CreateRepository")
+        W["repos"][name] = dict(mut=mut, scan=scan.endswith("true"), enc=enc.split("=")[1], tags=kv_tags("Key"), images=[])
+        done({"repository": repo_out(name)})
+    if op == "put-image-tag-mutability":
+        need_repo(); W["repos"][name]["mut"] = opt("--image-tag-mutability"); done()
+    if op == "put-image-scanning-configuration":
+        need_repo(); W["repos"][name]["scan"] = opt("--image-scanning-configuration") == "scanOnPush=true"; done()
+    if op == "delete-repository":
+        need_repo()
+        if W["repos"][name]["images"] and "--force" not in rest:
+            fail("RepositoryNotEmptyException", "The repository cannot be deleted because it still contains images", "DeleteRepository")
+        W["repos"].pop(name); done()
+
+# ------------------------------------------------------------------------------------------------------------------------ secretsmanager
+if svc == "secretsmanager":
+    sid = opt("--secret-id") or opt("--name")
+
+    def need_secret():
+        if sid not in W["secrets"]:
+            fail("ResourceNotFoundException", "Secrets Manager can't find the specified secret.", opname())
+        return W["secrets"][sid]
+
+    def secret_value():
+        v = opt("--secret-string")
+        if v is None:
+            fail("InvalidParameterException", "no --secret-string", opname())
+        W.setdefault("secret_args", []).append(v)     # what the CLI was given (a file:// path when the script is careful)
+        return fileval(v)
+
+    def out(n):
+        s = W["secrets"][n]
+        o = {"ARN": "arn:aws:secretsmanager:%s:%s:secret:%s-AbCdEf" % (REGION, ACCOUNT, n), "Name": n, "Tags": [{"Key": k, "Value": v} for k, v in s["tags"].items()]}
+        if s.get("deleted"):
+            o["DeletedDate"] = s["deleted"]
+        return o
+
+    if op == "describe-secret":
+        need_secret(); done(out(sid))
+    if op == "list-secrets":
+        pre = [f for f in optall("--filters") if f.startswith("Key=name,")]
+        pre = pre[0].split("Values=", 1)[1] if pre else ""
+        done({"SecretList": [out(n) for n in sorted(W["secrets"]) if n.lower().startswith(pre.lower()) and not W["secrets"][n].get("deleted")]})
+    if op == "create-secret":
+        if sid in W["secrets"]:
+            fail("InvalidRequestException" if W["secrets"][sid].get("deleted") else "ResourceExistsException", "the secret %s already exists or is scheduled for deletion" % sid, "CreateSecret")
+        W["secrets"][sid] = dict(values=[secret_value()], tags=kv_tags("Key"), desc=opt("--description"), deleted=None)
+        done({"ARN": out(sid)["ARN"], "Name": sid})
+    if op == "put-secret-value":
+        s = need_secret()
+        if s.get("deleted"):
+            fail("InvalidRequestException", "You can't perform this operation on the secret because it was marked for deletion.", "PutSecretValue")
+        s["values"].append(secret_value()); done({"Name": sid})
+    if op == "restore-secret":
+        need_secret()["deleted"] = None; done({"Name": sid})
+    if op == "delete-secret":
+        s = need_secret(); d = int(opt("--recovery-window-in-days", "30"))
+        if not 7 <= d <= 30:
+            fail("InvalidParameterException", "RecoveryWindowInDays must be 7..30", "DeleteSecret")
+        s["deleted"] = iso(NOW); s["window"] = d; done({"Name": sid, "DeletionDate": iso(NOW + d * 86400)})
+
+print("fake aws: unhandled call: %s %s %s" % (svc, op, " ".join(rest)), file=sys.stderr)
+save()
+sys.exit(255)

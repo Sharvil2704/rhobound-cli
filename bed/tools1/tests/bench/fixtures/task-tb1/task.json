@@ -1,0 +1,18 @@
+{
+ "id": "tb1",
+ "category": "perf-opt",
+ "prompt": "hot.Rank (kshop/app/internal/hot/rank.go) is too slow for catalog: make it faster with identical results for every input. Standard library only; at most 64 MB more memory.",
+ "services": ["catalog"],
+ "writable": ["kshop/app/internal/hot/"],
+ "hidden": "hidden/",
+ "bench": ["BenchmarkRank"],
+ "refs": [
+  {"name": "good", "kind": "good", "patch": "refs/good.patch"},
+  {"name": "wrong", "kind": "wrong", "patch": "refs/wrong.patch"},
+  {"name": "latency-bad", "kind": "latency-bad", "patch": "refs/latency-bad.patch"},
+  {"name": "slow", "kind": "slow", "patch": "refs/slow.patch"}
+ ],
+ "k": 4,
+ "base": null,
+ "visits_per_entry": {"storefront": 1}
+}

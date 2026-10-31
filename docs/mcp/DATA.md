@@ -231,7 +231,16 @@ The existing `--kept-share` flag remains as a declaration, recorded in the repor
   `trace.async_tail_truncated` (doubt).
 - **No rollout, restart, autoscaling step or node change inside the window.** Detected [new] from two digests per
   service (`trace.mixed_images`), pods seen for only part of the window (`trace.pod_churn`, doubt), and, with a
-  cluster dump, start and end dumps that differ.
+  cluster dump, start and end dumps that differ. [built] With `check --window S,E`, `trace.mixed_images` counts the
+  digests of the resources that count in the window only (`internal/check/detect.go`, `inWindow`): a resource counts
+  when it holds a span of a trace whose entry starts in [S, E), which the cut keeps whole (`Cut`), a span that
+  overlaps [S, E) (it starts before E and ends at or after S, so a span that straddles S counts even when the cut
+  drops its trace), or no span (the cut keeps such a resource). The check of the window so refuses every two images
+  that the check of its cut would. An image whose spans all end before S, in traces that entered before S, read in
+  the margin before the window, does not count. Two digests on one resource (the same service, pod and image name,
+  which the reader merges) count whatever the window. `trace.image_digest_missing`, a check without `--window`, the
+  check of a cut and `fit` read every resource, as before; `--write-manifest` writes the capture's manifest only after
+  a check of the whole capture admits it.
 
 ### 3.10 Streams and long spans
 
@@ -859,7 +868,7 @@ svc=N` sets workers per pod for both the base and the change; **an unknown servi
 | `own_ms` | [new] | +ms per visit, holding a worker | today's `--patch svc=+Nms` |
 | `own_pct` | [new] | ±% of own time and glue | `--patch svc=+N%` |
 | `workers` | [new] | workers per pod | `--workers`, now refusing unknown names |
-| `load_scale` | [new] | multiply the external rate | the model's rate input; a what-if beyond the busiest window |
+| `load_scale` | [new] | multiply the external rate | the model's rate input; a what-if beyond the busiest window. As an item it scales the entry's rate after the change only, so the entry's change holds the load's effect and the change's together; `predict --fit F --load-scale S` solves before and after at S and reports the level apart (`load_level_ms`, `evaluated_at: what_if`) |
 | `glue_ms` | [later] | +ms after the first call out, holding no worker | a small engine change |
 | `cs2` | [later] | the variance of own time | a variance patch; until it exists a measured variance change is inconclusive |
 | `add_call`, `remove_call`, `set_p`, `scale_count`, `set_async`, `make_parallel` | [later] | structural changes in the topology's own vocabulary | a structural patch on the fit's topology. Each carries `callee_cost: assumed-mean-visit` (the callee's mean visit, which may differ for the endpoint the new call hits) and the label `assumed` for that cost, and raises `change.callee_cost_assumed` (doubt; it joins the policy's default `doubts_that_hold` in the release that ships these operations); in-loop or parallel added calls raise `model.batch_arrivals` |

@@ -976,7 +976,8 @@
       "status": "coded",
       "numbers": [
         "utilization",
-        "limit"
+        "limit",
+        "load_scale"
       ]
     },
     {

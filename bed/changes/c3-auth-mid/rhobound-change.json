@@ -1,0 +1,1 @@
+{"schema": "rbd.change-request/v1", "services": ["auth"], "summary": "auth verify_token: raise the PBKDF2 iterations of the token key derivation from 2500 to 20780 (stronger hardening; a larger CPU increase per request)."}

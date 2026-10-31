@@ -3,7 +3,10 @@
 package gate
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -379,6 +382,83 @@ func TestBusiestUnknownAndStaleFindings(t *testing.T) {
 	}
 }
 
+// A what-if's load point is in the record at every load scale (gate.json load_scale, a line of summary.md), so that a
+// verdict of a load below the fit's says which load it is of; above 1 rule 7 fires as well. A base refused at a what-if
+// load point carries it (the refusal's load_scale number), and rule 7 is evaluated on it as on a report's.
+func TestWhatIfLoadPoint(t *testing.T) {
+	p := policy(t, basePolicy)
+	record := func(res *Result) (*Record, string) {
+		t.Helper()
+		rec, err := NewRecord(res, p, nil, Digests{Report: "sha256:" + strings.Repeat("7", 64)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := rec.Canonical()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rec, string(b)
+	}
+	for _, c := range []struct {
+		scale  float64
+		effect string
+	}{{0.6, Pass}, {1.3, EffectNote}} {
+		r := chain(0.4, 0.5, change.LabelMeasuredAB)
+		r.Load.EvaluatedAt, r.Load.LoadScale = report.EvaluatedAtWhatIf, c.scale
+		res := eval(t, r, p)
+		rec, js := record(res)
+		if r7 := rowOf(t, res, "7"); res.EvaluatedAt != report.EvaluatedAtWhatIf || res.LoadScale != c.scale ||
+			rec.LoadScale == nil || *rec.LoadScale != c.scale || r7.Effect != c.effect ||
+			!strings.Contains(js, `"evaluated_at":"what_if",`) || !strings.Contains(js, fmt.Sprintf(`"load_scale":%v,`, c.scale)) {
+			t.Errorf("what-if at %v: %s, rule 7 %+v", c.scale, js, r7)
+		}
+		if sum := Summary(rec, res); !strings.Contains(sum, fmt.Sprintf("Evaluated at a what-if load: %v times the fit's "+
+			"external rate", c.scale)) {
+			t.Errorf("what-if at %v: summary.md\n%s", c.scale, sum)
+		}
+	}
+	// at the fit's window, the record and summary.md are as before: no load_scale
+	res := eval(t, chain(0.4, 0.5, change.LabelMeasuredAB), p)
+	rec, js := record(res)
+	if res.LoadScale != 0 || rec.LoadScale != nil || strings.Contains(js, "load_scale") ||
+		strings.Contains(Summary(rec, res), "what-if") {
+		t.Errorf("fit window: %s", js)
+	}
+
+	// a base refused at 3.5 times the fit's load: rule 2, at what_if 3.5, and rule 7 fires on it
+	ref := &report.Refusal{Code: contract.ModelUtilizationObserved, Reason: "x", Fix: "y",
+		Numbers: map[string]float64{"utilization": 0.902, "limit": 0.85, report.LoadScaleNumber: 3.5}}
+	res = Evaluate(Input{Refusal: ref, Policy: p, Now: now})
+	rec, js = record(res)
+	r2, r7 := rowOf(t, res, "2"), rowOf(t, res, "7")
+	if res.Verdict != Inconclusive || r2.Rule != RuleBaseOutOfScope || res.EvaluatedAt != report.EvaluatedAtWhatIf ||
+		rec.LoadScale == nil || *rec.LoadScale != 3.5 || !res.Extrapolated || !r7.Evaluated ||
+		r7.Rule != RuleExtrapolatedLoad || r7.Effect != EffectNote || r7.Value == nil || *r7.Value != 3.5 {
+		t.Errorf("refused at 3.5: %s", js)
+	}
+	if w := r7.Why(); w != "extrapolated_load: a what-if at 3.5 times the fit's load; the verdict is advisory" {
+		t.Errorf("rule 7 why: %q", w)
+	}
+	if sum := Summary(rec, res); !strings.Contains(sum, "Evaluated at a what-if load: 3.5 times the fit's external rate "+
+		"(`predict --load-scale`).\n") {
+		t.Errorf("refused at 3.5: summary.md\n%s", sum)
+	}
+	// a refusal without a load point, or with a number that is not one, is of the fit's window, as before
+	for _, n := range []map[string]float64{nil, {report.LoadScaleNumber: 1}, {report.LoadScaleNumber: -2},
+		{report.LoadScaleNumber: math.Inf(1)}, {report.LoadScaleNumber: math.NaN()}} {
+		ref.Numbers = n
+		res = Evaluate(Input{Refusal: ref, Policy: p, Now: now})
+		if res.EvaluatedAt != report.EvaluatedAtFitWindow || res.LoadScale != 0 || rowOf(t, res, "7").Evaluated ||
+			rowOf(t, res, "2").Rule != RuleBaseOutOfScope {
+			t.Errorf("refused with numbers %v: evaluated at %s, rule 7 %+v", n, res.EvaluatedAt, rowOf(t, res, "7"))
+		}
+	}
+	// rule 7's why without a value is as before
+	if w := (Rule{Rule: RuleExtrapolatedLoad}).Why(); w != "extrapolated_load: the verdict is advisory" {
+		t.Errorf("rule 7 why without a value: %q", w)
+	}
+}
+
 func TestRefusedPredictionEvaluatesNothingElse(t *testing.T) {
 	res := Evaluate(Input{Refusal: &report.Refusal{Code: contract.TraceNotOTLP, Reason: "r", Fix: "f"},
 		Policy: policy(t, basePolicy), Now: now})
@@ -641,5 +721,335 @@ func TestNamesAsTheViews(t *testing.T) {
 	if row.Rule != RuleDoubtHolds+":"+contract.TraceErrorsPresent || row.Entry != "" || strings.Contains(row.Why(), " at ") ||
 		res.Name(east) == "z" || res.Name(west) == "z" {
 		t.Errorf("rule 5 on a doubt about one of two functions shown alike: %+v, %q", row, row.Why())
+	}
+}
+
+// audit is report v2 of the demo2 audit's entry (run 407af2a6): storefront at 63.252 ms before the change (a 5%
+// threshold of 3.1626 ms), a change of [lo, hi] ms, measured, so that rule 10 decides. With biased, the path holds the
+// second call of a sequential caller and a non-slowest branch, and the band is widened as the engine widens it
+// (internal/engine/biased.go: 0.34 of the change's larger end and 0.017 of the mean before toward zero, 0.38 of the
+// larger end away from it).
+func audit(lo, hi float64, biased bool) *report.V2 {
+	r := chain(1, 1.1, change.LabelMeasuredAB)
+	r.Rows[0].Name, r.Rows[0].ModelMs = "storefront", 63.252
+	en := entry("storefront", 63.252, lo, hi)
+	if biased {
+		mag := math.Max(math.Abs(lo), math.Abs(hi))
+		low, high := 0.34*mag+0.017*63.252, 0.38*mag
+		if lo+hi < 0 { // a decrease: toward zero is the high side
+			low, high = high, low
+		}
+		en.BandMs.Lo, en.BandMs.Hi = en.BandMs.Lo-low, en.BandMs.Hi+high
+		en.Biased = []report.Biased{
+			{Construct: report.ConstructSecondSequentialCall, Service: "b", Direction: report.DirectionBoth},
+			{Construct: report.ConstructNonSlowestBranch, Service: "b", Direction: report.DirectionOver}}
+	}
+	r.Entries = []report.Entry{en}
+	return r
+}
+
+// TestBlockBand: the policy's block_band "model" (SPEC3 F1, "R-asym"). The demo2 audit's change of +9.3213..+10.5183
+// ms at storefront (63.252 ms) had the band 3.1504..16.2297 ms against 3.1626 ms: inconclusive by 0.012 ms under the
+// default, a block at the model-only low end of about 7.80 ms under "model". The pass test is the same under both, so
+// a null change and an improvement come out exactly as under the default, and "model" can only turn an inconclusive
+// entry into a block.
+func TestBlockBand(t *testing.T) {
+	full := policy(t, basePolicy)
+	model := policy(t, `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`)
+	near := func(x, want, tol float64) bool { return math.Abs(x-want) <= tol }
+
+	// the audit: inconclusive under the default, a block under "model"
+	r := audit(9.3213, 10.5183, true)
+	res := eval(t, r, full)
+	r10, en := rowOf(t, res, "10"), res.Entries[0]
+	if res.Verdict != Inconclusive || r10.Rule != RuleRangeStraddles || r10.Variant != "" || en.BlockBandMs != nil ||
+		!near(en.BandMs.Lo, 3.1504, 5e-5) || !near(en.BandMs.Hi, 16.2297, 5e-5) || !near(en.ThresholdMs, 3.1626, 1e-9) ||
+		!(en.BandMs.Lo <= en.ThresholdMs) {
+		t.Fatalf("the audit under the default: %s, row %+v, entry %+v %+v", res.Verdict, r10, en, *en.BandMs)
+	}
+	fullBand := *en.BandMs
+	res = eval(t, r, model)
+	r10, en = rowOf(t, res, "10"), res.Entries[0]
+	if res.Verdict != Block || res.ExitCode != ExitBlock || r10.Rule != RuleMeanChange || r10.Effect != Block ||
+		r10.Variant != VariantBlockBandModel || r10.Value == nil || !near(*r10.Value, 7.80, 0.005) ||
+		en.Effect != Block || *en.BandMs != fullBand || en.BlockBandMs == nil ||
+		!near(en.BlockBandMs.Lo, 9.3213-0.163*9.3213, 1e-9) || !near(en.BlockBandMs.Hi, 10.5183+0.163*10.5183, 1e-9) {
+		t.Fatalf("the audit under model: %s, row %+v, entry %+v", res.Verdict, r10, en)
+	}
+	if w := r10.Why(); w != "mean_change: model-only band low end 7.802 ms above threshold 3.163 ms at storefront "+
+		"(block_band model)" {
+		t.Errorf("why %q", w)
+	}
+	// the same block with lower-bound workers on the moved service is change_upper_bound, at the same low end
+	lb := audit(9.3213, 10.5183, true)
+	lb.Rows[1].WorkersLower = true
+	res = eval(t, lb, model)
+	if r10 = rowOf(t, res, "10"); res.Verdict != Inconclusive || r10.Rule != RuleChangeUpperBound ||
+		r10.Variant != VariantBlockBandModel || r10.Value == nil || !near(*r10.Value, 7.80, 0.005) ||
+		res.Entries[0].Effect != Inconclusive || !strings.HasSuffix(r10.Why(), "with lower-bound workers (block_band model)") {
+		t.Errorf("lower-bound workers under model: %s, row %+v, %q", res.Verdict, r10, r10.Why())
+	}
+	// a straddle under "model" names the model-only low end
+	res = eval(t, audit(2.5, 4, true), model)
+	if r10 = rowOf(t, res, "10"); res.Verdict != Inconclusive || r10.Rule != RuleRangeStraddles ||
+		r10.Variant != VariantBlockBandModel || !strings.HasSuffix(r10.Why(), ", model-only band low end at or under it "+
+		"(block_band model)") {
+		t.Errorf("a straddle under model: %s, row %+v, %q", res.Verdict, r10, r10.Why())
+	}
+
+	// a corner that saturates the entry's path: rules 8 and 8b decide, rule 10 reads no band, so its row is the
+	// default's (no value, the default's words) but for the variant, and its words name no model-only band
+	sat := audit(9.3213, 10.5183, true)
+	sat.Entries[0].ChangeMs, sat.Entries[0].BandMs = nil, nil
+	a, b := rowOf(t, eval(t, sat, full), "10"), rowOf(t, eval(t, sat, model), "10")
+	if a.Rule != RuleMeanChange || a.Effect != Block || a.Value != nil || b.Variant != VariantBlockBandModel ||
+		b.Why() != a.Why() || strings.Contains(b.Why(), "model-only") || strings.Contains(b.Why(), "block_band") {
+		t.Errorf("a saturating corner: row %+v %q under the default, %+v %q under model", a, a.Why(), b, b.Why())
+	}
+	if b.Variant = ""; !reflect.DeepEqual(a, b) {
+		t.Errorf("a saturating corner: row %+v under the default, %+v under model", a, b)
+	}
+
+	// a null change and an improvement, with and without the constructs and under three thresholds: the same verdict,
+	// row (but its variant) and entries as under the default
+	for _, c := range []struct {
+		lo, hi    float64
+		biased    bool
+		threshold string
+		verdict   string
+	}{
+		{-0.60, 0.53, false, `"max_entry_mean_change_pct": 5`, Pass},
+		{-0.60, 0.53, true, `"max_entry_mean_change_pct": 5`, Inconclusive}, // the constructs' 1.28 ms above
+		{-0.60, 0.53, true, `"max_entry_mean_change_ms": 4`, Pass},
+		{-0.60, 0.53, false, `"max_entry_mean_change_pct": 3`, Inconclusive},
+		{-10.5183, -9.3213, true, `"max_entry_mean_change_pct": 5`, Pass},
+		{-10.5183, -9.3213, false, `"max_entry_mean_change_ms": 4`, Pass},
+	} {
+		pf := policy(t, `{"schema": "rhobound.policy/v1", `+c.threshold+`}`)
+		pm := policy(t, `{"schema": "rhobound.policy/v1", "block_band": "model", `+c.threshold+`}`)
+		a, b := eval(t, audit(c.lo, c.hi, c.biased), pf), eval(t, audit(c.lo, c.hi, c.biased), pm)
+		ra, rb := rowOf(t, a, "10"), rowOf(t, b, "10")
+		if rb.Variant != VariantBlockBandModel {
+			t.Errorf("%v..%v %s: variant %q", c.lo, c.hi, c.threshold, rb.Variant)
+		}
+		rb.Variant = ""
+		if a.Verdict != c.verdict || b.Verdict != a.Verdict || b.ExitCode != a.ExitCode || !reflect.DeepEqual(ra, rb) ||
+			a.Entries[0].Effect != b.Entries[0].Effect || *a.Entries[0].BandMs != *b.Entries[0].BandMs ||
+			strings.Join(a.DecideWith, "|") != strings.Join(b.DecideWith, "|") {
+			t.Errorf("%v..%v biased=%v %s: %s (row %v) under the default, %s (row %v) under model, want %s", c.lo, c.hi,
+				c.biased, c.threshold, a.Verdict, ra, b.Verdict, rb, c.verdict)
+		}
+	}
+
+	// over a grid of changes, "model" keeps every pass and every block, and turns an inconclusive entry into a block
+	// or leaves it
+	for lo := -12.0; lo <= 12; lo += 0.75 {
+		for _, w := range []float64{0, 0.5, 1.2, 3} {
+			for _, biased := range []bool{false, true} {
+				a, b := eval(t, audit(lo, lo+w, biased), full).Entries[0], eval(t, audit(lo, lo+w, biased), model).Entries[0]
+				if a.Effect != b.Effect && !(a.Effect == Inconclusive && b.Effect == Block) {
+					t.Errorf("%v..%v biased=%v: %s under the default, %s under model", lo, lo+w, biased, a.Effect, b.Effect)
+				}
+				if *a.BandMs != *b.BandMs || b.BlockBandMs == nil || b.BlockBandMs.Lo < a.BandMs.Lo ||
+					(!biased && *b.BlockBandMs != *a.BandMs) {
+					t.Errorf("%v..%v biased=%v: band %+v, block band %+v", lo, lo+w, biased, *a.BandMs, b.BlockBandMs)
+				}
+			}
+		}
+	}
+
+	// a refused prediction: rule 10 is not evaluated and names no variant
+	res = Evaluate(Input{Refusal: &report.Refusal{Code: contract.TraceBadJSON, Reason: "r", Fix: "f"}, Policy: model, Now: now})
+	if r10 = rowOf(t, res, "10"); r10.Evaluated || r10.Variant != "" || res.Entries != nil {
+		t.Errorf("a refusal under model: %+v", r10)
+	}
+}
+
+// TestPolicyBlockBand: block_band is validated like the other keys, and it enters the effective policy and its
+// digest only when it is "model": absent and "full" are the default, the same effective policy and digest. "model"
+// reads the model band, so it is refused without one (model_band null); a band of zero fractions is the policy's own
+// choice, as under enforce.
+func TestPolicyBlockBand(t *testing.T) {
+	digest := func(p *Policy) (string, string) {
+		t.Helper()
+		d, err := p.Digest()
+		b, err2 := contract.Canonical(p)
+		if err != nil || err2 != nil {
+			t.Fatal(err, err2)
+		}
+		return d, string(b)
+	}
+	d0, js0 := digest(policy(t, basePolicy))
+	pf := policy(t, `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "full"}`)
+	df, jsf := digest(pf)
+	pm := policy(t, `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`)
+	dm, jsm := digest(pm)
+	if strings.Contains(js0, "block_band") || jsf != js0 || df != d0 || pf.BlockBand != "" || len(pf.Unknown) != 0 {
+		t.Errorf("absent or full: %s %s\n%s\n%s", d0, df, js0, jsf)
+	}
+	if pm.BlockBand != BlockBandModel || dm == d0 || !strings.Contains(jsm, `"block_band":"model"`) ||
+		strings.Replace(jsm, `"block_band":"model",`, "", 1) != js0 {
+		t.Errorf("model: %s\n%s", dm, jsm)
+	}
+	for _, v := range []string{`"Full"`, `"none"`, `"asym"`, `""`, `1`, `null`, `true`, `["model"]`} {
+		_, fs, err := ParsePolicy([]byte(`{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": `+v+`}`), false)
+		pe, _ := err.(*Error)
+		if pe == nil || len(fs) != 1 || fs[0].Code != contract.PolicyBadValue || fs[0].Subject != "block_band" ||
+			pe.Msg != "policy: block_band: must be full or model" || pe.Refusal().Fix == "" {
+			t.Errorf("block_band %s: %v %v", v, err, fs)
+		}
+	}
+	for _, c := range []struct{ js, code, msg string }{
+		{`"block_band": "model", "model_band": null`, contract.PolicyBadValue,
+			"policy: block_band: model reads the model band; model_band cannot be null"},
+		{`"block_band": "model", "model_band": null, "enforce": true`, contract.PolicyModelBandRemoved,
+			"policy: model_band cannot be removed when enforce is true"},
+	} {
+		_, fs, err := ParsePolicy([]byte(`{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, `+c.js+`}`), false)
+		pe, _ := err.(*Error)
+		if pe == nil || len(fs) != 1 || fs[0].Code != c.code || pe.Msg != c.msg || pe.Refusal().Fix == "" ||
+			(c.code == contract.PolicyBadValue && fs[0].Subject != "block_band") {
+			t.Errorf("%s: %v %v", c.js, err, fs)
+		}
+	}
+	for _, js := range []string{`"block_band": "full", "model_band": null`,
+		`"block_band": "model", "model_band": {"change_frac": 0, "latency_frac": 0, "source": "none"}`} {
+		if _, _, err := ParsePolicy([]byte(`{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, `+js+`}`), false); err != nil {
+			t.Errorf("%s: %v", js, err)
+		}
+	}
+}
+
+// TestBlockBandOverflow: under "model" gate.json lists each entry's numbers, and a band or a threshold past float64
+// (a change's high end at 1.6e308 ms; max_entry_mean_change_pct 1e308 of a 200 ms entry) leaves it encodable: as a
+// rule's value, a range with a non-finite end is absent and such a threshold null. A data problem is a verdict, never
+// a tool error (exit 2); the verdict is the rule's, under the default and under "model".
+func TestBlockBandOverflow(t *testing.T) {
+	full := policy(t, basePolicy)
+	model := policy(t, `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`)
+	record := func(r *report.V2, p *Policy) (*Result, []byte, string) {
+		t.Helper()
+		res := eval(t, r, p, func(in *Input) { in.Preview = false })
+		rec, err := NewRecord(res, p, nil, Digests{Report: "sha256:" + strings.Repeat("7", 64)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := rec.Canonical()
+		if err != nil {
+			t.Fatalf("gate.json: %v", err)
+		}
+		return res, b, Summary(rec, res)
+	}
+	entries := func(b []byte) []map[string]any {
+		t.Helper()
+		var back struct {
+			Entries []map[string]any `json:"entries"`
+		}
+		if err := json.Unmarshal(b, &back); err != nil {
+			t.Fatal(err)
+		}
+		return back.Entries
+	}
+
+	// the audit with the change's high end at 1.6e308 ms: the full band's high end is +Inf, the model-only band's too;
+	// the model-only low end is still 7.80 ms
+	r := audit(9.3213, 10.5183, true)
+	r.Entries[0].ChangeMs.Hi, r.Entries[0].BandMs.Hi = 1.6e308, 1.7e308
+	res, b, _ := record(r, full)
+	if res.Verdict != Inconclusive || !math.IsInf(res.Entries[0].BandMs.Hi, 1) || strings.Contains(string(b), `"entries"`) {
+		t.Errorf("an overflowing band under the default: %s\n%s", res.Verdict, b)
+	}
+	res, b, md := record(r, model)
+	r10, es := rowOf(t, res, "10"), entries(b)
+	if len(es) != 1 {
+		t.Fatalf("an overflowing band under model: entries\n%s", b)
+	}
+	th, _ := es[0]["threshold_ms"].(float64)
+	if res.Verdict != Block || r10.Rule != RuleMeanChange || r10.Value == nil || math.Abs(*r10.Value-7.8019) > 1e-4 ||
+		!strings.HasPrefix(r10.Why(), "mean_change: model-only band low end 7.802 ms") || es[0]["change_ms"] == nil ||
+		es[0]["band_ms"] != nil || es[0]["block_band_ms"] != nil || math.Abs(th-3.1626) > 1e-9 ||
+		es[0]["before_ms"] != 63.252 || es[0]["effect"] != Block || !strings.Contains(md, "| storefront | 63.252 |") {
+		t.Errorf("an overflowing band under model: %s, row %+v\n%s", res.Verdict, r10, b)
+	}
+	// a straddle whose band's high end overflows has no value under either; its words are the default's
+	st := audit(2.5, 4, true)
+	st.Entries[0].ChangeMs.Hi, st.Entries[0].BandMs.Hi = 1.6e308, 1.7e308
+	ra, _, _ := record(st, full)
+	rb, b, _ := record(st, model)
+	if a, m := rowOf(t, ra, "10"), rowOf(t, rb, "10"); rb.Verdict != Inconclusive || m.Rule != RuleRangeStraddles ||
+		m.Value != nil || m.Variant != VariantBlockBandModel || m.Why() != a.Why() || len(entries(b)) != 1 {
+		t.Errorf("an overflowing straddle: %+v %q under the default, %+v %q under model", a, a.Why(), m, m.Why())
+	}
+
+	// a threshold past float64: 1e308 % of 200 ms is +Inf ms; the entry passes, its threshold null as rule 10's
+	huge := `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 1e308`
+	r = chain(1, 1.1, change.LabelMeasuredAB)
+	r.Rows[0].ModelMs = 200
+	r.Entries = []report.Entry{entry("a", 200, 1, 1.1)}
+	for _, js := range []string{huge + `}`, huge + `, "block_band": "model"}`} {
+		p := policy(t, js)
+		res, b, _ := record(r, p)
+		es := entries(b)
+		if r10 := rowOf(t, res, "10"); res.Verdict != Pass || r10.Threshold != nil ||
+			!math.IsInf(res.Entries[0].ThresholdMs, 1) || (p.BlockBand == BlockBandModel) != (len(es) == 1) ||
+			(len(es) == 1 && (es[0]["threshold_ms"] != nil || es[0]["band_ms"] == nil || es[0]["block_band_ms"] == nil)) {
+			t.Errorf("%s: %s, row %+v\n%s", js, res.Verdict, r10, b)
+		}
+	}
+}
+
+// TestBlockBandRecord: under "model" gate.json lists each entry with both bands and rule 10's row names the variant,
+// and summary.md has the block band's column; under the default neither is there.
+func TestBlockBandRecord(t *testing.T) {
+	model := policy(t, `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`)
+	r := audit(9.3213, 10.5183, true)
+	res := eval(t, r, model, func(in *Input) { in.Preview = false })
+	rec, err := NewRecord(res, model, nil, Digests{Report: "sha256:" + strings.Repeat("7", 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := rec.Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back struct {
+		Rules   []Rule        `json:"rules"`
+		Entries []RecordEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(b, &back); err != nil || len(back.Entries) != 1 || back.Rules[10].Number != "10" ||
+		back.Rules[10].Variant != VariantBlockBandModel {
+		t.Fatalf("gate.json: %v\n%s", err, b)
+	}
+	e := back.Entries[0]
+	if e.Entry != "storefront" || e.BeforeMs == nil || *e.BeforeMs != 63.252 || e.Effect != Block || e.ChangeMs == nil ||
+		e.BandMs == nil || e.BlockBandMs == nil || e.ThresholdMs == nil || !(e.BandMs.Hi > *e.ThresholdMs) ||
+		!(e.BlockBandMs.Lo > *e.ThresholdMs) || !(e.BandMs.Lo <= *e.ThresholdMs) || *e.BandMs != *res.Entries[0].BandMs ||
+		*e.BlockBandMs != *res.Entries[0].BlockBandMs {
+		t.Errorf("gate.json entry %+v\n%s", e, b)
+	}
+	md := Summary(rec, res)
+	for _, want := range []string{"| 10 | mean_change (block_band_model) | block | storefront | 7.802 | 3.163 |\n",
+		"| entry | before | change | band | block band | threshold | outcome |\n|---|---|---|---|---|---|---|\n",
+		"| storefront | 63.252 | 9.321 .. 10.518 | 3.15 .. 16.23 | 7.802 .. 12.233 | 3.163 | block |\n"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("summary.md lacks %q:\n%s", want, md)
+		}
+	}
+
+	// under the default: no entries in gate.json, no variant, the table as before
+	full := policy(t, basePolicy)
+	res = eval(t, r, full, func(in *Input) { in.Preview = false })
+	rec, err = NewRecord(res, full, nil, Digests{Report: "sha256:" + strings.Repeat("7", 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err = rec.Canonical(); err != nil || strings.Contains(string(b), `"entries"`) ||
+		strings.Contains(string(b), "variant") || strings.Contains(string(b), "block_band") {
+		t.Errorf("gate.json under the default: %v\n%s", err, b)
+	}
+	md = Summary(rec, res)
+	if strings.Contains(md, "block band") || strings.Contains(md, "block_band") || !strings.Contains(md, "| entry | before | change | band | threshold | outcome |\n"+
+		"|---|---|---|---|---|---|\n| storefront | 63.252 | 9.321 .. 10.518 | 3.15 .. 16.23 | 3.163 | inconclusive |\n") {
+		t.Errorf("summary.md under the default:\n%s", md)
 	}
 }

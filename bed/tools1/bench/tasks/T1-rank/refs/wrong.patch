@@ -1,0 +1,154 @@
+--- a/kshop/app/internal/hot/rank.go
++++ b/kshop/app/internal/hot/rank.go
+@@ -3,6 +3,7 @@
+ import (
+ 	"math"
+ 	"sort"
++	"sync"
+ 	"unicode"
+ 	"unicode/utf8"
+ )
+@@ -20,6 +21,51 @@
+ 	b    = 0.75
+ )
+ 
++// posting: a document (index into the catalog) holding a term, and the term's count there.
++type posting struct {
++	doc int32
++	tf  int32
++}
++
++// The inverted index is built once from the catalog (read-only afterwards, so concurrent Ranks share it).
++var (
++	idxOnce  sync.Once
++	idxPost  map[string][]posting
++	idxDL    []int
++	idxAvgDL float64
++	idxIDs   []int
++)
++
++func buildIndex() {
++	docs := Catalog()
++	idxPost = make(map[string][]posting)
++	idxDL = make([]int, len(docs))
++	idxIDs = make([]int, len(docs))
++	total := 0
++	counts := make(map[string]int32)
++	for i, d := range docs {
++		toks := tokenize(Fold(d.Title))
++		idxDL[i], idxIDs[i] = len(toks), d.ID
++		total += len(toks)
++		clear(counts)
++		for _, t := range toks {
++			counts[t]++
++		}
++		for t, c := range counts { // postings stay in catalog order: documents are visited in order
++			idxPost[t] = append(idxPost[t], posting{int32(i), c})
++		}
++	}
++	idxAvgDL = float64(total) / float64(len(docs))
++}
++
++// per-call scratch: a dense score array and the documents it touched (reset before it goes back)
++type scratch struct {
++	score   []float64
++	touched []int32
++}
++
++var scratchPool = sync.Pool{New: func() any { return &scratch{score: make([]float64, len(idxDL))} }}
++
+ // Rank returns the TopK documents that best match q, by a BM25 score, highest first; equal scores in ascending ID
+ // order; documents with score 0 (no query term) are never returned, so there may be fewer than TopK hits (none for a
+ // query without terms).
+@@ -33,65 +79,42 @@
+ //
+ // The sum runs over the terms in query order.
+ //
+-// This is the straightforward version: every call folds and tokenizes every title, scores every document and sorts
+-// the whole list.
++// The catalog is indexed once (term -> postings); a call walks only its terms' postings and keeps the best TopK.
+ func Rank(q string) []Hit {
+ 	terms := queryTerms(q)
+ 	if len(terms) == 0 {
+ 		return nil
+ 	}
+-	docs := Catalog()
+-	n, nt := len(docs), len(terms)
+-	tf := make([]int, n*nt)
+-	dl := make([]int, n)
+-	df := make([]int, nt)
+-	total := 0
+-	for i, d := range docs {
+-		toks := tokenize(Fold(d.Title))
+-		dl[i] = len(toks)
+-		total += len(toks)
+-		for j, t := range terms {
+-			c := 0
+-			for _, w := range toks {
+-				if w == t {
+-					c++
+-				}
++	idxOnce.Do(buildIndex)
++	n := len(idxDL)
++	sc := scratchPool.Get().(*scratch)
++	defer scratchPool.Put(sc)
++	for _, t := range terms {
++		ps := idxPost[t]
++		if len(ps) == 0 {
++			continue
++		}
++		df := len(ps)
++		idf := math.Log(1 + (float64(n-df)+0.5)/(float64(df)+0.5))
++		for _, p := range ps {
++			if sc.score[p.doc] == 0 {
++				sc.touched = append(sc.touched, p.doc)
+ 			}
+-			tf[i*nt+j] = c
+-			if c > 0 {
+-				df[j]++
+-			}
++			f := float64(p.tf)
++			sc.score[p.doc] += idf * f * (k1 + 1) / (f + k1*(1-b+b*float64(idxDL[p.doc])/idxAvgDL))
+ 		}
+ 	}
+-	avgdl := float64(total) / float64(n)
+-	idf := make([]float64, nt)
+-	for j := range terms {
+-		idf[j] = math.Log(1 + (float64(n-df[j])+0.5)/(float64(df[j])+0.5))
++	top := make([]Hit, 0, len(sc.touched))
++	for _, d := range sc.touched {
++		top = append(top, Hit{ID: idxIDs[d], Score: sc.score[d]})
++		sc.score[d] = 0
+ 	}
+-	hits := make([]Hit, n)
+-	for i, d := range docs {
+-		s := 0.0
+-		for j := range terms {
+-			if c := tf[i*nt+j]; c > 0 {
+-				f := float64(c)
+-				s += idf[j] * f * (k1 + 1) / (f + k1*(1-b+b*float64(dl[i])/avgdl))
+-			}
+-		}
+-		hits[i] = Hit{ID: d.ID, Score: s}
++	sort.Slice(top, func(x, y int) bool { return top[x].Score > top[y].Score })
++	if len(top) > TopK {
++		top = top[:TopK]
+ 	}
+-	sort.Slice(hits, func(x, y int) bool {
+-		if hits[x].Score != hits[y].Score {
+-			return hits[x].Score > hits[y].Score
+-		}
+-		return hits[x].ID < hits[y].ID
+-	})
+-	out := make([]Hit, 0, TopK)
+-	for _, h := range hits[:min(TopK, n)] {
+-		if h.Score > 0 {
+-			out = append(out, h)
+-		}
+-	}
+-	return out
++	sc.touched = sc.touched[:0]
++	return top
+ }
+ 
+ func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }

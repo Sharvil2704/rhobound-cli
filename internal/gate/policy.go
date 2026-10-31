@@ -43,6 +43,11 @@ type Policy struct {
 	MaxPreviewAttempts int         `json:"max_preview_attempts"`
 	Enforce            bool        `json:"enforce"`
 	Exceptions         []Exception `json:"exceptions"`
+	// BlockBand is the band rule 10's block test reads (ARCHITECTURE.md 6.4): "" for the full band, the default
+	// ("full" in the file reads as ""), or BlockBandModel, which needs a model band (ModelBand not nil). It is the one
+	// key of the effective policy omitted at its default, so a policy without it keeps the effective policy and the
+	// digest it had before the key existed.
+	BlockBand string `json:"block_band,omitempty"`
 
 	// Unknown are the keys of the file this version does not know, sorted: ignored, and listed in gate.json.
 	Unknown []string `json:"-"`
@@ -81,6 +86,12 @@ const (
 	DefaultMisfitMaxErrorPct       = 10
 	DefaultMaxFitAgeH              = 24
 	DefaultMaxPreviewAttempts      = 5
+)
+
+// The values of the policy key block_band: the full band (the default) or the model band alone on the block side.
+const (
+	BlockBandFull  = "full"
+	BlockBandModel = "model"
 )
 
 // The values of Policy.EvaluateAt.
@@ -134,9 +145,9 @@ func (e *Error) Refusal() report.Refusal {
 // is always refused (policy.inline_refused): policies are named in configuration, never written by the caller.
 //
 // The findings are the refusals: policy.bad_value for a known key with a bad value (an unregistered code in
-// doubts_that_hold included), policy.no_threshold when neither threshold is set, policy.model_band_removed for a
-// policy that enforces without the model band. The error is the first of them, an *Error. Unknown keys are not an
-// error: they are listed in Policy.Unknown.
+// doubts_that_hold included, and block_band "model" without a model band), policy.no_threshold when neither threshold
+// is set, policy.model_band_removed for a policy that enforces without the model band. The error is the first of
+// them, an *Error. Unknown keys are not an error: they are listed in Policy.Unknown.
 func ParsePolicy(b []byte, fromAgent bool) (*Policy, []contract.Finding, error) {
 	if fromAgent {
 		f := contract.NewFinding(contract.PolicyInlineRefused)
@@ -212,6 +223,13 @@ func ParsePolicy(b []byte, fromAgent bool) (*Policy, []contract.Finding, error) 
 			} else {
 				p.ModelBand = &Band{ChangeFrac: *mb.ChangeFrac, LatencyFrac: *mb.LatencyFrac, Source: *mb.Source}
 			}
+		case "block_band":
+			var s string
+			if json.Unmarshal(v, &s) != nil || (s != BlockBandFull && s != BlockBandModel) {
+				bad(key, "must be "+BlockBandFull+" or "+BlockBandModel)
+			} else if s == BlockBandModel {
+				p.BlockBand = s
+			}
 		case "evaluate_at":
 			var s string
 			if json.Unmarshal(v, &s) != nil || (s != EvaluateBusiest && s != EvaluateFitWindow) {
@@ -278,6 +296,10 @@ func ParsePolicy(b []byte, fromAgent bool) (*Policy, []contract.Finding, error) 
 	if len(errs) == 0 && p.Enforce && p.ModelBand == nil {
 		f := contract.NewFinding(contract.PolicyModelBandRemoved)
 		errs = append(errs, &Error{Finding: f, Msg: "policy: model_band cannot be removed when enforce is true"})
+	}
+	if len(errs) == 0 && p.BlockBand == BlockBandModel && p.ModelBand == nil {
+		// the block test would read the bare change range, with no model error at all
+		bad("block_band", "model reads the model band; model_band cannot be null")
 	}
 	if len(errs) > 0 {
 		fs := make([]contract.Finding, len(errs))

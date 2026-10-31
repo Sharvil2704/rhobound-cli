@@ -1,0 +1,65 @@
+{
+ "schema": "rbd.agent-change/v1",
+ "provider": "meta",
+ "model": "muse-spark-1.3",
+ "served_by": [
+  "muse-spark-1.3"
+ ],
+ "effort": "high",
+ "base_sha": "4daf7cdde1a4a81240bf827655bd58a800245d80",
+ "service": "catalog",
+ "title": "Fold ignores accents and width; cache titles, alloc-free promo compare",
+ "summary": "Fold now maps full-width U+FF01..FF5E to ASCII, strips accents in U+00C0..U+017F via a 192-byte table (kept letters lower-cased), drops U+0300..U+036F, and lower-cases as strings.ToLower with an ASCII fast path. Rank reuses a once-built folded-title token cache (same BM25 scores/order, skips 8000 folds per query); Quote compares promos with an alloc-free fold-aware matcher (ASCII fast path incl. ete25/noel50/vip20). Safe for concurrent use (sync.Once, no globals mutated); bench: Rank 6.10ms->1.78ms (-71%), Quote 106ns->101ns, allocs 16010->9 and 0->0, so own time per visit drops on both services.",
+ "files": [
+  {
+   "path": "kshop/app/internal/hot/price.go",
+   "sha256": "831d2a8f2d49ced77f19efbe9543a181dcb6ca908ea521beef571d5f691734d0",
+   "bytes": 6140,
+   "new": false
+  },
+  {
+   "path": "kshop/app/internal/hot/rank.go",
+   "sha256": "1b57af8c55e9b13657bae029192bf5db52dc0a1c2d22ac734da7ab36c28cb514",
+   "bytes": 3952,
+   "new": false
+  },
+  {
+   "path": "kshop/app/internal/hot/text.go",
+   "sha256": "5d8ab51741d9608935b7b68d1a3a38400e17d9355468777348ac43440ab76ffd",
+   "bytes": 3317,
+   "new": false
+  }
+ ],
+ "turns": 12,
+ "usage": {
+  "input": 199604,
+  "output": 134520,
+  "cached": 174555,
+  "reasoning": 126818
+ },
+ "mcp_calls": [],
+ "task": "T3-fold",
+ "approach": "prefold-cache-compare: Table fold plus once-built folded-title cache for Rank and alloc-free width/accent-aware promo compare; same scores/order, Rank skips 8000 folds, Quote no alloc.",
+ "sandbox": [
+  {
+   "turn": 10,
+   "tool": "run_tests",
+   "ok": true,
+   "passed": 7,
+   "failed": 0,
+   "delta_ms": {}
+  },
+  {
+   "turn": 11,
+   "tool": "run_bench",
+   "ok": true,
+   "passed": 0,
+   "failed": 0,
+   "delta_ms": {
+    "BenchmarkRank": -4.325068,
+    "BenchmarkQuote": -5e-06
+   }
+  }
+ ],
+ "revised": false
+}

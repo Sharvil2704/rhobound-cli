@@ -474,6 +474,7 @@ The first version was checked for parity, performance and safety; every finding,
 | serde_json in the binary for an unused fallback | info | fixed: optional (rbfast-math's `oracle` feature); four crates fewer in the binary |
 | Go's non-determinism (map order, amd64 float conversion) | info | documented (Parity) |
 | SAFETY comments on NEON, a u32 truncation in fifo.rs | info | added; the visit index is checked to fit in u32 |
+| `model`/`sweep` on a topology written by the newer Go (a `hop` on a call) read the file and dropped the field: numbers differed from rhobound's with no sign of it (found dry-testing the AWS captures) | minor | fixed: a call with its own `hop` is refused by name ("a call with its own hop is not supported by rbfast"); `crates/math/tests/call_hop.rs` |
 | Clippy pedantic | info | default lints clean with `-D warnings`; pedantic not adopted |
 
 ## Scripts

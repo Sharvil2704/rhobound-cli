@@ -1,0 +1,47 @@
+{
+ "schema": "rbd.plant-change/v1",
+ "name": "c31-plant",
+ "service": "payments",
+ "function": "RiskCheck",
+ "file": "kshop/app/internal/work/lib_v11.go",
+ "code_path": "risk_check",
+ "helper": "kshop/app/internal/work/plant.go",
+ "lib": "kshop_v11 (production's LIB)",
+ "mechanism": "sleep",
+ "knob": {
+  "hold_ms": 1.5,
+  "how": "time.Sleep, wall time: the worker is held, no CPU"
+ },
+ "placement": "top of RiskCheck, before its first statement: every call (before any cache lookup or early return)",
+ "intended_effect": "+1.5 ms of wall time per call of RiskCheck, the worker held (no CPU)",
+ "intended_own_ms_per_call": 1.5,
+ "dose": {
+  "registered": "ab_own_time_delta_ms",
+  "value_ms": null,
+  "rule": "The registered dose of this plant is the A/B-measured own-time delta of payments (the gate's A/B of this image against production), never the knob: the knob is the intended per-call cost only. value_ms is filled from the A/B record."
+ },
+ "never_merge": true,
+ "never_merge_how": "make_prs.sh: a draft PR labelled rbd-plant; orch/automerge.sh refuses every rbd-plant PR and every head branch rbd/cN-plant, whatever the verdict",
+ "base_sha": "18f4960fd8b2a7b5f5497e42ba571f3852573b3c",
+ "main_file_sha256": "186715197d4da1ac862fc796e29b322039402b8adaaeb4b18f4340cc3247fa3d",
+ "patch_sha256": "dc688fec2e1f3798b1f0ef98b9929cc67a99fd48649b77b496e53cb2f978b00c",
+ "files": [
+  "kshop/app/internal/work/lib_v11.go",
+  "kshop/app/internal/work/plant.go"
+ ],
+ "compiled": true,
+ "compile": {
+  "check": "orch/gocheck.sh",
+  "go": "go version go1.27.2 linux/arm64",
+  "build_tags": [
+   "",
+   "kshop_v11"
+  ],
+  "vet_tags": "kshop_v11",
+  "goos_goarch": "linux/amd64"
+ },
+ "title": "PLANT do-not-merge: payments RiskCheck +1.5 ms sleep",
+ "summary": "Planted change c31-plant (SPEC3 F9; never merged: orch/automerge.sh refuses rbd-plant PRs): payments RiskCheck: +1.5 ms sleep (mechanism sleep; placement: top of RiskCheck, before its first statement: every call (before any cache lookup or early return)). Intended effect: +1.5 ms of wall time per call of RiskCheck, the worker held (no CPU). The registered dose is the A/B-measured own-time delta of payments, not this knob.",
+ "generated_at": "2026-10-31T12:13:36Z",
+ "generator": "changes/plant.py c31-plant --service payments --mechanism sleep --dose 1.5"
+}

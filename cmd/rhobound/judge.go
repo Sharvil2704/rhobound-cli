@@ -35,7 +35,9 @@ const (
 )
 
 // twinPacket builds the judge packet of a report v2 under a policy: the preview's evaluation of the report at now,
-// and, with the fit it was predicted from, the budgets and the leverage of the services it changes.
+// and, with the fit it was predicted from, the budgets and the leverage of the services it changes. Those are at the
+// report's load point: for a what-if (`predict --fit F --load-scale S`) at S times the fit's rate, as its before_ms,
+// change_ms and thresholds are, so that the packet does not quote budgets of the fit's load beside a change at S.
 func twinPacket(r *report.V2, p *gate.Policy, policyName string, fitPath string, now time.Time) ([]byte, *gate.Result, error) {
 	var safe map[string]float64
 	var items []budget.Item
@@ -49,6 +51,9 @@ func twinPacket(r *report.V2, p *gate.Policy, policyName string, fitPath string,
 			return nil, nil, fmt.Errorf("the prediction was made from fit %s, not %s", r.FitDigest, digest)
 		}
 		in := &previewInputs{fit: rec, digest: digest, report: r}
+		if r.Load.EvaluatedAt == report.EvaluatedAtWhatIf {
+			in.loadScale = r.Load.LoadScale
+		}
 		seen := map[string]bool{}
 		for _, it := range r.Items {
 			if it.Op != change.OpLoadScale && !seen[it.Service] {
@@ -59,7 +64,7 @@ func twinPacket(r *report.V2, p *gate.Policy, policyName string, fitPath string,
 		if safe, items, err = in.safeBudgets(p); err != nil {
 			return nil, nil, err
 		}
-		b := &budget.Budgeter{Fit: rec, FitDigest: digest, Policy: p}
+		b := &budget.Budgeter{Fit: rec, FitDigest: digest, Policy: p, LoadScale: in.loadScale}
 		if lev, err = b.Leverage(in.services); err != nil {
 			return nil, nil, err
 		}

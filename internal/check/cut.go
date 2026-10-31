@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -83,8 +84,9 @@ var copiedInputs = []string{"peer-map.json", "request-count.json"}
 // float times written as integers; the cluster dump, the peer map and the request count copied as they are; and the
 // final manifest, outDir/manifest.json, which it returns. d is the capture as Run returned it.
 func Cut(m *contract.Manifest, d *otlp.Data, start, end time.Time, outDir string) (*contract.Manifest, error) {
-	if !end.After(start) {
-		return nil, errors.New("--window: the end must be after the start")
+	ws, we, err := WindowNanos(start, end)
+	if err != nil {
+		return nil, err
 	}
 	if ents, err := os.ReadDir(outDir); err == nil && len(ents) > 0 {
 		return nil, fmt.Errorf("--out %s is not empty", outDir)
@@ -94,7 +96,6 @@ func Cut(m *contract.Manifest, d *otlp.Data, start, end time.Time, outDir string
 	if err := os.MkdirAll(filepath.Join(outDir, "traces"), 0o755); err != nil {
 		return nil, err
 	}
-	ws, we := uint64(start.UnixNano()), uint64(end.UnixNano())
 	entry := traceEntries(d)
 	in := func(trace [2]uint64, ok bool, own uint64) bool {
 		if ok {
@@ -150,6 +151,20 @@ func Cut(m *contract.Manifest, d *otlp.Data, start, end time.Time, outDir string
 		return nil, err
 	}
 	return out, nil
+}
+
+// WindowNanos returns the window [start, end) in Unix nanoseconds, as span times are. The error says why it is not a
+// window: it needs a start and an end after it, both within the times a span can hold, from the Unix epoch to the
+// last instant whose Unix nanoseconds fit an int64 (2262-04-11T23:47:16.854775807Z); a window outside them would wrap.
+func WindowNanos(start, end time.Time) (uint64, uint64, error) {
+	if start.IsZero() || !end.After(start) {
+		return 0, 0, errors.New("--window: a window needs a start and an end after it")
+	}
+	if lo, hi := time.Unix(0, 0), time.Unix(0, math.MaxInt64); start.Before(lo) || end.After(hi) {
+		return 0, 0, fmt.Errorf("--window: a window lies within %s and %s, the times a span can hold",
+			lo.UTC().Format(time.RFC3339Nano), hi.UTC().Format(time.RFC3339Nano))
+	}
+	return uint64(start.UnixNano()), uint64(end.UnixNano()), nil
 }
 
 // traceEntries is the start of each trace's entry: its earliest entry SERVER span (one whose caller is not in the

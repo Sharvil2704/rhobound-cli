@@ -218,11 +218,17 @@ func (a *analysis) readStats() {
 	}
 }
 
-// resources: service names, environments, images, function platforms and pod identities.
+// resources: service names, environments, images, function platforms and pod identities. trace.image_digest_missing
+// reads the digests of every resource; trace.mixed_images, with a window (Options.WindowStart), those of the resources
+// that count in it only (inWindow).
 func (a *analysis) resources() {
 	d := a.d
 	envs := map[string]bool{}
 	digests := map[string]map[string]bool{}
+	windowed, mixed := a.inWindow(), digests
+	if windowed != nil {
+		mixed = map[string]map[string]bool{}
+	}
 	hasServer := map[string]bool{}
 	for i := range d.Spans {
 		if d.Spans[i].Kind == otlp.KindServer {
@@ -247,11 +253,17 @@ func (a *analysis) resources() {
 		if digests[r.Service] == nil {
 			digests[r.Service] = map[string]bool{}
 		}
+		if mixed[r.Service] == nil {
+			mixed[r.Service] = map[string]bool{}
+		}
 		for _, ref := range ri.RepoDigests {
-			if dg := cluster.ImageDigest(ref); dg != "" {
-				digests[r.Service][dg] = true
-			} else {
-				digests[r.Service][ref] = true
+			dg := cluster.ImageDigest(ref)
+			if dg == "" {
+				dg = ref
+			}
+			digests[r.Service][dg] = true
+			if windowed == nil || windowed[i] {
+				mixed[r.Service][dg] = true
 			}
 		}
 		if ri.FaaS && hasServer[r.Service] {
@@ -280,12 +292,12 @@ func (a *analysis) resources() {
 			WithExamples(sortedKeys(envs)...))
 	}
 	for _, s := range sortedKeys(hasServer) {
-		switch n := len(digests[s]); {
-		case n == 0:
+		switch n := len(mixed[s]); {
+		case len(digests[s]) == 0:
 			a.add(contract.NewFinding(contract.TraceImageDigestMissing).WithSubject(s))
 		case n > 1:
 			a.add(contract.NewFinding(contract.TraceMixedImages).WithSubject(s).WithNumber("digests", float64(n)).
-				WithExamples(sortedKeys(digests[s])...))
+				WithExamples(sortedKeys(mixed[s])...))
 		}
 	}
 	for _, s := range sortedKeys(faas) {
@@ -304,6 +316,40 @@ func (a *analysis) resources() {
 		a.add(contract.NewFinding(contract.TraceInstancePerProcess).WithSubject(s).WithNumber("hosts", float64(perSvc[s][0])).
 			WithNumber("instances_on_one_host", float64(perSvc[s][1])))
 	}
+}
+
+// inWindow marks, by index, the resources that count in the window of Options; nil without a window. A resource counts
+// when it holds a span of a trace whose entry starts in [WindowStart, WindowEnd), which the cut keeps whole (Cut,
+// traceEntries), or a span that overlaps the window (it starts before the window ends and ends at or after it starts),
+// or no span at all (the cut keeps a resource with no span, and nothing places it in time). The check of the window so
+// counts every digest that the check of its cut will, and more: a span that straddles the window's start counts
+// although the cut drops its trace when that trace entered before the window; the check errs toward refusing. Spans
+// the reader skips are not seen (trace.spans_skipped). A resource is a service, pod and image name as the reader
+// merges them (otlp.Resource), so two digests reported on one such resource both count whatever the window: a rollout
+// gives its new pods new names.
+func (a *analysis) inWindow() []bool {
+	if a.opt.WindowStart.IsZero() && a.opt.WindowEnd.IsZero() {
+		return nil
+	}
+	ws, we, _ := WindowNanos(a.opt.WindowStart, a.opt.WindowEnd) // Run refuses any other window
+	entry := traceEntries(a.d)
+	in := make([]bool, len(a.d.Resources))
+	held := make([]bool, len(a.d.Resources))
+	for i := range a.d.Spans {
+		s := &a.d.Spans[i]
+		held[s.Res] = true
+		e, known := entry[s.Trace]
+		if !known {
+			e = s.Start
+		}
+		if e >= ws && e < we || s.Start < we && s.End >= ws {
+			in[s.Res] = true
+		}
+	}
+	for i := range in {
+		in[i] = in[i] || !held[i]
+	}
+	return in
 }
 
 // podsByHost keys the pods of resources with no platform identity by their host (--pod-identity host).

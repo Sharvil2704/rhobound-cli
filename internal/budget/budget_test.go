@@ -277,6 +277,45 @@ func TestBudgetLoadScale(t *testing.T) {
 	}
 }
 
+// A budgeter at a load point (Budgeter.LoadScale, a what-if's judge packet) solves every request there: the baseline,
+// the leverage and the own_ms searches at it, and a load_scale factor on top of it. At 0 or 1 the requests are the
+// fit's window, unchanged.
+func TestBudgeterLoadPoint(t *testing.T) {
+	s := chainSynth()
+	var seen []float64
+	solve := func(req engine.Request) (*report.V2, error) {
+		seen = append(seen, req.LoadScale)
+		return s.solve(req)
+	}
+	for _, c := range []struct {
+		scale float64
+		want  []float64 // base, leverage, own_ms at 0.5, load_scale at 2
+	}{{0, []float64{0, 0, 0, 2}}, {1, []float64{0, 0, 0, 2}}, {1.3, []float64{1.3, 1.3, 1.3, 2.6}},
+		{0.7, []float64{0.7, 0.7, 0.7, 1.4}}} {
+		seen = nil
+		b := &Budgeter{Solve: solve, LoadScale: c.scale}
+		base, err := b.Base()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := b.Leverage([]string{"b"}); err != nil {
+			t.Fatal(err)
+		}
+		for _, it := range []Item{{Service: "b", Kind: KindOwnMs}, {Kind: KindLoadScale}} {
+			x := 0.5
+			if it.Kind == KindLoadScale {
+				x = 2
+			}
+			if _, err := b.at(&it, base, x); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if fmt.Sprint(seen) != fmt.Sprint(c.want) {
+			t.Errorf("load point %v: the requests were at %v, want %v", c.scale, seen, c.want)
+		}
+	}
+}
+
 func TestBudgetRefusals(t *testing.T) {
 	b := &Budgeter{Solve: chainSynth().solve}
 	var ge *gate.Error

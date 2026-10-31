@@ -4,3 +4,7 @@
 /dist/
 .DS_Store
 /results/
+/bed/build/
+/bed/state/
+/.tmp-bed/
+/bed/tools1/abdrive/bin

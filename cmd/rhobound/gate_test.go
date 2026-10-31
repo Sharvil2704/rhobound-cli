@@ -302,3 +302,118 @@ func TestExplainWithoutAFit(t *testing.T) {
 		}
 	}
 }
+
+// TestGateBlockBand: the policy's block_band "model" through the commands (SPEC3 F1). The demo2 audit's prediction
+// (entry a at 63.252 ms, a change of +9.3213..+10.5183 ms behind the second call of a sequential caller and a
+// non-slowest branch, so the band is 3.1504..16.2297 ms against 3.1626 ms) is inconclusive without the key and with
+// "full", which record one policy digest, and a block under "model", which records another: gate.json lists the entry
+// with both bands and rule 10's variant, summary.md the block band, stdout and the judge packet the model-only low
+// end. A bad value is a tool error. The preview of the loop fit under "model" carries the block band and the variant,
+// with the default's verdict (its path has no biased construct).
+func TestGateBlockBand(t *testing.T) {
+	dir := t.TempDir()
+	r := twinReport(t, 9.3213, 10.5183, change.LabelMeasuredAB)
+	r.Rows[0].ModelMs = 63.252
+	en := &r.Entries[0]
+	en.BeforeMs, en.ModelBandMs = 63.252, r.ModelBand.Ms(10.5183, 63.252)
+	en.BandMs = &change.Range{Lo: 9.3213 - r.ModelBand.Ms(9.3213, 63.252) - (0.34*10.5183 + 0.017*63.252),
+		Hi: 10.5183 + r.ModelBand.Ms(10.5183, 63.252) + 0.38*10.5183}
+	en.Biased = []report.Biased{
+		{Construct: report.ConstructSecondSequentialCall, Service: "b", Direction: report.DirectionBoth},
+		{Construct: report.ConstructNonSlowestBranch, Service: "b", Direction: report.DirectionOver}}
+	pred := reportFile(t, dir, r)
+	type record struct {
+		Digests gate.Digests       `json:"digests"`
+		Rules   []gate.Rule        `json:"rules"`
+		Entries []gate.RecordEntry `json:"entries"`
+	}
+	run := func(name, pol string, exit int) (record, string, string) {
+		t.Helper()
+		p := writeTemp(t, dir, name+".json", []byte(pol))
+		out := filepath.Join(dir, name)
+		stdout, errw, code := exec(t, "gate", pred, "--policy", p, "--now", gateNow, "--out", out)
+		if code != exit {
+			t.Fatalf("%s: exit %d, want %d: %s %s", name, code, exit, stdout, errw)
+		}
+		js, _ := os.ReadFile(filepath.Join(out, gate.RecordFile))
+		md, _ := os.ReadFile(filepath.Join(out, gate.SummaryFile))
+		var rec record
+		if err := json.Unmarshal(js, &rec); err != nil {
+			t.Fatal(err)
+		}
+		return rec, stdout, string(md)
+	}
+	absent, out0, md0 := run("absent", gatePolicy, gate.ExitInconclusive)
+	full, _, _ := run("full", `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "full"}`,
+		gate.ExitInconclusive)
+	model, out1, md1 := run("model", `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`,
+		gate.ExitBlock)
+	if absent.Digests.Policy != full.Digests.Policy || model.Digests.Policy == absent.Digests.Policy ||
+		absent.Entries != nil || absent.Rules[10].Variant != "" || absent.Rules[10].Rule != gate.RuleRangeStraddles ||
+		strings.Contains(md0, "block band") || !strings.Contains(out0, "rule 10: range_straddles: band high end 16.23 ms "+
+		"above threshold 3.163 ms at a, low end at or under it\n") {
+		t.Errorf("without the key and with full: %+v %+v\n%s\n%s", absent, full, out0, md0)
+	}
+	if r10 := model.Rules[10]; r10.Rule != gate.RuleMeanChange || r10.Effect != gate.Block ||
+		r10.Variant != gate.VariantBlockBandModel || r10.Value == nil || math.Abs(*r10.Value-7.8019) > 1e-4 ||
+		len(model.Entries) != 1 || model.Entries[0].BlockBandMs == nil || model.Entries[0].BandMs == nil ||
+		math.Abs(model.Entries[0].BandMs.Lo-3.1504) > 1e-4 || math.Abs(model.Entries[0].BlockBandMs.Lo-7.8019) > 1e-4 ||
+		model.Entries[0].Effect != gate.Block {
+		t.Errorf("under model: %+v", model)
+	}
+	if !strings.Contains(out1, "rule 10: mean_change: model-only band low end 7.802 ms above threshold 3.163 ms at a "+
+		"(block_band model)\n") || !strings.Contains(md1, "| a | 63.252 | 9.321 .. 10.518 | 3.15 .. 16.23 | 7.802 .. 12.233 "+
+		"| 3.163 | block |\n") {
+		t.Errorf("under model: stdout %s\nsummary.md\n%s", out1, md1)
+	}
+	pk, _, code := exec(t, "judge-packet", pred, "--policy", filepath.Join(dir, "model.json"), "--now", gateNow, "--json")
+	if code != 0 || !strings.Contains(pk, `"preview":"block"`) ||
+		!strings.Contains(pk, "mean_change: model-only band low end 7.802 ms above threshold 3.163 ms at a (block_band model)") {
+		t.Errorf("judge packet under model: %d %s", code, pk)
+	}
+	bad := writeTemp(t, dir, "bad.json", []byte(`{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "asym"}`))
+	if _, errw, code := exec(t, "gate", pred, "--policy", bad, "--now", gateNow, "--out", filepath.Join(dir, "bad")); code != gate.ExitToolError ||
+		!strings.Contains(errw, "policy: block_band: must be full or model") {
+		t.Errorf("a bad block_band: exit %d, %s", code, errw)
+	}
+	bare := writeTemp(t, dir, "bare.json", []byte(`{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, `+
+		`"block_band": "model", "model_band": null}`))
+	if _, errw, code := exec(t, "gate", pred, "--policy", bare, "--now", gateNow, "--out", filepath.Join(dir, "bare")); code != gate.ExitToolError ||
+		!strings.Contains(errw, "policy: block_band: model reads the model band; model_band cannot be null") {
+		t.Errorf("block_band model without a model band: exit %d, %s", code, errw)
+	}
+	// the change's high end at 1.6e308 ms: the band's high end is past float64. A data problem is a verdict, never a
+	// tool error: inconclusive without the key, a block at the same model-only low end under "model", whose gate.json
+	// leaves the bands out
+	en.ChangeMs.Hi, en.BandMs.Hi = 1.6e308, 1.7e308
+	pred = reportFile(t, t.TempDir(), r)
+	over0, _, _ := run("over-absent", gatePolicy, gate.ExitInconclusive)
+	over1, _, _ := run("over-model", `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`,
+		gate.ExitBlock)
+	if over0.Entries != nil || len(over1.Entries) != 1 || over1.Entries[0].BandMs != nil || over1.Entries[0].BlockBandMs != nil ||
+		over1.Entries[0].ChangeMs == nil || over1.Rules[10].Value == nil || math.Abs(*over1.Rules[10].Value-7.8019) > 1e-4 {
+		t.Errorf("a band past float64: %+v\n%+v", over0, over1)
+	}
+
+	// the preview applies the policy's rule too
+	inRepoRoot(t)
+	aDir, _ := abArmDir(t, "loop", nil)
+	f := fitOf(t, aDir, "--workers", "a=1,b=2,c=1")
+	ch := changeFile(t, f, change.Item{Op: change.OpOwnMs, Service: "b", Value: change.Range{Lo: 3.5, Hi: 6}, Label: change.LabelDeclared})
+	pm := writeTemp(t, t.TempDir(), "model.json", []byte(`{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`))
+	pf := writeTemp(t, t.TempDir(), "default.json", []byte(gatePolicy))
+	vm := twinView(t, "preview", "--fit", f, "--changes", ch, "--policy", pm, "--now", nowOf(t, f))
+	vf := twinView(t, "preview", "--fit", f, "--changes", ch, "--policy", pf, "--now", nowOf(t, f))
+	em, ef := vm["entries"].([]any)[0].(map[string]any), vf["entries"].([]any)[0].(map[string]any)
+	var r10 map[string]any
+	for _, x := range vm["preview"].(map[string]any)["rules"].([]any) {
+		if m := x.(map[string]any); m["rule"] == gate.RuleMeanChange {
+			r10 = m
+		}
+	}
+	if vm["preview"].(map[string]any)["verdict"] != "block" || vf["preview"].(map[string]any)["verdict"] != "block" ||
+		r10 == nil || r10["variant"] != gate.VariantBlockBandModel || em["block_band_ms"] == nil || ef["block_band_ms"] != nil ||
+		fmt.Sprint(em["block_band_ms"]) != fmt.Sprint(em["band_ms"]) || fmt.Sprint(em["band_ms"]) != fmt.Sprint(ef["band_ms"]) {
+		t.Errorf("the preview under model: %v\nunder the default: %v", vm, vf)
+	}
+}

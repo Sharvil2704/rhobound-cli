@@ -1,0 +1,40 @@
+--- a/kshop/app/internal/hot/rank.go
++++ b/kshop/app/internal/hot/rank.go
+@@ -3,8 +3,15 @@
+ import (
+ 	"math"
+ 	"sort"
++	"sync"
+ 	"unicode"
+ 	"unicode/utf8"
++)
++
++// docToks: every title folded and tokenized once (read-only afterwards)
++var (
++	tokOnce sync.Once
++	docToks [][]string
+ )
+ 
+ // Hit is one search result: a document ID and its score.
+@@ -41,13 +48,19 @@
+ 		return nil
+ 	}
+ 	docs := Catalog()
++	tokOnce.Do(func() {
++		docToks = make([][]string, len(docs))
++		for i, d := range docs {
++			docToks[i] = tokenize(Fold(d.Title))
++		}
++	})
+ 	n, nt := len(docs), len(terms)
+ 	tf := make([]int, n*nt)
+ 	dl := make([]int, n)
+ 	df := make([]int, nt)
+ 	total := 0
+-	for i, d := range docs {
+-		toks := tokenize(Fold(d.Title))
++	for i := range docs {
++		toks := docToks[i]
+ 		dl[i] = len(toks)
+ 		total += len(toks)
+ 		for j, t := range terms {

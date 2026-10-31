@@ -59,6 +59,7 @@
             "change_pct": {"$ref": "defs.v1.json#/$defs/Range"},
             "model_band_ms": {"type": "number"},
             "band_ms": {"$ref": "defs.v1.json#/$defs/Range", "description": "change range widened by the model band"},
+            "block_band_ms": {"$ref": "defs.v1.json#/$defs/Range", "description": "under the policy's block_band model only: the change range widened by the model band alone, which the block test reads"},
             "threshold_ms": {"type": ["number", "null"]}
           },
           "additionalProperties": false}},
@@ -91,7 +92,8 @@
               "entry": {"$ref": "defs.v1.json#/$defs/Name"},
               "effect": {"$ref": "defs.v1.json#/$defs/RuleEffect"},
               "value": {"type": ["number", "null"]},
-              "threshold": {"type": ["number", "null"]}
+              "threshold": {"type": ["number", "null"]},
+              "variant": {"enum": ["block_band_model"]}
             },
             "additionalProperties": false}},
           "decide_with": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 200}},

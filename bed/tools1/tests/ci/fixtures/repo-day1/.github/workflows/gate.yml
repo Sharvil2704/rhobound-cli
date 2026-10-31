@@ -1,0 +1,142 @@
+# rhobound gate: every PR to main is built, measured (an A/B of the changed service in the cluster), predicted and gated on
+# rbd-tools1. The steps are root-owned scripts in /opt/rbd/ci run as user rbd; this file only calls them (through sudo, only
+# the steps the runner's sudoers line lists), so a PR that edits it cannot change what a step does, and deploy.sh deploys
+# nothing without a KMS-signed pass measured on that exact digest under the pinned policy. The judge step is not wired.
+# The job passes only on pass; block and inconclusive fail it with the verdict as the title. Commit status: rhobound/verdict.
+name: rhobound gate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: rbd-cluster
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: [self-hosted, rbd-demo]
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      STATUS_URL: ${{ github.api_url }}/repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: checkout the PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: status pending
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # the token goes to curl in a 0600 config file (printf is a builtin), never in a command line (/proc/*/cmdline)
+          cfg=$(mktemp "$RUNNER_TEMP/status-pending.XXXXXX")   # mode 0600
+          trap 'rm -f "$cfg"' EXIT
+          printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" > "$cfg"
+          jq -nc --arg u "$RUN_URL" '{state:"pending",context:"rhobound/verdict",description:"gate running",target_url:$u}' |
+            curl -fsS -K "$cfg" -X POST -H "Accept: application/vnd.github+json" "$STATUS_URL" -d @- > /dev/null
+
+      - name: let rbd read the checkout
+        run: |
+          chmod -R go+rX "$GITHUB_WORKSPACE"
+          d=$GITHUB_WORKSPACE
+          while [ "$d" != / ]; do chmod o+x "$d" 2> /dev/null || true; d=$(dirname "$d"); done
+
+      - name: pr-check
+        id: prc
+        run: |
+          sudo -n -u rbd /opt/rbd/ci/pr-check.sh "$GITHUB_WORKSPACE" "$BASE_SHA" "$HEAD_SHA" | tee "$RUNNER_TEMP/prc.out"
+          echo "service=$(tail -n 1 "$RUNNER_TEMP/prc.out" | jq -r .service)" >> "$GITHUB_OUTPUT"
+
+      - name: build the candidate image
+        id: build
+        env:
+          SERVICE: ${{ steps.prc.outputs.service }}
+        run: |
+          sudo -n -u rbd /opt/rbd/ci/build.sh "$GITHUB_WORKSPACE" "$HEAD_SHA" "$SERVICE" | tee "$RUNNER_TEMP/build.out"
+          last=$(tail -n 1 "$RUNNER_TEMP/build.out")
+          base=$(jq -r '.baseline_digest // empty' <<< "$last")
+          if [ -z "$base" ]; then echo "::error title=no production image::baseline.json has no digest for $SERVICE"; exit 1; fi
+          echo "digest=$(jq -r .digest <<< "$last")" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - name: A/B in the cluster (production image vs candidate)
+        id: ab
+        env:
+          SERVICE: ${{ steps.prc.outputs.service }}
+          BASE: ${{ steps.build.outputs.base }}
+          CAND: ${{ steps.build.outputs.digest }}
+        run: sudo -n -u rbd /opt/rbd/ci/ab.sh "$HEAD_SHA" "$SERVICE" "$BASE" "$CAND" | tee "$RUNNER_TEMP/ab.out"
+
+      - name: predict and gate
+        id: predict
+        run: |
+          set +e
+          sudo -n -u rbd /opt/rbd/ci/predict.sh "$HEAD_SHA" | tee "$RUNNER_TEMP/predict.out"
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          case $rc in 0 | 1 | 3) ;; *) echo "::error title=no verdict::predict.sh exited $rc"; exit 1 ;; esac
+
+      - name: sign the verdict (cosign + KMS) and write the ledger
+        id: sign
+        run: sudo -n -u rbd /opt/rbd/ci/sign.sh "$HEAD_SHA" | tee "$RUNNER_TEMP/sign.out"
+
+      - name: report
+        id: report
+        if: ${{ !cancelled() && steps.predict.outcome == 'success' }}
+        run: |
+          sudo -n -u rbd /opt/rbd/ci/report.sh "$HEAD_SHA" | tee "$RUNNER_TEMP/report.out" > /dev/null
+          sed '$d' "$RUNNER_TEMP/report.out" >> "$GITHUB_STEP_SUMMARY"
+          last=$(tail -n 1 "$RUNNER_TEMP/report.out")
+          echo "verdict=$(jq -r .verdict <<< "$last")" >> "$GITHUB_OUTPUT"
+          echo "rule=$(jq -r .rule <<< "$last")" >> "$GITHUB_OUTPUT"
+
+      - name: commit status rhobound/verdict
+        if: ${{ always() }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUTCOMES: >-
+            pr-check=${{ steps.prc.outcome }} build=${{ steps.build.outcome }} ab=${{ steps.ab.outcome }}
+            predict=${{ steps.predict.outcome }} sign=${{ steps.sign.outcome }} report=${{ steps.report.outcome }}
+          VERDICT: ${{ steps.report.outputs.verdict }}
+          RULE: ${{ steps.report.outputs.rule }}
+        run: |
+          failed=$(tr ' ' '\n' <<< "$OUTCOMES" | grep -v '=success$' | head -n 1 || true)
+          if [ -z "$failed" ]; then
+            case $VERDICT in pass) state=success ;; block | inconclusive) state=failure ;; *) state=error ;; esac
+            desc="$VERDICT: $RULE"
+          else
+            state=error
+            desc="no signed verdict: ${failed%%=*} ${failed#*=} (see the run)"
+          fi
+          cfg=$(mktemp "$RUNNER_TEMP/status-verdict.XXXXXX")   # mode 0600
+          trap 'rm -f "$cfg"' EXIT
+          printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" > "$cfg"
+          jq -nc --arg s "$state" --arg d "${desc:0:139}" --arg u "$RUN_URL" \
+            '{state:$s,context:"rhobound/verdict",description:$d,target_url:$u}' |
+            curl -fsS -K "$cfg" -X POST -H "Accept: application/vnd.github+json" "$STATUS_URL" -d @- > /dev/null
+          echo "rhobound/verdict = $state ($desc)"
+
+      - name: verdict
+        env:
+          VERDICT: ${{ steps.report.outputs.verdict }}
+          RULE: ${{ steps.report.outputs.rule }}
+        run: |
+          if [ "$VERDICT" != pass ]; then
+            echo "::error title=rhobound gate: $VERDICT::$VERDICT: $RULE (the job passes only on pass; see the summary)"
+            exit 1
+          fi
+          echo "rhobound gate: pass ($RULE)"

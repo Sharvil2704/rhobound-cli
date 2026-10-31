@@ -1,0 +1,27 @@
+{
+  "_doc": "kshop, the demo shop the end-to-end test deploys on kind. GROUND TRUTH: kshop/render.py writes the Kubernetes manifests from it and kshop/e2e.py checks what rhobound inferred against it. rhobound itself never reads this file: it sees only the traces (and, for profiling, the Deployment of the image it profiles).",
+  "namespace": "kshop",
+  "services": {
+    "storefront": {"workers": 16, "work": {"mean_ms": 1.0, "cs2": 1.0}, "mode": "sequential",
+                   "calls": [{"to": "auth", "path": "/verify"}, {"to": "product", "path": "/item"},
+                             {"to": "recommend", "path": "/recs", "p": 0.35}]},
+    "checkout":   {"workers": 8, "work": {"mean_ms": 2.0, "cs2": 0.5}, "mode": "sequential",
+                   "calls": [{"to": "auth", "path": "/verify"}, {"to": "cart", "path": "/cart"},
+                             {"to": "pricing", "path": "/quote"}, {"to": "inventory", "path": "/reserve"},
+                             {"to": "payments", "path": "/charge/{tail}"}]},
+    "auth":       {"workers": 2, "work": {"mean_ms": 9.0, "cs2": 0.5}, "code_paths": ["verify_token"]},
+    "product":    {"workers": 8, "work": {"mean_ms": 1.5, "cs2": 1.0}, "mode": "parallel",
+                   "calls": [{"to": "catalog", "path": "/item", "fresh_conn": true}, {"to": "pricing", "path": "/quote"},
+                             {"to": "inventory", "path": "/stock"}]},
+    "catalog":    {"replicas": 2, "workers": 2, "work": {"mean_ms": 22.0, "cs2": 1.0}},
+    "pricing":    {"workers": 3, "work": {"mean_ms": 16.0, "cs2": 2.0}},
+    "inventory":  {"workers": 3, "work": {"mean_ms": 14.0, "cs2": 0.25}, "code_paths": ["stock_check"]},
+    "cart":       {"workers": 1, "work": {"mean_ms": 9.0, "cs2": 1.0}},
+    "payments":   {"workers": 1, "work": {"mean_ms": 14.0, "cs2": 0.5}, "code_paths": ["risk_check"]},
+    "recommend":  {"workers": 2, "work": {"mean_ms": 30.0, "cs2": 1.0}}
+  },
+  "load": {"rps": 100, "mix": [{"url": "http://storefront.kshop.svc.cluster.local:8080/browse", "w": 0.70},
+                               {"url": "http://checkout.kshop.svc.cluster.local:8080/buy/card", "w": 0.18},
+                               {"url": "http://checkout.kshop.svc.cluster.local:8080/buy/wallet", "w": 0.12}]},
+  "versions": {"base": "1.0", "change": {"auth": "1.1", "payments": "1.1"}}
+}

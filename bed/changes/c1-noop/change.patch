@@ -1,0 +1,20 @@
+diff --git a/kshop/app/internal/work/lib_v11.go b/kshop/app/internal/work/lib_v11.go
+index 14c8e83..49a3efe 100644
+--- a/kshop/app/internal/work/lib_v11.go
++++ b/kshop/app/internal/work/lib_v11.go
+@@ -8,7 +8,7 @@ import (
+ 	"time"
+ )
+ 
+-// Library version 1.1 of the shared code paths: the regression under test.
++// Library version 1.1 of the shared code paths (production in this demo): the regression under test.
+ 
+ // VerifyToken (1.1) re-derives the token key with PBKDF2-SHA256 on every call
+ // instead of using the cached key: about 3 ms of CPU per request (2,500 iterations; measured
+diff --git a/rhobound-change.json b/rhobound-change.json
+new file mode 100644
+index 0000000..632df04
+--- /dev/null
++++ b/rhobound-change.json
+@@ -0,0 +1 @@
++{"schema": "rbd.change-request/v1", "services": ["auth"], "summary": "Control (no-op): reword a comment in the shared library lib_v11.go; the compiled code does not change."}

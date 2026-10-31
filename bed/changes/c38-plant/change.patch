@@ -1,0 +1,12 @@
+diff --git a/kshop/app/internal/work/lib_v11.go b/kshop/app/internal/work/lib_v11.go
+index 0fc5f77..db75853 100644
+--- a/kshop/app/internal/work/lib_v11.go
++++ b/kshop/app/internal/work/lib_v11.go
+@@ -41,6 +41,7 @@ var (
+ )
+ 
+ func VerifyToken(token string) bool {
++	// c38-plant (planted, SPEC3 F9): a comment-only control; no code changes.
+ 	verifyMu.Lock()
+ 	if el, ok := verifyCache[token]; ok {
+ 		verifyLRU.MoveToFront(el)

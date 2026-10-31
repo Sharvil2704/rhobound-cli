@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# kubectl stub for the offline tests: logs every call to $STUB_LOG; spans-reader exec runs locally on $FAKE_DATA (as /data).
+set -uo pipefail
+echo "kubectl $*" >> "${STUB_LOG:?}"
+args=("$@")
+while [ "${1:-}" = -n ] || [[ ${1:-} == --kubeconfig* ]]; do shift 2; done
+case "$*" in
+  "exec spans-reader -c reader -- sh -c "*)
+    shift 7; cmd=$1; cmd=${cmd//\/data/${FAKE_DATA:?}}
+    exec sh -c "$cmd" ;;
+  "exec spans-reader -c reader -- tar cf - -C /data "*)
+    shift 10
+    if [ -n "${STUB_TAR_FAIL_ONCE:-}" ] && [ ! -e "$STUB_TAR_FAIL_ONCE" ]; then touch "$STUB_TAR_FAIL_ONCE"; echo "tar: file vanished" >&2; exit 1; fi
+    if [ -n "${STUB_TAR_ROTATE_ONCE:-}" ] && [ ! -e "$STUB_TAR_ROTATE_ONCE" ]; then   # the Collector rotates spans.jsonl before tar reads it
+      touch "$STUB_TAR_ROTATE_ONCE"; m=$(stat -c %Y "$FAKE_DATA/spans.jsonl")
+      mv "$FAKE_DATA/spans.jsonl" "$FAKE_DATA/spans-$(date -u -d "@$m" +%Y-%m-%dT%H-%M-%S).000.jsonl"
+      printf '{"h":1}\n' > "$FAKE_DATA/spans.jsonl"; touch -d "@$((m + 120))" "$FAKE_DATA/spans.jsonl"
+    fi
+    exec tar cf - -C "$FAKE_DATA" "$@" ;;
+  "exec spans-reader -c reader -- stat -c %u %a /data") echo "10001 750" ;;
+  "get job kshop-load -o jsonpath="*) echo "${STUB_LOAD_STATUS:-1/}" ;;
+  "get job kshop-bgload -o jsonpath="*) echo "${STUB_BG_ACTIVE-1}" ;;
+  "get job kshop-bgload -o json") if [ -n "${STUB_BG_JOB:-}" ]; then cat "$STUB_BG_JOB"; fi ;;   # the running Job (bgload.sh ensure/status compare its LOAD_* env)
+  "logs job/kshop-load") cat "${FAKE_LOAD_JSON:?}" ;;
+  "get deploy,svc,pods -o json") cat "${FAKE_K8S_JSON:?}" ;;
+  "rollout status deploy/otel-collector "*) [ -z "${STUB_COLLECTOR_ROLLOUT_FAIL:-}" ] || { echo "error: timed out waiting for the condition" >&2; exit 1; } ;;
+  "logs deploy/otel-collector --tail=20") echo "fake-otelcol: error decoding 'processors': unknown key" ;;
+  "apply -f -") f=$(mktemp "${STUB_DIR:?}/apply.XXXXXX"); cat > "$f"; echo "  stdin -> $f" >> "$STUB_LOG" ;;
+  "apply -f "*) cp "${args[-1]}" "$(mktemp "${STUB_DIR:?}/apply.XXXXXX")" ;;
+  *) : ;;
+esac
+exit 0

@@ -103,6 +103,10 @@ type Budgeter struct {
 	Policy *gate.Policy
 	// MaxRho is the utilization limit (0: engine.DefaultMaxRho).
 	MaxRho float64
+	// LoadScale is the load point every solve is at, a multiple of the fit's external rate (engine.Request.LoadScale):
+	// 0 and 1 are the fit's window. At another value the baseline, the leverage and the budgets are those of a what-if
+	// at it (`predict --fit F --load-scale S`), and a load_scale budget's factor is on top of it.
+	LoadScale float64
 	// Solve is engine.Predict when nil.
 	Solve Solver
 
@@ -130,6 +134,15 @@ func Compute(f *fit.Record, digest string, p *gate.Policy, service string, kinds
 func (b *Budgeter) solve(req engine.Request) (*report.V2, error) {
 	req.Fit = b.Fit
 	req.MaxRho = b.maxRho()
+	if b.LoadScale != 0 && b.LoadScale != 1 {
+		// the request's load point is on top of the budgeter's; at the fit's window it is left as it is, so that those
+		// requests are today's
+		s := req.LoadScale
+		if s == 0 {
+			s = 1
+		}
+		req.LoadScale = s * b.LoadScale
+	}
 	if b.Fit != nil {
 		req.Plain = b.Fit.Options.Plain
 	}
@@ -146,7 +159,8 @@ func (b *Budgeter) maxRho() float64 {
 	return engine.DefaultMaxRho
 }
 
-// Base returns the fit's baseline report (no change, at the fit's window), solved once.
+// Base returns the fit's baseline report (no change, at the load point: the fit's window unless LoadScale says
+// otherwise), solved once.
 func (b *Budgeter) Base() (*report.V2, error) {
 	if b.base != nil {
 		return b.base, nil
@@ -184,8 +198,8 @@ func (b *Budgeter) ownMs(service string, x float64) *change.Set {
 		Service: service, Value: change.Point(x), Label: change.LabelDeclared}}}
 }
 
-// Leverage returns the leverage of each of these services on each entry, by a +1 ms finite difference. An entry whose
-// mean is not finite after the +1 ms is left out of the service's map.
+// Leverage returns the leverage of each of these services on each entry, by a +1 ms finite difference at the load
+// point. An entry whose mean is not finite after the +1 ms is left out of the service's map.
 func (b *Budgeter) Leverage(services []string) (map[string]map[string]float64, error) {
 	out := map[string]map[string]float64{}
 	for _, s := range services {

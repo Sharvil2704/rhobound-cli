@@ -1,0 +1,12 @@
+diff --git a/kshop/app/internal/hot/rank.go b/kshop/app/internal/hot/rank.go
+--- a/kshop/app/internal/hot/rank.go
++++ b/kshop/app/internal/hot/rank.go
+@@ -1,7 +1,7 @@
+ // Package hot is a stand-in of kshop-hot's package (SPEC2 1) for the bench tests: only its shape matters here.
+ package hot
+ 
+-// canned: main
++// canned: ref-good
+ 
+ // Rank counts the runes of q (the real Rank scores a catalog).
+ func Rank(q string) int {
