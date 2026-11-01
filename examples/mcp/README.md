@@ -9,8 +9,12 @@ no credentials (docs/mcp/DEPLOY_AWS.md, 14).
 | `config.example.json` | the server's configuration (`rhobound-mcp.config/v1`): the repository's test fixtures as captures, and the policy above as `default` |
 | `.mcp.json` | the server registered with Claude Code, for a project's root folder |
 | `codex-config.toml` | the same for Codex |
+| `demo.sh` | the steps below in one command: build, configure, then fit, budget, an A/B and predict |
 
 ## Steps
+
+`bash examples/mcp/demo.sh` does all of this in one go: it builds both binaries, writes a configuration to a
+temporary folder and runs fit, context, budget, an A/B and two predictions over stdio. By hand:
 
 ```
 go build -o bin/rhobound ./cmd/rhobound

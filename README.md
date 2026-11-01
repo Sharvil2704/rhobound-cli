@@ -174,7 +174,21 @@ It ran on AWS on 2026-10-30/31 with every prediction sealed before production wa
 services, storefront +4.54..+6.55 ms predicted against +5.32 measured and checkout +12.80..+18.09 against +14.28; two
 images changed at once, storefront +10.55..+13.20 against +11.87; regressions blocked, no-ops and the agent's change
 passed ([RESULTS.md](docs/mcp/RESULTS.md)). What the branch adds to rhobound-cli, file by file and how to use it:
-[CHANGES.md](docs/mcp/CHANGES.md). The design and the data contract are in [docs/mcp/](docs/mcp/ARCHITECTURE.md);
+[CHANGES.md](docs/mcp/CHANGES.md).
+
+Try the agent's loop on your machine in under a second, no AWS (Go 1.25 or later, python3):
+
+```
+$ bash examples/mcp/demo.sh
+1. fit_start  traces of a -> b -> c, 3,099 requests: fit_...
+2. context    entry a: model 45.22 ms, observed 43.74 ms
+3. budget     service b may add 1.07 ms per visit (limit reached at 1.95)
+4. fit_start  A/B of the candidate image of b: ab_...
+5. predict    the measured A/B: entry a -1.36 .. +2.18 ms (limit 2.26 ms) -> pass
+6. predict    b +3 ms, over the budget: entry a +2.48 .. +4.53 ms (limit 2.26 ms) -> block (mean_change, unmeasured_delta)
+```
+
+The design and the data contract are in [docs/mcp/](docs/mcp/ARCHITECTURE.md);
 [examples/mcp/](examples/mcp/README.md) runs the server locally, and [testdata/mcp/](testdata/mcp/README.md) walks the
 loop an agent follows. Scope: [Known limits](docs/mcp/ARCHITECTURE.md#512-known-limits).
 
