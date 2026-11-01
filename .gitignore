@@ -8,3 +8,5 @@
 /bed/state/
 /.tmp-bed/
 /bed/tools1/abdrive/bin
+__pycache__/
+*.pyc
