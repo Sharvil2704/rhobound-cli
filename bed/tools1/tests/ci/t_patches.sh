@@ -22,6 +22,12 @@ gobuild() { # gobuild DIR CMD
   (cd "$1/maze/app" && GOTMPDIR=${GOTMPDIR:-${TMPDIR:-/tmp}} GOFLAGS=-mod=readonly GOPROXY=off GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 \
     CGO_ENABLED=0 RB_MEM_MAX=2G GOMAXPROCS=2 bash "$CAP" "$GO" build -trimpath -tags maze_v11 -o "$T/bin-$2" "./cmd/$2")
 }
+# the builds are offline (GOPROXY=off): the maze's modules come into the cache first, once, from the module proxy (a fresh
+# machine has none); the download checks them against go.sum
+if [[ -x $GO && -f $CAP ]]; then
+  (cd "$S/maze/app" && GOFLAGS=-mod=readonly GOTOOLCHAIN=local "$GO" mod download) > "$T/gomod.log" 2>&1 ||
+    echo "  NOTE go mod download failed (no network?): the compile checks below need the maze's modules ($T/gomod.log)"
+fi
 declare -A WANT=([c1-noop]='^[-+]// Library version 1.1' [c2-auth-small]='^\+.*pbkdf2\.Key\(.*, 6927, 32\)'
   [c3-auth-mid]='^\+.*pbkdf2\.Key\(.*, 20780, 32\)' [c4-pay-wait]='^\+.*time\.Sleep\(15 \* time\.Millisecond\)')
 for n in c1-noop c2-auth-small c3-auth-mid c4-pay-wait; do

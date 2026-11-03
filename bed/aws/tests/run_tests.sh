@@ -46,13 +46,18 @@ run ORCH_IP=$ORCH -- plan; check "BED is required (exit $RC)" bash -c "[ $RC -ne
 run BED=1 ORCH_IP=203.0.113.7 -- plan; check "a documentation-range ORCH_IP is refused (exit $RC)" bash -c "[ $RC -ne 0 ] && grep -q 'not a public IPv4' '$OUT'"
 run BED=1 ORCH_IP=$ORCH AB_NODE=4 -- plan; check "AB_NODE=4 is refused (exit $RC)" bash -c "[ $RC -ne 0 ] && grep -q 'AB_NODE must be 0, 1, 2 or 3' '$OUT'"
 run BED=1 -- destroy; check "destroy is refused (the beds share roles, ECR, KMS; exit $RC)" bash -c "[ $RC -ne 0 ] && grep -q 'destroy is refused' '$OUT'"
+run BED=1 ORCH_IP=$ORCH ORCH_PUBKEY_FILE="$W/no-such.pub" -- plan; check "a missing ORCH_PUBKEY_FILE is refused (exit $RC)" bash -c "[ $RC -ne 0 ] && grep -q 'no such readable file' '$OUT'"
+ssh-keygen -q -t ed25519 -N '' -C judge -f "$W/judge" < /dev/null
+JFPR=$(ssh-keygen -lf "$W/judge.pub" | awk '{print $2}')
 
 echo "== bed 1"
-run BED=1 ORCH_IP=$ORCH -- plan
+run BED=1 ORCH_IP=$ORCH ORCH_PUBKEY_FILE="$W/judge.pub" -- plan
+check "plan names ORCH_PUBKEY_FILE's fingerprint, not the built-in key's" bash -c "grep -qF 'Its key: $JFPR' '$OUT' && ! grep -q 'u5TBLEp1' '$OUT'"
 check "plan: 8 machines, load and ab as spot (*) (exit $RC)" bash -c "[ $RC -eq 0 ] && grep -qE 'rbd-d-load1 +d +load\*' '$OUT' &&
   grep -qE 'rbd-d-ab1 +d +ab\*' '$OUT' && grep -qE 'rbd-d-app3 +d +app ' '$OUT' && grep -qE 'rbd-tools1 +tools +tools ' '$OUT'"
-run BED=1 ORCH_IP=$ORCH YES=1 -- up
+run BED=1 ORCH_IP=$ORCH ORCH_PUBKEY_FILE="$W/judge.pub" YES=1 -- up
 check "up on a fresh account (exit $RC)" test "$RC" -eq 0
+check "  it imports ORCH_PUBKEY_FILE's key, and says which" grep -qF "(your workstation's key, $JFPR)" "$OUT"
 check "  8 machines of demo1: cp1 edge1 load1 app1-3 ab1 tools1" test "$(live demo1)" = "rbd-d-ab1 rbd-d-app1 rbd-d-app2 rbd-d-app3 rbd-d-cp1 rbd-d-edge1 rbd-d-load1 rbd-tools1"
 check "  load1 and ab1 are spot, the others on demand" world 'sys.exit(not sorted(t["Name"] for i in W["instances"] for t in [{x["Key"]: x["Value"] for x in i.get("Tags", [])}] if i.get("InstanceLifecycle") == "spot") == ["rbd-d-ab1", "rbd-d-load1"])'
 python3 -I "$TESTS/check_world.py" "$W/state/world.json" kms ecr net "$ORCH/32" bucket-untouched > "$W/cw.txt" 2>&1

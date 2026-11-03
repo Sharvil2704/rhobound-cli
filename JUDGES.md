@@ -16,7 +16,7 @@
 
 | tier | what you check | time | cost | needs |
 |---|---|---|---|---|
-| [1](#tier-1-offline-about-10-minutes) | the engine, the MCP loop, the plugin's install, every test suite | 3-25 min | none | a laptop: Go, python3, git, jq |
+| [1](#tier-1-offline-about-10-minutes) | the engine, the MCP loop, the plugin's install, every test suite | 1-20 min | none | a laptop: Go, python3, git, jq |
 | [2](#tier-2-the-gate-live-on-aws) | the gate live on a 10-machine AWS bed: one pass, one block | about 1 h 45 min | about 4 USD | AWS, GitHub, a workstation with ssh |
 | [3](#tier-3-the-agent-experiments) | Muse Code with and without the plugin | a day | about 2 USD/h per bed | tier 2, Muse Code and a Meta API key |
 
@@ -42,9 +42,9 @@ git clone -b rhobound-mcp https://github.com/Sharvil2704/rhobound-cli && cd rhob
 bash demo/judges.sh --quick
 ```
 
-`--quick` takes about 3 minutes on a fresh machine and under a minute with a warm Go cache. Without `--quick`, the CI
-pipeline's and the measurement scripts' test suites also run (about 10 minutes). Scratch files go to
-`$RBD_SCRATCH`, by default `$TMPDIR/rbd`.
+`--quick` takes under a minute: 23 s on a fresh machine, with empty Go caches. Without `--quick`, the CI pipeline's and
+the measurement scripts' test suites also run (about 2 minutes). Scratch files go to `$RBD_SCRATCH`, by default
+`$TMPDIR/rbd`.
 
 ### 2. What you should see
 
@@ -79,7 +79,7 @@ measures its change, and predicts. The measured change passes; a change over the
 **Part 4: the AWS bed's own checks, offline:**
 
 ```
-  -- 22 passed, 0 failed                                (spawn_two.sh against a fake AWS)
+  -- 25 passed, 0 failed                                (spawn_two.sh against a fake AWS)
 [demo ...] pass: --dry: branch demo-pass-... at d07974df71bf, every service tree matches the gated one; nothing pushed
 [demo ...] block: --dry: ... every service tree matches the gated one; nothing pushed
 ```
@@ -91,19 +91,19 @@ against the code the experiments gated.
 
 The script ends with `judges.sh: done`.
 
-### 3. The full test suites (about 25 minutes in all)
+### 3. The full test suites (about 20 minutes in all)
 
 | command | what it covers | time |
 |---|---|---|
-| `go test ./...` | the engine (CLI): model, fit, gate, golden outputs | 2-5 min |
+| `go test ./...` | the engine (CLI): model, fit, gate, golden outputs | about 1 min |
 | `(cd mcp && go test ./...)` | the MCP server, against the real CLI | about 10 min |
-| `bash bed/tools1/tests/ci/run_tests.sh` | the CI steps end to end with the real CLI: pr-check, multi-image builds, parallel A/Bs, predict, sign, deploy | 1-5 min |
+| `bash bed/tools1/tests/ci/run_tests.sh` | the CI steps end to end with the real CLI: pr-check, multi-image builds, parallel A/Bs, predict, sign, deploy | 1-2 min |
 | `bash bed/verify/tests/run.sh && bash bed/verify/tests/truthx/run.sh` | the measurement scripts: truth brackets, staged rollouts | about 2 min |
-| `bash bed/orch/tests/run_all.sh --quick` | the bootstrap as a dry run, the load tools, the Muse harness's driver | about 5 min |
+| `bash bed/orch/tests/run_all.sh --quick` | the bootstrap as a dry run, the load tools, the Muse harness's driver | about 6 min |
 | `bash bed/aws/tests/run_tests.sh` | `spawn_two.sh` against a fake AWS | under 1 min |
 
-Each prints `ALL PASSED`, or `N passed, 0 failed`. GitHub Actions runs the Go and Rust suites on every push
-(`.github/workflows/ci.yml`).
+Each prints `ALL PASSED`, or `N passed, 0 failed`. The CI suite downloads the maze's Go modules once (network), then
+compiles offline. GitHub Actions runs the Go and Rust suites on every push (`.github/workflows/ci.yml`).
 
 ### 4. The plugin in your own Muse Code
 
@@ -123,16 +123,32 @@ Install and approve the plugin:
 muse plugins install ./integrations/muse-code && muse plugins approve rhobound
 ```
 
-Write the server's configuration and Muse's settings entry. Run the dry run first, then the same command with
-`--write`, then `rhobound-mcp init` once more:
+Write the server's configuration and Muse's settings entry. `init` refuses a capture or policy inside the git checkout
+of the folder you run it from (a repository must not choose what rhobound reads), so keep them outside any repository.
+To try it with the repository's samples, copy them out first, from the clone's root:
 
 ```bash
-rhobound-mcp init --engine ~/.local/bin/rhobound --capture prod=CAPTURE_FOLDER --policy default=POLICY.json
+mkdir -p ~/rhobound-try && cp -r testdata/mcp/loop ~/rhobound-try/capture && cp examples/mcp/policy.example.json ~/rhobound-try/policy.json
 ```
 
-- `CAPTURE_FOLDER` is a folder of OpenTelemetry traces from your system (`testdata/mcp/loop` is a sample).
-- `POLICY.json` is a gate policy (`examples/mcp/policy.example.json`).
-- The last check must report `muse_settings` `"keep"`.
+Then, from outside the clone, run the dry run, the same command with `--write`, and `rhobound-mcp init` once more:
+
+```bash
+cd ~ && rhobound-mcp init --engine ~/.local/bin/rhobound --capture prod=$HOME/rhobound-try/capture --policy default=$HOME/rhobound-try/policy.json
+```
+
+```bash
+rhobound-mcp init --engine ~/.local/bin/rhobound --capture prod=$HOME/rhobound-try/capture --policy default=$HOME/rhobound-try/policy.json --write
+```
+
+```bash
+rhobound-mcp init
+```
+
+- The dry run reports `"action": "create"` for the server's configuration and `"add"` for Muse's settings entry.
+- `--write` writes `~/.config/rhobound-mcp/config.json` and the entry in `~/.config/muse/settings.json`.
+- The last check must report `"keep"` for both.
+- For your own system, the capture is a folder of its OpenTelemetry traces, and the policy your gate policy.
 
 The guides are [integrations/muse-code/README.md](integrations/muse-code/README.md) and
 [GUIDE.md](integrations/muse-code/GUIDE.md). For Claude Code, Codex or any other MCP client,
@@ -168,10 +184,10 @@ git clone -b rhobound-mcp https://github.com/Sharvil2704/rhobound-cli && cd rhob
 ```
 
 ```bash
-ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519_rhobound
+mkdir -p ~/.ssh && chmod 700 ~/.ssh && ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519_rhobound
 ```
 
-`orch/rbd_connect.sh` uses this key path; set `RBD_KEY=` to use another. If the file exists, keep it.
+`orch/rbd_connect.sh` uses this key path; set `RBD_KEY=` to use another. If the file exists, keep it: answer `n`.
 
 Note your workstation's public IPv4: your router, your cloud console, or a service such as
 `curl -s https://checkip.amazonaws.com`.
@@ -199,12 +215,14 @@ REGION=<your region> ORCH_IP=<workstation IPv4> ORCH_PUBKEY_FILE=id_ed25519_rhob
 - **`REGION`:** the default is `ap-south-1`, where the experiments ran.
 - **`ORCH_PUBKEY_FILE`** is required for you. Without it, the machines trust only the authors' workstation key.
 - **`CREATE_BUCKET=1`** creates the private S3 bucket the machines upload their boot logs to
-  (`rhobound-research-ACCOUNT-REGION`; `BUCKET=` names one you have). It asks first, even with `YES=1`.
+  (`rhobound-research-ACCOUNT-REGION`; `BUCKET=` names one you have). `YES=1` alone never creates a bucket.
 - **The instance types** are the ones the results were measured on: m7i app, A/B and load nodes, the rest m6a.
 - **`SPOT_ROLES=""`** puts every machine on demand. Spot is cheaper, but spot nodes were reclaimed twice during the
   experiments.
 
-`up` creates the IAM roles, a KMS signing key, an ECR repository, a VPC of its own, and the 10 machines. It ends with
+`up` creates the IAM roles, a KMS signing key, an ECR repository, a VPC of its own, and the 10 machines. On the way it
+prints `imported key pair ... (your workstation's key, SHA256:...)`: check that fingerprint against
+`ssh-keygen -lf ~/.ssh/id_ed25519_rhobound.pub` on your workstation. It ends with
 `done. cloud-init needs about 3-5 minutes per machine`. Then:
 
 ```bash

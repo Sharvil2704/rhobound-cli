@@ -131,6 +131,11 @@ is_spot() { [[ " $SPOT_ROLES " == *" $1 "* ]]; }
 # there). Set ORCH_PUBKEY_FILE to your own public key. A public key is not a secret.
 ORCH_PUBKEY_BUILTIN='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHqk31PYoy8pRICeNSbezHLACtndXUwV3a1K8YrsBH+L rhobound-workstation'
 ORCH_FPR='SHA256:u5TBLEp1mFqasjidVncfuiIRza9GeyoDbrUC//25ku0'
+if [[ -n ${ORCH_PUBKEY_FILE:-} ]]; then   # your key: its own fingerprint is the one printed
+  [[ -r $ORCH_PUBKEY_FILE ]] || die "ORCH_PUBKEY_FILE=$ORCH_PUBKEY_FILE: no such readable file (upload your public key first)"
+  ORCH_FPR=$(ssh-keygen -lf "$ORCH_PUBKEY_FILE" 2> /dev/null | awk '{print $2}')
+  ORCH_FPR=${ORCH_FPR:-"the key in $ORCH_PUBKEY_FILE"}
+fi
 
 # ------------------------------------------------------------------------------------------------------------------- checks of the settings
 # public_ipv4 IP: a well-formed IPv4 that can be an EC2 public address (private, loopback, link-local, CGNAT, multicast and the
@@ -548,7 +553,10 @@ ensure_ecr() {
   fi
 }
 ensure_key() {
-  if awsr ec2 describe-key-pairs --key-names "$KEY_NAME" > /dev/null 2>&1; then say "key pair $KEY_NAME exists"; return 0; fi
+  if awsr ec2 describe-key-pairs --key-names "$KEY_NAME" > /dev/null 2>&1; then
+    say "key pair $KEY_NAME exists: its key is kept${ORCH_PUBKEY_FILE:+ (ORCH_PUBKEY_FILE is not re-imported; delete the key pair in the EC2 console to change it)}"
+    return 0
+  fi
   local f="$WORK/pub"
   if [[ -n ${ORCH_PUBKEY_FILE:-} ]]; then cp "$ORCH_PUBKEY_FILE" "$f"; else echo "$ORCH_PUBKEY_BUILTIN" > "$f"; fi
   grep -q '^ssh-' "$f" || die "the public key does not look like a public key"
