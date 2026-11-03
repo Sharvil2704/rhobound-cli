@@ -50,6 +50,7 @@ type Case struct {
 	Limits      *otlp.Limits      // reading limits other than the defaults
 	Workers     map[string]int    // --workers (StageFit)
 	Patch       string            // the change (StagePredict)
+	Plain       bool              // --plain: the basic model (a code only it raises)
 	// Want is, for StageFit and StagePredict, a part of today's refusal or warning text that names the defect; for
 	// load.beyond_validated it is empty, and the model's utilization says it.
 	Want string
@@ -704,11 +705,13 @@ var fixtures = []Fixture{
 		}
 		return cs, err
 	}},
-	{contract.ModelBatchArrivals, StageFit, "b calling c four times at once on a quarter of its visits", func(c *Capture, dir string) (*Case, error) {
+	// the refined model takes calls made at once to a pooled callee as a batch (model.Config.Batch) and notes it without
+	// the code; the basic model (--plain) has no batch term and raises it
+	{contract.ModelBatchArrivals, StageFit, "b calling c four times at once on a quarter of its visits (--plain)", func(c *Capture, dir string) (*Case, error) {
 		BatchCalls(c, 4, 4)
 		cs, err := plain(c, dir)
 		if cs != nil {
-			cs.Want = "times at once"
+			cs.Want, cs.Plain = "times at once", true
 		}
 		return cs, err
 	}},

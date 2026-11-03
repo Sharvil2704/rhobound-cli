@@ -4,8 +4,8 @@
 # with no token in any command line, the kit/rbd.env/main tree as they would be sent. ssh, gh, aws, docker are stubs that fail.
 # Also: myip asks no outside service; rbd.env's policy pin; main = GitHub main (a local bare repo here) at RBD_MAIN_SHA or
 # state/main.sha, cloned and archived at exactly that commit, and the refusals (not on main, unknown, another policy, none at all);
-# src/main.sha on rbd-tools1 (the upload run here); RBD_POLICY_DIGEST (this box's CLI, then the tools1 re-check as sent, run here);
-# the RUNBOOK's 4b predict/gate lines through rbd.sh's quoting.
+# src/main.sha on rbd-tools1 (the upload run here); RBD_POLICY_DIGEST (the workstation's CLI, then the tools1 re-check as sent, run here);
+# (the kshop runbook's 4b snippet test went with that runbook).
 # shellcheck disable=SC1090,SC1091,SC2012,SC2015,SC2016,SC2088,SC2155  # test code
 set -uo pipefail
 # shellcheck source=lib.sh
@@ -23,13 +23,13 @@ paste() {   # PREFIX -> a fake inventory
       "$p" "$(cut -d: -f2 <<< "$n")" "$(cut -d: -f1 <<< "$n")" "$(cut -d: -f3 <<< "$n")" "$i" "$i" "$i"; i=$((i + 1))
   done
   printf '%s_NODE rbd-tools1 kc=tools role=tools type=m6a.2xlarge public=203.0.113.30 private=10.82.1.30 id=i-0123456789abcd030 state=running zone=ap-south-1a launch=2026-10-30T08:00:00Z\n' "$p"
-  printf 'ecr_repo=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop\nkms_alias=alias/rhobound-demo-verdict\nbucket=rhobound-research-123456789012-ap-south-1\naccount=123456789012\n'
+  printf 'ecr_repo=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze\nkms_alias=alias/rhobound-demo-verdict\nbucket=rhobound-research-123456789012-ap-south-1\naccount=123456789012\n'
 }
 echo "-- seed"
 paste RS3 > "$T/p-rs3.txt"; out=$(bash "$C" seed "$T/p-rs3.txt" 2>&1); check "an RS3_-style paste seeds" bash -c "[ $? = 0 ]" && check "...8 machines" grep -q "seed: 8 machine" <<< "$out"
 paste RBD > "$T/p.txt"; out=$(bash "$C" seed "$T/p.txt" 2>&1); rc=$?
 check "an RBD_-style paste seeds (rc $rc)" [ $rc = 0 ]
-check "seed.json: ecr_repo, kms_alias, account, bucket" [ "$(jq -r '"\(.ecr_repo) \(.kms_alias) \(.account) \(.bucket)"' "$RBD_STATE/seed.json")" = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop alias/rhobound-demo-verdict 123456789012 rhobound-research-123456789012-ap-south-1" ]
+check "seed.json: ecr_repo, kms_alias, account, bucket" [ "$(jq -r '"\(.ecr_repo) \(.kms_alias) \(.account) \(.bucket)"' "$RBD_STATE/seed.json")" = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze alias/rhobound-demo-verdict 123456789012 rhobound-research-123456789012-ap-south-1" ]
 check "seed.json: roles cp edge load app app app ab tools" [ "$(jq -r '[.nodes[].role] | sort | join(" ")' "$RBD_STATE/seed.json")" = "ab app app app cp edge load tools" ]
 check "seed.json is 0600" [ "$(stat -c %a "$RBD_STATE/seed.json")" = 600 ]
 check "ssh config written to RBD_SSHC with its own known hosts" bash -c "grep -q 'Host rbd-tools1' '$RBD_SSHC' && grep -q 'UserKnownHostsFile $RBD_KH' '$RBD_SSHC'"
@@ -52,13 +52,13 @@ out=$(RBD_DRY=1 bash "$C" test 2>&1); check "test (DRY) probes 8 machines" [ "$(
 out=$(RBD_DRY=1 bash "$C" exec ab 'uptime' 2>&1); check "exec ab (DRY) -> rbd-d-ab1 only" bash -c "grep -q 'DRY ssh rbd-d-ab1: uptime' <<< '$out' && [ \$(grep -c 'DRY ssh' <<< '$out') = 1 ]"
 cp "$TESTS/stubs/fail-loudly" "$T/bin/curl"; chmod +x "$T/bin/curl"; : > "$STUB_LOG"
 bash "$C" myip > "$T/myip.out" 2>&1; rc=$?
-check "myip: the seed's ORCH_IP and where to read this box's own (rc $rc)" bash -c "[ $rc = 0 ] && grep -q 'allow ssh from: 203.0.113.10' '$T/myip.out' && grep -q 'EC2 console' '$T/myip.out' && grep -q 'spawn_demo.sh allow-ip' '$T/myip.out'"
+check "myip: the seed's ORCH_IP and where to read this workstation's own (rc $rc)" bash -c "[ $rc = 0 ] && grep -q 'allow ssh from: 203.0.113.10' '$T/myip.out' && grep -q 'EC2 console' '$T/myip.out' && grep -q 'spawn_two.sh allow-ip' '$T/myip.out'"
 check "...no outside service asked (no curl)" [ ! -s "$STUB_LOG" ]
 rm -f "$T/bin/curl"
 
 echo "-- RBD_DRY=1 rbd_bootstrap.sh all"
-mkdir -p "$T/repo/kshop/app" "$T/repo/policy" "$T/save"
-echo 'package main' > "$T/repo/kshop/app/main.go"
+mkdir -p "$T/repo/maze/app" "$T/repo/policy" "$T/save"
+echo 'package main' > "$T/repo/maze/app/main.go"
 # repo/'s policy as one compact line: other bytes (another RBD_POLICY_SHA256), the same effect (the same RBD_POLICY_DIGEST)
 python3 -I -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])), separators=(",", ":")))' "$DEMO/repo/policy/gate.json" > "$T/repo/policy/gate.json"
 # GitHub main stands as a local bare repo (what orch/publish_main.sh pushed): repo/'s tree, one commit
@@ -67,10 +67,17 @@ mkdir -p "$T/mk" && cp -a "$T/repo/." "$T/mk/" && gq init -q -b main && gq add -
 MSHA=$(gq rev-parse HEAD)
 export RBD_REPO_DIR=$T/repo RBD_MAIN_SHA=$MSHA RBD_MAIN_URL=$T/main.git RBD_DRY_SAVE=$T/save
 : > "$STUB_LOG"
+# the kit packs the build step's binaries (build/linux-amd64, tools1/abdrive/bin) and the tools1 step computes
+# RBD_POLICY_DIGEST with this machine's build (build/rhobound-local): a fresh checkout runs the build step first
+if [ ! -x "$DEMO/build/linux-amd64/rhobound" ] || [ ! -x "$DEMO/build/rhobound-local" ] || [ ! -x "$DEMO/tools1/abdrive/bin/abdrive" ]; then
+  echo "  (no binaries yet: bash orch/rbd_bootstrap.sh build, the real build, about 2 min)"
+  env -u RBD_DRY bash "$B" build > "$T/build.out" 2>&1 || { echo "  FAIL rbd_bootstrap.sh build: $(tail -n 2 "$T/build.out")"; }
+fi
+export RBD_LOCAL_CLI=${RBD_LOCAL_CLI:-$DEMO/build/rhobound-local}
 RBD_DRY=1 bash "$B" all > "$T/all.out" 2>&1; rc=$?
 check "DRY all exit 0 (rc $rc)" [ $rc = 0 ] || tail -5 "$T/all.out"
 steps=$(grep -o '=== [a-z0-9-]*' "$T/all.out" | cut -c5- | tr '\n' ' ')
-check "steps in order: $steps" [ "$steps" = "build kit tools1 k3s kubeconfig ecr-secret images collector kshop bgload mcp runner " ]
+check "steps in order: $steps" [ "$steps" = "build kit tools1 k3s kubeconfig ecr-secret images collector maze bgload mcp runner " ]
 check "no real ssh/gh/aws/docker was run" [ ! -s "$STUB_LOG" ]
 check "k3s server on rbd-d-cp1 with flannel CIDRs and the control-plane taint" grep -q "DRY ssh rbd-d-cp1: sudo INSTALL_K3S_VERSION='v1.36.5+k3s1' INSTALL_K3S_EXEC='server --node-name rbd-d-cp1 --node-ip 10.82.1.11 .*--cluster-cidr 10.42.0.0/16 --service-cidr 10.43.0.0/16 .*control-plane:NoSchedule" "$T/all.out"
 for nr in edge1:edge:NoSchedule load1:load:NoSchedule ab1:ab:NoSchedule; do
@@ -83,14 +90,14 @@ check "...it goes on stdin" bash -c "grep -l '^DRY-TOKEN$' '$T'/save/stdin.* > /
 check "the runner token is never in a command line" bash -c "! grep 'DRY ssh' '$T/all.out' | grep -q 'DRY-RUNNER-TOKEN'"
 check "...it goes on stdin to runner-register.sh" grep -q "DRY ssh rbd-tools1: sudo /opt/rbd/setup/runner-register.sh <<< (stdin: 28 bytes" "$T/all.out"
 envf=$(grep -l '^RBD_ECR=' "$T"/save/stdin.* | head -n 1)
-check "rbd.env as SPEC 4 names it" bash -c "grep -qx 'RBD_ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop' '$envf' && grep -qx 'RBD_KMS=awskms:///alias/rhobound-demo-verdict' '$envf' && grep -qx 'KUBECONFIG=/opt/rbd/etc/kubeconfig' '$envf' && grep -qx 'RHOBOUND_STATE=/var/lib/rbd/state' '$envf' && grep -qx 'RBD_HOME=/var/lib/rbd' '$envf' && grep -qx 'RBD_REPO=Sharvil2704/rhobound-demo' '$envf' && grep -qx 'RBD_ACCOUNT=123456789012' '$envf' && grep -qx 'RBD_REGION=ap-south-1' '$envf' && grep -qx 'RBD_BUCKET=rhobound-research-123456789012-ap-south-1' '$envf'"
+check "rbd.env as SPEC 4 names it" bash -c "grep -qx 'RBD_ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze' '$envf' && grep -qx 'RBD_KMS=awskms:///alias/rhobound-demo-verdict' '$envf' && grep -qx 'KUBECONFIG=/opt/rbd/etc/kubeconfig' '$envf' && grep -qx 'RHOBOUND_STATE=/var/lib/rbd/state' '$envf' && grep -qx 'RBD_HOME=/var/lib/rbd' '$envf' && grep -qx 'RBD_REPO=Sharvil2704/rhobound-maze-bed' '$envf' && grep -qx 'RBD_ACCOUNT=123456789012' '$envf' && grep -qx 'RBD_REGION=ap-south-1' '$envf' && grep -qx 'RBD_BUCKET=rhobound-research-123456789012-ap-south-1' '$envf'"
 check "rbd.env pins the policy: RBD_POLICY_SHA256 = sha256 of repo/policy/gate.json; AB_LOCK_WAIT=3000" bash -c "grep -qx 'RBD_POLICY_SHA256=$(sha256sum < "$T/repo/policy/gate.json" | cut -d' ' -f1)' '$envf' && grep -qx 'AB_LOCK_WAIT=3000' '$envf' && [ \$(grep -c '^RBD_POLICY_SHA256=' '$envf') = 1 ]"
-check "the bootstrap never writes rbd.env.local (the owner's knobs)" bash -c "! grep -q 'rbd.env.local' '$T/all.out'"
+check "the bootstrap never writes rbd.env.local (your knobs)" bash -c "! grep -q 'rbd.env.local' '$T/all.out'"
 check "rbd.env pins the effective policy: RBD_POLICY_DIGEST = the CLI's gate.json digests.policy ($PIN_DIGEST)" bash -c "grep -qx 'RBD_POLICY_DIGEST=$PIN_DIGEST' '$envf' && [ \$(grep -c '^RBD_POLICY_DIGEST=' '$envf') = 1 ]"
 check "...the test's one-line policy has other bytes than repo/'s (another RBD_POLICY_SHA256), the same effect (the same digest)" [ "$(sed -n 's/^RBD_POLICY_SHA256=//p' "$envf")" != "$PIN_SHA" ]
 out=$(RBD_REPO_DIR=$DEMO/repo bash "$B" env 2> /dev/null)
 check "repo/policy/gate.json itself: RBD_POLICY_SHA256 $PIN_SHA, RBD_POLICY_DIGEST $PIN_DIGEST (the policy since 2026-10-30 21:15Z; the offline proof predates it)" bash -c "grep -qx 'RBD_POLICY_SHA256=$PIN_SHA' <<< '$out' && grep -qx 'RBD_POLICY_DIGEST=$PIN_DIGEST' <<< '$out'"
-mkdir -p "$T/loose/kshop/app" "$T/loose/policy"; echo '{"schema":"rhobound.policy/v1","max_entry_mean_change_pct":50}' > "$T/loose/policy/gate.json"
+mkdir -p "$T/loose/maze/app" "$T/loose/policy"; echo '{"schema":"rhobound.policy/v1","max_entry_mean_change_pct":50}' > "$T/loose/policy/gate.json"
 out=$(RBD_REPO_DIR=$T/loose bash "$B" env 2> /dev/null); ld=$(sed -n 's/^RBD_POLICY_DIGEST=//p' <<< "$out")
 check "another policy (50 %): another RBD_POLICY_DIGEST ($ld)" bash -c "[[ '$ld' =~ ^sha256:[0-9a-f]{64}\$ ]] && [ '$ld' != '$PIN_DIGEST' ]"
 out=$(RBD_LOCAL_CLI=$T/no-such-cli bash "$B" env 2>&1); rc=$?
@@ -102,35 +109,35 @@ out=$(RBD_LOCAL_CLI=$T/bad-cli bash "$B" env 2>&1); rc=$?
 check "a CLI whose gate fails: env refuses (rc $rc)" bash -c "[ $rc = 1 ] && grep -q 'gate exit 2: broken' <<< '$out' && grep -q 'computed no policy digest' <<< '$out'"
 pdl=$(grep -n 'policy-digest.sh /opt/rbd/bin/rhobound' "$T/all.out" | head -n 1 | cut -d: -f1); envl=$(grep -n 'rbd.env.new' "$T/all.out" | head -n 1 | cut -d: -f1)
 check "tools1: the INSTALLED CLI re-computes RBD_POLICY_DIGEST on rbd-tools1 before rbd.env is written (lines $pdl < $envl)" bash -c "[ -n '$pdl' ] && [ -n '$envl' ] && [ '$pdl' -lt '$envl' ]"
-check "...expecting this box's digest" grep -qF "policy-digest.sh /opt/rbd/bin/rhobound \"\$d/prediction.json\" \"\$d/policy.json\" $PIN_DIGEST" "$T/all.out"
+check "...expecting the workstation's digest" grep -qF "policy-digest.sh /opt/rbd/bin/rhobound \"\$d/prediction.json\" \"\$d/policy.json\" $PIN_DIGEST" "$T/all.out"
 pdf=$(grep 'policy-digest.sh /opt/rbd/bin/rhobound' "$T/all.out" | grep -o -- '-> [^)]*' | cut -c4-)
 check "...on the same bytes: its stdin holds the fixture prediction and repo/'s policy" bash -c "cmp -s <(tar -xOf '$pdf' prediction.json) '$DEMO/orch/fixtures/policy-digest-prediction.json' && cmp -s <(tar -xOf '$pdf' policy.json) '$T/repo/policy/gate.json'"
-# the re-check as sent, run here: /opt/rbd/setup -> the kit's, /opt/rbd/bin/rhobound -> this box's CLI, /var/tmp -> T/vt
+# the re-check as sent, run here: /opt/rbd/setup -> the kit's, /opt/rbd/bin/rhobound -> the workstation's CLI, /var/tmp -> T/vt
 pdc=$(grep 'DRY ssh rbd-tools1: .*policy-digest.sh /opt/rbd/bin/rhobound' "$T/all.out" | sed 's/^DRY ssh rbd-tools1: //; s/ <<< (stdin: .*$//')
-mkdir -p "$T/vt"; ln -s "$DEMO/build/rhobound-arm64" "$T/cli-amd64-standin"
+mkdir -p "$T/vt"; ln -s "$RBD_LOCAL_CLI" "$T/cli-amd64-standin"
 here() { sed -e "s#/var/tmp/#$T/vt/#g" -e "s#/opt/rbd/setup/#$DEMO/tools1/setup/#g" -e "s#/opt/rbd/bin/rhobound#$T/cli-amd64-standin#g" <<< "$1"; }
 bash -c "$(here "$pdc")" < "$pdf" > "$T/pd.out" 2>&1; rc=$?
 check "...run as sent: the CLIs agree, exit 0 (rc $rc), its scratch removed" bash -c "[ $rc = 0 ] && grep -qx '$PIN_DIGEST' '$T/pd.out' && [ -z \"\$(ls -A '$T/vt')\" ]"
 bash -c "$(here "${pdc/$PIN_DIGEST/sha256:$(printf %064d 0)}")" < "$pdf" > "$T/pd2.out" 2>&1; rc=$?
 check "...a CLI that writes another digest: exit 1 (rc $rc), said so" bash -c "[ $rc = 1 ] && grep -q 'not sha256:0000' '$T/pd2.out'"
-mkdir -p "$T/nopol/kshop/app"; out=$(RBD_REPO_DIR=$T/nopol bash "$B" env 2>&1); rc=$?
+mkdir -p "$T/nopol/maze/app"; out=$(RBD_REPO_DIR=$T/nopol bash "$B" env 2>&1); rc=$?
 check "no policy/gate.json to pin: env refuses (rc $rc)" bash -c "[ $rc = 1 ] && grep -q 'no $T/nopol/policy/gate.json to pin' <<< '$out'"
 out=$(RBD_REPO_DIR=$T/nopol RBD_DRY=1 bash "$B" tools1 2>&1); rc=$?
 check "...and the tools1 step sends no rbd.env without the pin (rc $rc)" bash -c "[ $rc = 1 ] && ! grep -q 'rbd.env.new' <<< '$out'"
 check "env subcommand prints the same rbd.env" bash -c "diff <(bash '$B' env | sed '/^\$/d') <(cat '$envf'; echo) > /dev/null || diff <(bash '$B' env | sed '/^\$/d') '$envf' > /dev/null"
 kitf=$(grep -o "stdin: [0-9]* bytes -> [^)]*" "$T/all.out" | sed -n 1p | sed 's/.*-> //')
 tar -tzf "$kitf" > "$T/kit.list" 2> /dev/null
-check "the kit holds lib/ ci/ setup/ k8s/ kshop/ mcp/ and bin/rhobound(-mcp)" bash -c "for f in ./lib/rbd-env.sh ./lib/lock.sh ./lib/copy_traces.sh ./ci/capture.sh ./ci/refit.sh ./setup/tools1-setup.sh ./setup/policy-digest.sh ./setup/pins.env ./k8s/collector.yaml ./kshop/render.py ./kshop/Dockerfile ./mcp/mcp-setup.sh ./bin/rhobound ./bin/rhobound-mcp; do grep -qx \"\$f\" '$T/kit.list' || { echo missing \$f; exit 1; }; done"
+check "the kit holds lib/ ci/ setup/ k8s/ maze/ mcp/ and bin/rhobound(-mcp)" bash -c "for f in ./lib/rbd-env.sh ./lib/lock.sh ./lib/copy_traces.sh ./ci/capture.sh ./ci/refit.sh ./setup/tools1-setup.sh ./setup/policy-digest.sh ./setup/pins.env ./k8s/collector.yaml ./maze/render.py ./maze/Dockerfile ./mcp/mcp-setup.sh ./bin/rhobound ./bin/rhobound-mcp; do grep -qx \"\$f\" '$T/kit.list' || { echo missing \$f; exit 1; }; done"
 check "the kit holds no tests/" bash -c "! grep -q '/tests/' '$T/kit.list'"
 echo "-- kit-install.sh on the kit as sent (RBD_KIT_ROOT in place of /opt/rbd)"
 mkdir -p "$T/stage" && tar -xzf "$kitf" -C "$T/stage"
 KO=$T/optroot
 RBD_KIT_ROOT=$KO bash "$T/stage/setup/kit-install.sh" "$T/stage" > "$T/ki.out" 2>&1; rc=$?
 check "kit-install exit 0 (rc $rc)" [ $rc = 0 ] || cat "$T/ki.out"
-check "layout: lib ci kshop k8s setup mcp abdrive + bin etc" bash -c "cd '$KO' && ls -d lib ci kshop k8s setup mcp abdrive bin etc > /dev/null"
+check "layout: lib ci maze k8s setup mcp abdrive + bin etc" bash -c "cd '$KO' && ls -d lib ci maze k8s setup mcp abdrive bin etc > /dev/null"
 check "bin: rhobound, rhobound-mcp, and part C's abdrive found by its ELF header" bash -c "cd '$KO/bin' && [ -x rhobound ] && [ -x rhobound-mcp ] && [ -x abdrive ] && cmp -s abdrive '$DEMO/tools1/abdrive/bin/abdrive'"
 check "SHA256SUMS lists the three binaries" bash -c "cd '$KO/bin' && sha256sum -c --quiet SHA256SUMS && [ \$(wc -l < SHA256SUMS) = 3 ]"
-check "scripts are executable" bash -c "[ -x '$KO/ci/capture.sh' ] && [ -x '$KO/lib/copy_traces.sh' ] && [ -x '$KO/kshop/render.py' ]"
+check "scripts are executable" bash -c "[ -x '$KO/ci/capture.sh' ] && [ -x '$KO/lib/copy_traces.sh' ] && [ -x '$KO/maze/render.py' ]"
 ino=$(stat -c %i "$KO/ci/capture.sh"); echo "# changed" >> "$T/stage/ci/capture.sh"; rm "$T/stage/k8s/collector.sh"
 RBD_KIT_ROOT=$KO bash "$T/stage/setup/kit-install.sh" "$T/stage" > /dev/null 2>&1
 check "an update replaces a script by rename (a running copy keeps its inode)" bash -c "[ \$(stat -c %i '$KO/ci/capture.sh') != $ino ] && tail -n 1 '$KO/ci/capture.sh' | grep -q changed"
@@ -139,17 +146,17 @@ check "kit installed by kit-install.sh on rbd-tools1" grep -q "DRY ssh rbd-tools
 check "kubeconfig: cp1's k3s.yaml -> rbd-tools1 /opt/rbd/etc/kubeconfig (0400 rbd)" bash -c "grep -q 'DRY ssh rbd-d-cp1: sudo cat /etc/rancher/k3s/k3s.yaml' '$T/all.out' && grep -q 'chown rbd:rbd /opt/rbd/etc/.kubeconfig.new && chmod 0400' '$T/all.out'"
 check "images: main uploaded, then images.sh MAIN SHA as rbd (GitHub main's sha)" grep -q "DRY ssh rbd-tools1: sudo -u rbd -H /opt/rbd/setup/images.sh /var/lib/rbd/src/main $MSHA" "$T/all.out"
 mainf=$(grep "/var/lib/rbd/src; rm -f main.sha" "$T/all.out" | grep -o -- '-> [^)]*' | cut -c4-)
-check "the main tree sent is the archive of exactly that commit (kshop/app, policy)" bash -c "tar -tf '$mainf' | grep -qx 'kshop/app/main.go' && tar -tf '$mainf' | grep -qx 'policy/gate.json' && cmp -s <(tar -xOf '$mainf' policy/gate.json) '$T/repo/policy/gate.json'"
+check "the main tree sent is the archive of exactly that commit (maze/app, policy)" bash -c "tar -tf '$mainf' | grep -qx 'maze/app/main.go' && tar -tf '$mainf' | grep -qx 'policy/gate.json' && cmp -s <(tar -xOf '$mainf' policy/gate.json) '$T/repo/policy/gate.json'"
 # the upload as sent, run here (sudo -u rbd dropped, /var/lib/rbd/src -> a folder holding an older main and main.sha)
 upc=$(grep "DRY ssh rbd-tools1: sudo -u rbd -H sh -c 'set -e; cd /var/lib/rbd/src;" "$T/all.out" | sed 's/^DRY ssh rbd-tools1: sudo -u rbd -H //; s/ <<< (stdin: .*$//')
 mkdir -p "$T/rsrc/main/old" && echo old > "$T/rsrc/main/old/x" && printf 'e%.0s' $(seq 40) > "$T/rsrc/main.sha"
 ( umask 077; bash -c "${upc//\/var\/lib\/rbd\/src/$T/rsrc}" < "$mainf" ) > "$T/up.err" 2>&1; rc=$?
 check "images: the main upload as sent (run here, umask 077): exit 0 (rc $rc)" [ $rc = 0 ] || cat "$T/up.err"
-check "...src/main is the new tree, the old one gone" bash -c "[ -f '$T/rsrc/main/kshop/app/main.go' ] && [ ! -e '$T/rsrc/main/old' ]"
+check "...src/main is the new tree, the old one gone" bash -c "[ -f '$T/rsrc/main/maze/app/main.go' ] && [ ! -e '$T/rsrc/main/old' ]"
 check "...src/main.sha = the uploaded commit + a newline, mode 0644, no temporaries left" bash -c "[ \"\$(cat '$T/rsrc/main.sha')\" = '$MSHA' ] && [ \$(stat -c %s '$T/rsrc/main.sha') = 41 ] && [ \$(stat -c %a '$T/rsrc/main.sha') = 644 ] && ! ls -A '$T/rsrc' | grep -q '^[.]main'"
 a=${upc%%rm -f main.sha*} b=${upc%%tar -xf -*} m=${upc%%mv .main.new main;*} w=${upc%%mv -f .main.sha.new main.sha*}
 check "...the old main.sha goes before the tree changes; the new one comes by rename after the tree is complete" bash -c "[ ${#a} -lt ${#b} ] && [ ${#m} -lt ${#w} ] && [ ${#w} -lt ${#upc} ]"
-for s in "sudo -u rbd -H /opt/rbd/k8s/collector.sh" "sudo -u rbd -H /opt/rbd/kshop/app.sh" "sudo -u rbd -H /opt/rbd/kshop/bgload.sh start" "sudo /opt/rbd/mcp/mcp-setup.sh" "sudo systemctl start rbd-ecr-secret.service"; do
+for s in "sudo -u rbd -H /opt/rbd/k8s/collector.sh" "sudo -u rbd -H /opt/rbd/maze/app.sh" "sudo -u rbd -H /opt/rbd/maze/bgload.sh start" "sudo /opt/rbd/mcp/mcp-setup.sh" "sudo systemctl start rbd-ecr-secret.service"; do
   check "rbd-tools1 runs: $s" grep -q "DRY ssh rbd-tools1: .*$s" "$T/all.out"
 done
 check "every tools step runs on rbd-tools1" bash -c "! grep 'DRY ssh' '$T/all.out' | grep -E '/opt/rbd|rbd-ecr|rbd-bgload' | grep -v 'DRY ssh rbd-tools1:'"
@@ -159,10 +166,10 @@ imgs() { rm -f "$T"/save/stdin.*; RBD_DRY=1 bash "$B" images > "$T/img.out" 2>&1
 sentf() { grep "/var/lib/rbd/src; rm -f main.sha" "$T/img.out" | grep -o -- '-> [^)]*' | cut -c4-; }
 echo "$MSHA" > "$RBD_STATE/main.sha"
 RBD_MAIN_SHA="" imgs; rc=$?
-check "state/main.sha (orch/publish_main.sh) is used without RBD_MAIN_SHA (rc $rc)" bash -c "[ $rc = 0 ] && grep -q 'images.sh /var/lib/rbd/src/main $MSHA' '$T/img.out' && tar -tf \"\$(grep '/var/lib/rbd/src; rm -f main.sha' '$T/img.out' | grep -o -- '-> [^)]*' | cut -c4-)\" | grep -qx 'kshop/app/main.go'"
-echo "// local edit, not on GitHub" >> "$T/repo/kshop/app/main.go"
+check "state/main.sha (orch/publish_main.sh) is used without RBD_MAIN_SHA (rc $rc)" bash -c "[ $rc = 0 ] && grep -q 'images.sh /var/lib/rbd/src/main $MSHA' '$T/img.out' && tar -tf \"\$(grep '/var/lib/rbd/src; rm -f main.sha' '$T/img.out' | grep -o -- '-> [^)]*' | cut -c4-)\" | grep -qx 'maze/app/main.go'"
+echo "// local edit, not on GitHub" >> "$T/repo/maze/app/main.go"
 imgs; f=$(sentf)
-check "a local repo/ edit is NOT what is built (production == GitHub main)" bash -c "[ -s '$f' ] && tar -xOf '$f' kshop/app/main.go | grep -qx 'package main' && ! tar -xOf '$f' kshop/app/main.go | grep -q 'local edit'"
+check "a local repo/ edit is NOT what is built (production == GitHub main)" bash -c "[ -s '$f' ] && tar -xOf '$f' maze/app/main.go | grep -qx 'package main' && ! tar -xOf '$f' maze/app/main.go | grep -q 'local edit'"
 gq checkout -q -b other && echo x > "$T/mk/x.txt" && gq add -A && gq commit -q -m other && git -C "$T/mk" push -q "$T/main.git" other 2> /dev/null
 OSHA=$(gq rev-parse HEAD)
 RBD_MAIN_SHA=$OSHA imgs; rc=$?
@@ -197,18 +204,4 @@ for _ in $(seq 1 30); do [ -s "$T/rhome/logs/job1.rc" ] && break; sleep 0.2; don
 check "bg: output and exit code kept" bash -c "[ \"\$(cat '$T/rhome/logs/job1.rc')\" = 3 ] && grep -qx 'a b' '$T/rhome/logs/job1.out' && grep -qx err '$T/rhome/logs/job1.out'"
 out=$(loc tail job1 5 2>&1); check "tail: done, exit 3, and the lines" bash -c "grep -q '== job1: done, exit 3' <<< '$out' && grep -qx 'a b' <<< '$out'"
 
-echo "-- the RUNBOOK's 4b predict/gate lines, through rbd.sh's quoting, on part D's fixtures (A/B record 0 ms, its fit)"
-FX=$DEMO/tools1/tests/ci/fixtures H4=$T/rhome
-mkdir -p "$H4/runs/core-aa/ab/record" "$H4/state/ab" "$H4/captures/prod-0/fit" "$H4/src/main/policy" "$T/b4"
-cp "$FX/fit.json" "$H4/captures/prod-0/fit/fit.json"; cp "$DEMO/repo/policy/gate.json" "$H4/src/main/policy/gate.json"
-cp "$FX/ab-record-0ms.json" "$H4/runs/core-aa/ab/record/ab-record.json"
-cp "$FX/ab-record-0ms.json" "$H4/state/ab/$(sha256sum < "$FX/ab-record-0ms.json" | cut -d' ' -f1).json"   # diff-fit's store
-jq -n --arg d "$H4/captures/prod-0/fit" '{fit: {dir: $d}}' > "$H4/baseline.json"
-ln -s "$DEMO/build/rhobound-arm64" "$T/b4/rhobound"
-s4=$(python3 -I -c 'import sys; s = open(sys.argv[1]).read(); m = "RUN=core-aa\nbash orch/rbd.sh run bash -c \x27"; a = s.index(m) + len(m); print(s[a:s.index("\x27 core-aa-4b \"$RUN\"", a)])' "$DEMO/orch/RUNBOOK.md")
-PATH="$T/b4:$PATH" RHOBOUND_STATE=$H4/state RBD_POLICY_DIGEST=$PIN_DIGEST loc run bash -c "$s4" core-aa-4b core-aa > "$T/4b.out" 2>&1
-check "4b: own_ms.delta read, predict exit 0, gate.json written for RUN=core-aa" bash -c "grep -q '^own_ms.delta ' '$T/4b.out' && grep -qx 'predict exit 0' '$T/4b.out' && [ -s '$H4/runs/core-aa/ab/gate/gate.json' ]" || tail -5 "$T/4b.out"
-check "...the gate used the pinned effective policy: 'policy digest ok'" grep -qx 'policy digest ok' "$T/4b.out"
-PATH="$T/b4:$PATH" RHOBOUND_STATE=$H4/state RBD_POLICY_DIGEST=sha256:$(printf %064d 0) loc run bash -c "$s4" core-aa-4b core-aa > "$T/4b2.out" 2>&1
-check "...and says DIFFERS when rbd.env pins another" grep -qx 'policy digest DIFFERS' "$T/4b2.out"
 finish

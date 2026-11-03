@@ -8,7 +8,7 @@ message, the packet and its digest as the user message), on the Meta Model API's
 (https://api.meta.ai/v1/chat/completions, Bearer; dev.meta.ai/docs, read 2026-10-30), with the answer's JSON schema in
 the prompt and response_format json_object. JUDGE_OUT gets request.json (the exact bytes sent: predict.sh records their
 sha256 as the gate's --judge-request), response.json (the API's reply) and model.txt (the model that answered).
-The key: Secrets Manager JUDGE_SECRET [rhobound-demo/anthropic-key, where the owner stored the Meta key], read with the aws
+The key: Secrets Manager JUDGE_SECRET [rhobound-demo/anthropic-key, a historical name: it holds the Meta key], read with the aws
 CLI into memory only; never written, never printed. One request, no re-roll (ARCHITECTURE 7.2: an invalid answer is
 "judge unavailable", never retried into a different one); only transport errors (429/500/503, Retry-After) are retried.
 Model: JUDGE_MODEL [muse-wonder-1.0]; when the key cannot use it (403/404) JUDGE_FALLBACK [muse-spark-1.3] once, and

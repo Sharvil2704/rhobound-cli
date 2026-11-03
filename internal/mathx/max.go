@@ -297,3 +297,6 @@ func emaxNumeric(means []float64, points int) float64 {
 	}
 	return sum
 }
+
+// GaussLegendre returns the n-point Gauss-Legendre nodes and weights on [-1, 1].
+func GaussLegendre(n int) ([]float64, []float64) { return gaussLegendre(n) }

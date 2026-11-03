@@ -27,7 +27,7 @@ case "$*" in
 esac
 EOF
 chmod +x "$T/bin/gh"
-export FAKE_GH=$GH RBD_STATE=$T/state RBD_TMP=$T/scratch URL=$T/bare.git REPO=Sharvil2704/rhobound-demo
+export FAKE_GH=$GH RBD_STATE=$T/state RBD_TMP=$T/scratch URL=$T/bare.git REPO=Sharvil2704/rhobound-maze-bed
 mkdir -p "$T/repo" && tar -C "$DEMO/repo" --exclude=.git -cf - . | tar -x -C "$T/repo"
 export RBD_REPO_DIR=$T/repo
 git init -q --bare "$URL"
@@ -44,12 +44,12 @@ cp -a "$T/repo" "$T/leak1"; printf 'the cluster answers on %s\n' "$pubip" >> "$T
 RBD_REPO_DIR=$T/leak1 pub; rc=$?
 check "a public IPv4 in repo/ is refused (rc $rc)" [ $rc = 1 ] && check "...file, line and address named" grep -q "README.md:[0-9]*: IPv4 $pubip" "$T/p.err"
 check "...nothing created, no main pushed, the temp folder gone" bash -c "! grep -q 'gh repo create' '$STUB_LOG' && [ -z \"\$(git --git-dir='$URL' for-each-ref)\" ] && [ -z \"\$(ls -A '$T/scratch')\" ]"
-cp -a "$T/repo" "$T/leak2"; printf 'arn:aws:iam::%s:role/x\n' "$acct" > "$T/leak2/kshop/notes.txt"
+cp -a "$T/repo" "$T/leak2"; printf 'arn:aws:iam::%s:role/x\n' "$acct" > "$T/leak2/maze/notes.txt"
 RBD_REPO_DIR=$T/leak2 pub; rc=$?
-check "a standalone 12-digit number (an account id) is refused (rc $rc)" [ $rc = 1 ] && check "...named" grep -q "kshop/notes.txt:1: 12-digit number $acct" "$T/p.err"
+check "a standalone 12-digit number (an account id) is refused (rc $rc)" [ $rc = 1 ] && check "...named" grep -q "maze/notes.txt:1: 12-digit number $acct" "$T/p.err"
 cp -a "$T/repo" "$T/leak3"
 printf 'docs %s %s %s %s %s %s\npi 0.%s, %s.5, hex a%sb, 13 digits %s1, version 1.26.9\n' 198.51.100.7 192.0.2.1 203.0.113.9 10.42.0.1 192.168.1.1 127.0.0.53 \
-  "$acct" "$acct" "$acct" "$acct" > "$T/leak3/kshop/ok.txt"
+  "$acct" "$acct" "$acct" "$acct" > "$T/leak3/maze/ok.txt"
 printf '%s\n' "$pubip" > "$T/leak3/ignored.jsonl"   # repo/.gitignore drops *.jsonl: never committed, never scanned
 : > "$STUB_LOG"
 DRYRUN=1 RBD_REPO_DIR=$T/leak3 pub; rc=$?
@@ -66,14 +66,14 @@ echo "-- the first push"
 pub; rc=$?
 sha=$(tail -n 1 "$T/p.out")
 check "publish exit 0 (rc $rc)" [ $rc = 0 ] || cat "$T/p.err"
-check "the repo was created private, merge commits only, workflow token read" bash -c "grep -q 'gh repo create Sharvil2704/rhobound-demo --private' '$STUB_LOG' && grep -q 'gh repo edit Sharvil2704/rhobound-demo --enable-merge-commit --enable-squash-merge=false --enable-rebase-merge=false' '$STUB_LOG' && grep -q 'gh api -X PUT repos/Sharvil2704/rhobound-demo/actions/permissions/workflow -f default_workflow_permissions=read' '$STUB_LOG'"
+check "the repo was created private, merge commits only, workflow token read" bash -c "grep -q 'gh repo create Sharvil2704/rhobound-maze-bed --private' '$STUB_LOG' && grep -q 'gh repo edit Sharvil2704/rhobound-maze-bed --enable-merge-commit --enable-squash-merge=false --enable-rebase-merge=false' '$STUB_LOG' && grep -q 'gh api -X PUT repos/Sharvil2704/rhobound-maze-bed/actions/permissions/workflow -f default_workflow_permissions=read' '$STUB_LOG'"
 check "main pushed: the printed sha is the bare repo's main ($sha)" [ "$(bare rev-parse refs/heads/main 2> /dev/null)" = "$sha" ]
 check "state/main.sha = that sha" [ "$(cat "$RBD_STATE/main.sha")" = "$sha" ]
 check "one commit, no other branch" bash -c "[ \$(git --git-dir='$URL' rev-list --count main) = 1 ] && [ \"\$(git --git-dir='$URL' for-each-ref --format='%(refname)')\" = refs/heads/main ]"
-check "author: the gh account's noreply address; the Co-Authored-By trailer" bash -c "[ \"\$(git --git-dir='$URL' log -1 --format='%an <%ae>' main)\" = 'tester <4242+tester@users.noreply.github.com>' ] && git --git-dir='$URL' log -1 --format=%B main | grep -qx 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'"
+check "author: the gh account's noreply address, and no trailer" bash -c "[ \"\$(git --git-dir='$URL' log -1 --format='%an <%ae>' main)\" = 'tester <4242+tester@users.noreply.github.com>' ] && ! git --git-dir='$URL' log -1 --format=%B main | grep -qi 'co-authored-by'"
 want=$(cd "$T/repo" && git init -q "$T/ref" && cp -a . "$T/ref/" && cd "$T/ref" && git add -A && git ls-files | sort | tr '\n' ' ')
 check "main holds repo/'s files (gitignored ones excluded)" [ "$(bare ls-tree -r --name-only main | sort | tr '\n' ' ')" = "$want" ]
-check "...byte for byte (policy/gate.json, the workflows)" bash -c "for f in policy/gate.json .github/workflows/gate.yml .github/workflows/deploy.yml kshop/app/internal/work/lib_v11.go; do cmp -s <(git --git-dir='$URL' show main:\$f) '$T/repo/'\$f || { echo \$f; exit 1; }; done"
+check "...byte for byte (policy/gate.json, the workflows)" bash -c "for f in policy/gate.json .github/workflows/gate.yml .github/workflows/deploy.yml maze/app/internal/svc/pricing/pricing.go; do cmp -s <(git --git-dir='$URL' show main:\$f) '$T/repo/'\$f || { echo \$f; exit 1; }; done"
 check "the temp folder is gone" scratch_empty
 
 echo "-- again: nothing to push"
@@ -84,7 +84,7 @@ check "...state/main.sha written again, the same sha" [ "$(cat "$RBD_STATE/main.
 check "...no repo create (it exists)" bash -c "! grep -q 'gh repo create' '$STUB_LOG'"
 
 echo "-- repo/ changed after the push: refused"
-echo "// changed" >> "$T/repo/kshop/app/internal/work/lib_v11.go"
+echo "// changed" >> "$T/repo/maze/app/internal/svc/pricing/pricing.go"
 pub; rc=$?
 check "a different tree is refused (rc $rc), never force-pushed" bash -c "[ $rc = 1 ] && grep -q 'is not repo/ .*refusing, never a force-push' '$T/p.err' && [ \"\$(git --git-dir='$URL' rev-parse main)\" = $sha ]"
 check "...state/main.sha keeps the published sha" [ "$(cat "$RBD_STATE/main.sha")" = "$sha" ]

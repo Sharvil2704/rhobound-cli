@@ -1,0 +1,46 @@
+diff --git a/maze/app/internal/svc/media/media.go b/maze/app/internal/svc/media/media.go
+index 135a053..32493d8 100644
+--- a/maze/app/internal/svc/media/media.go
++++ b/maze/app/internal/svc/media/media.go
+@@ -25,9 +25,40 @@ func Thumb(seed uint64) []byte {
+ 	return out
+ }
+ 
++// Sharpen returns a new image: the unsharp mask p + 1.5*(p - blur) of img (128x128, row-major), with blur the 7x7
++// binomial blur [1 6 15 20 15 6 1] x [1 6 15 20 15 6 1] / 4096, edges clamped, rounded half up and limited to 0..255.
++// The blur is separable: a horizontal pass, then a vertical one.
++func Sharpen(img []byte) []byte {
++	const w = 128
++	g := [7]int{1, 6, 15, 20, 15, 6, 1}
++	var h [w * w]int32
++	for y := 0; y < w; y++ {
++		row := img[y*w : y*w+w]
++		for x := 0; x < w; x++ {
++			s := 0
++			for d := -3; d <= 3; d++ {
++				s += g[d+3] * int(row[min(w-1, max(0, x+d))])
++			}
++			h[y*w+x] = int32(s)
++		}
++	}
++	out := make([]byte, len(img))
++	for y := 0; y < w; y++ {
++		for x := 0; x < w; x++ {
++			s := 0
++			for d := -3; d <= 3; d++ {
++				s += g[d+3] * int(h[min(w-1, max(0, y+d))*w+x])
++			}
++			v := 20480*int(img[y*w+x]) - 3*s + 4096
++			out[y*w+x] = byte(min(255, max(0, v>>13)))
++		}
++	}
++	return out
++}
++
+ func init() {
+ 	rt.Register("media.thumb", func(r *rt.Req) error {
+-		r.Out = Thumb(n.Add(1))
++		r.Out = Sharpen(Thumb(n.Add(1)))
+ 		return nil
+ 	})
+ }

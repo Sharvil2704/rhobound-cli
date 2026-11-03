@@ -76,6 +76,8 @@ func TestMirrorCoversEveryField(t *testing.T) {
 		{infer.VariableCall{}, wireVariableCall{}},
 		{infer.CallShape{}, wireCallShape{}},
 		{infer.PodShare{}, wirePodShare{}},
+		{infer.RouteStats{}, wireRoute{}},
+		{infer.RouteCaller{}, wireRouteCaller{}},
 		{model.Topology{}, wireTopology{}},
 		{model.Service{}, wireService{}},
 		{model.Call{}, wireCall{}},

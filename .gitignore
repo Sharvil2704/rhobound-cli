@@ -4,9 +4,6 @@
 /dist/
 .DS_Store
 /results/
-/bed/build/
-/bed/state/
-/.tmp-bed/
-/bed/tools1/abdrive/bin
-__pycache__/
-*.pyc
+
+# a binary built inside its package folder
+/mcp/cmd/rhobound-mcp/rhobound-mcp

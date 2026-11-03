@@ -140,40 +140,101 @@ func waitProbability(sv *Service, s, lam float64) float64 {
 	return ErlangC(c, lam*s)
 }
 
+// edgeVariance is a child's latency variance as a call on the edge caller -> child sees it: v, changed by edgeVar's
+// value for the edge and floored at 0 (v itself with no change).
+func edgeVariance(v float64, edgeVar map[Edge]float64, caller, child int) float64 {
+	if edgeVar == nil {
+		return v
+	}
+	x, ok := edgeVar[Edge{caller, child}]
+	if !ok {
+		return v
+	}
+	return math.Max(0, v+x)
+}
+
 // composeMatched is compose with variances: sequential calls add means and
 // variances; a parallel fan-out takes the expected maximum over independent
 // gamma branches matched to each branch's mean and variance; async calls add
 // nothing. The glue adds its mean and its variance, independent of the rest.
-func composeMatched(t *Topology, r, v []float64) []float64 {
+// With batches (b, batch.go), a node's batch group is one branch whose latency
+// is the batch's (batchState.groupMoments), a call to a batch-fed child that
+// arrives alone waits what a single call waits (b.r0), and a batch-fed
+// service's returned latency is the mean over all its visits. Edge changes
+// (edge, edgeVar: per-route own time, routes.go in infer) add to each call on
+// their edge; on a batch group the mean change is added to the group's latency.
+func composeMatched(t *Topology, r, v []float64, b *batchState, edge, edgeVar map[Edge]float64) []float64 {
 	l := make([]float64, len(t.Services))
 	vl := make([]float64, len(t.Services))
 	for k := len(t.order) - 1; k >= 0; k-- {
 		i := t.order[k]
 		sv := &t.Services[i]
 		calls := sv.SyncCalls()
+		ri, vi := r[i], v[i]
+		var groups []batchGroup
+		if b != nil {
+			if b.fed[i] {
+				ri, vi = b.r0[i], b.v0[i]
+			}
+			groups = b.groups[i]
+		}
 		switch {
 		case len(calls) == 0:
-			l[i], vl[i] = r[i], v[i]
+			l[i], vl[i] = ri, vi
+		case groups != nil:
+			var mu, va []float64
+			for _, g := range groups {
+				m, mv := b.groupMoments(t, g, l, vl)
+				mu, va = append(mu, m+edgeMs(edge, i, g.child)), append(va, mv)
+			}
+			for _, c := range calls {
+				inGroup := false
+				for _, g := range groups {
+					inGroup = inGroup || g.child == c.Child
+				}
+				if !inGroup {
+					dm, dv := t.RouteAdj(c.Child, c.RouteQ, l, vl, edge, edgeVar)
+					mu = append(mu, t.CallHop(c)+l[c.Child]+edgeMs(edge, i, c.Child)+dm)
+					va = append(va, math.Max(0, edgeVariance(vl[c.Child], edgeVar, i, c.Child)+dv))
+				}
+			}
+			if len(mu) == 1 {
+				l[i], vl[i] = ri+mu[0], vi+va[0]
+			} else {
+				m, mv := mathx.MaxMomentsGammaCorr(mu, va, sv.BranchCorr)
+				l[i], vl[i] = ri+m, vi+mv
+			}
 		case sv.Parallel && len(calls) > 1:
 			mu := make([]float64, len(calls))
 			va := make([]float64, len(calls))
 			for j, c := range calls {
-				mu[j] = t.CallHop(c) + l[c.Child]
-				va[j] = vl[c.Child]
+				dm, dv := t.RouteAdj(c.Child, c.RouteQ, l, vl, edge, edgeVar)
+				mu[j] = t.CallHop(c) + l[c.Child] + edgeMs(edge, i, c.Child) + dm
+				va[j] = math.Max(0, edgeVariance(vl[c.Child], edgeVar, i, c.Child)+dv)
 			}
 			m, mv := mathx.MaxMomentsGammaCorr(mu, va, sv.BranchCorr)
-			l[i], vl[i] = r[i]+m, v[i]+mv
+			l[i], vl[i] = ri+m, vi+mv
 		default:
 			sum, vs := 0.0, 0.0
 			for _, c := range calls {
-				m := t.CallHop(c) + l[c.Child]
+				dm, dv := t.RouteAdj(c.Child, c.RouteQ, l, vl, edge, edgeVar)
+				m := t.CallHop(c) + l[c.Child] + edgeMs(edge, i, c.Child) + dm
 				sum += c.P * m
-				vs += c.P*(vl[c.Child]+m*m) - (c.P*m)*(c.P*m)
+				vs += c.P*(math.Max(0, edgeVariance(vl[c.Child], edgeVar, i, c.Child)+dv)+m*m) - (c.P*m)*(c.P*m)
 			}
-			l[i], vl[i] = r[i]+sum, v[i]+vs
+			l[i], vl[i] = ri+sum, vi+vs
 		}
 		l[i] += sv.Glue
 		vl[i] += sv.GlueCS2 * sv.Glue * sv.Glue
+	}
+	if b != nil {
+		out := append([]float64(nil), l...)
+		for i, fed := range b.fed {
+			if fed {
+				out[i] = l[i] - b.r0[i] + r[i]
+			}
+		}
+		return out
 	}
 	return l
 }

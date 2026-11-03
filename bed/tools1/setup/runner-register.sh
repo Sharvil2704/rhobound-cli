@@ -3,11 +3,11 @@
 #   sha256 from pins.env, installdependencies.sh; here and not in tools1-setup.sh, so a GitHub download never blocks the core
 #   path, SPEC 0b), its registration for RBD_REPO (labels self-hosted, linux, x64 + rbd-demo, --disableupdate) and its service as
 #   user ghrunner, ordered after rbd-imds-block.service (a drop-in: no job runs before the IMDS rule exists). The registration
-#   token comes on STDIN (minted on the orchestrator by gh api, carried by ssh); it is read before anything else runs (so no
+#   token comes on STDIN (minted on your workstation by gh api, carried by ssh); it is read before anything else runs (so no
 #   installer can swallow it) and reaches config.sh as ACTIONS_RUNNER_INPUT_TOKEN, which the runner reads (Runner.Listener
 #   CommandSettings), never an argv or a file. Already registered: stdin is ignored, the service is started.
 # ghrunner owns the runner's own files (bin/, .credentials, .runner): a job can modify them and so reach later jobs. Accepted for
-#   the owner-only day 1 (SPEC 6 scope); --disableupdate keeps the pinned version.
+#   a bed whose repository only you can push to; --disableupdate keeps the pinned version.
 # shellcheck disable=SC2015
 set -euo pipefail
 # shellcheck disable=SC1091

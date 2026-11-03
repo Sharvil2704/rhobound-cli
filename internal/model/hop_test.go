@@ -4,6 +4,7 @@ package model
 
 import (
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -80,7 +81,7 @@ func TestCallHopRoundTripAndValidation(t *testing.T) {
 	}
 	for i := range topo.Services {
 		for j, c := range topo.Services[i].Calls {
-			if got := back.Services[i].Calls[j]; got != c {
+			if got := back.Services[i].Calls[j]; !reflect.DeepEqual(got, c) {
 				t.Errorf("%s call %d: %+v after a round trip, was %+v", topo.Services[i].Name, j, got, c)
 			}
 		}

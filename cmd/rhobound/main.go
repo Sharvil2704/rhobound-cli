@@ -349,11 +349,11 @@ func cmdModel(args []string, out, errw io.Writer) error {
 		}
 	}
 	rep := report.Build(pos[0], inf, 1, base, delta, changes)
-	rep.Model = modelName(c)
+	rep.Model = modelName(c, topo)
 	rep.FromTopology = true
 	return writeReport(rep, c, out, errw)
 }
 
 func modelConfig(c *common) model.Config { return engine.Config(*c.plain) }
 
-func modelName(c *common) string { return engine.ModelName(*c.plain) }
+func modelName(c *common, t *model.Topology) string { return engine.ModelNameFor(*c.plain, t) }

@@ -5,10 +5,10 @@
                               [--force] [--no-compile]
   NAME  cN-plant (N: 1-2 digits). make_prs.sh opens it as a DRAFT PR labelled rbd-plant; orch/automerge.sh refuses to merge
         any rbd-plant PR (or head branch rbd/cN-plant), whatever its verdict: a planted regression is never merged.
-  S     one of the five services with a plantable hook (repo/kshop/spec.json's code path in parentheses):
+  S     one of the five services with a plantable hook (repo/maze/spec.json's code path in parentheses):
           auth VerifyToken (verify_token), payments RiskCheck (risk_check), inventory StockCheck (stock_check):
-            kshop/app/internal/work/lib_v11.go (library 1.1, production's LIB=kshop_v11);
-          catalog Rank (rank): kshop/app/internal/hot/rank.go;  pricing Quote (quote): kshop/app/internal/hot/price.go.
+            maze/app/internal/work/lib_v11.go (library 1.1, production's LIB=maze_v11);
+          catalog Rank (rank): maze/app/internal/hot/rank.go;  pricing Quote (quote): maze/app/internal/hot/price.go.
   M and D (durations in ms, whole microseconds; the hold is the FIRST statement of the hooked function, before any cache
   lookup or early return, so every call pays it: VerifyToken's 256-entry LRU cannot damp it):
     sleep    D ms: time.Sleep(D) holds the calling worker (wall time, no CPU).                         0 < D <= 200
@@ -41,10 +41,10 @@
   --force         replace an existing changes/NAME (else refused)
   --no-compile    skip the compile check (tests only): the manifest says compiled: false, and make_prs.sh refuses such a
                   plant (unless PLANT_UNCOMPILED=1, its tests). Without it the patched copy of repo/ must pass
-                  orch/gocheck.sh (agent_take.sh's capped, offline go build under the default tags and kshop_v11 and
-                  go vet -tags kshop_v11).
+                  orch/gocheck.sh (agent_take.sh's capped, offline go build under the default tags and maze_v11 and
+                  go vet -tags maze_v11).
 Writes changes/NAME/ (atomically: a temporary folder renamed into place):
-  change.patch          git diff against repo/kshop (kshop/app/*.go only: the hooked file, plus a new plant.go in its
+  change.patch          git diff against repo/maze (maze/app/*.go only: the hooked file, plus a new plant.go in its
                         package for sleep/spin/mutex/bimodal/alloc); checked with git apply --check on a fresh copy of repo/
   rhobound-change.json  rbd.change-request/v2 {schema, services: [S], summary}
   title.txt             the PR title (make_prs.sh: "NAME: TITLE")
@@ -55,7 +55,7 @@ Writes changes/NAME/ (atomically: a temporary folder renamed into place):
 Exit 0 written; 1 refused (anchors not found on main, NAME exists, bad dose, ...); 2 usage; 3 does not compile (the go
 output is printed; nothing is written).
 Env: RBD_CAPPED (passed to orch/gocheck.sh: the capped.sh to use; tests may set it to "")  GOCHECK_CACHE (the build cache)
-Scratch: the kit's ../.tmp-bed/plant.XXXXXX (never /tmp), removed at the end. python3 -I, stdlib only; runs git, gofmt.
+Scratch: $RBD_SCRATCH/plant.XXXXXX (default $TMPDIR/rbd), removed at the end. python3 -I, stdlib only; runs git, gofmt.
 """
 import argparse
 import datetime
@@ -73,13 +73,13 @@ KIT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 REPO = os.path.join(KIT, "repo")
 CHANGES = os.path.join(KIT, "changes")
 PREFIX = "PLANT do-not-merge: "
-WORK = "kshop/app/internal/work/lib_v11.go"
+WORK = "maze/app/internal/work/lib_v11.go"
 HOOKS = {   # service -> (file, function, spec.json code path, package folder)
     "auth": (WORK, "VerifyToken", "verify_token"),
     "payments": (WORK, "RiskCheck", "risk_check"),
     "inventory": (WORK, "StockCheck", "stock_check"),
-    "catalog": ("kshop/app/internal/hot/rank.go", "Rank", "rank"),
-    "pricing": ("kshop/app/internal/hot/price.go", "Quote", "quote"),
+    "catalog": ("maze/app/internal/hot/rank.go", "Rank", "rank"),
+    "pricing": ("maze/app/internal/hot/price.go", "Quote", "quote"),
 }
 RENAMES = {"auth": ("arr", "derivedKey"), "payments": ("method", "payMethod"), "inventory": ("item", "itemID"),
            "catalog": ("terms", "qterms"), "pricing": ("semi", "semiAt")}
@@ -436,12 +436,12 @@ def main(argv):
     out = os.path.join(CHANGES, a.name)
     if os.path.lexists(out) and not a.force:
         no("changes/%s exists (--force replaces it)" % a.name)
-    spec = json.load(open(os.path.join(REPO, "kshop", "spec.json")))["services"]
+    spec = json.load(open(os.path.join(REPO, "maze", "spec.json")))["services"]
     if a.service not in HOOKS:
         no("service %r has no plantable hook (%s)" % (a.service, ", ".join("%s %s" % (s, h[1]) for s, h in HOOKS.items())))
     path, fn, cp = HOOKS[a.service]
     if cp not in (spec.get(a.service) or {}).get("code_paths", []):
-        no("%s does not run code path %s in repo/kshop/spec.json: %s would never be called" % (a.service, cp, fn))
+        no("%s does not run code path %s in repo/maze/spec.json: %s would never be called" % (a.service, cp, fn))
     msha = os.path.join(KIT, "state", "main.sha")
     base = open(msha).read(64).strip() if os.path.isfile(msha) else ""
     if not re.fullmatch(r"[0-9a-f]{40}", base):
@@ -469,13 +469,14 @@ def main(argv):
         % (a.name, a.service, fn, tk, a.mechanism, place, eff, a.service))
     text_ok("the summary", summary, 1000)
 
-    os.makedirs(os.path.join(KIT, "..", ".tmp-bed"), exist_ok=True)
-    W = tempfile.mkdtemp(prefix="plant.", dir=os.path.join(KIT, "..", ".tmp-bed"))
+    scr = os.environ.get("RBD_SCRATCH") or os.path.join(os.environ.get("TMPDIR") or "/tmp", "rbd")
+    os.makedirs(scr, exist_ok=True)
+    W = tempfile.mkdtemp(prefix="plant.", dir=scr)
     try:
         G, A = os.path.join(W, "g"), os.path.join(W, "a")
         for d in (G, A):
             os.makedirs(d)
-            shutil.copytree(os.path.join(REPO, "kshop"), os.path.join(d, "kshop"), symlinks=True)
+            shutil.copytree(os.path.join(REPO, "maze"), os.path.join(d, "maze"), symlinks=True)
         git(G, "init", "-q", "-b", "main")
         git(A, "init", "-q", "-b", "main")   # git apply in A works on A, never on a repository around the scratch
         git(G, "add", "-A")
@@ -487,9 +488,9 @@ def main(argv):
         names = git(G, "diff", "--cached", "--name-only", "--no-renames").decode().split()
         if not names:
             no("the change is empty against repo/")
-        bad = [n for n in names if not re.fullmatch(r"kshop/app/[A-Za-z0-9_./-]+\.go", n)]
+        bad = [n for n in names if not re.fullmatch(r"maze/app/[A-Za-z0-9_./-]+\.go", n)]
         if bad:
-            no("the change touches paths outside kshop/app/*.go: %s" % bad)
+            no("the change touches paths outside maze/app/*.go: %s" % bad)
         patch = git(G, "diff", "--cached", "--no-ext-diff", "--no-renames", "--no-color")
         with open(os.path.join(W, "change.patch"), "wb") as f:
             f.write(patch)
@@ -516,13 +517,13 @@ def main(argv):
             if rc != 0:
                 no("orch/gocheck.sh refused (exit %d, above)" % rc)
             gv = subprocess.run(["go", "version"], capture_output=True, text=True).stdout.strip()
-            compiled, comp = True, {"check": "orch/gocheck.sh", "go": gv, "build_tags": ["", "kshop_v11"],
-                                    "vet_tags": "kshop_v11", "goos_goarch": "linux/amd64"}
+            compiled, comp = True, {"check": "orch/gocheck.sh", "go": gv, "build_tags": ["", "maze_v11"],
+                                    "vet_tags": "maze_v11", "goos_goarch": "linux/amd64"}
         hooked = src[path].encode("utf-8")
         man = {
             "schema": "rbd.plant-change/v1", "name": a.name, "service": a.service, "function": fn, "file": path,
             "code_path": cp, "helper": next((p for p in edits if p.endswith("/plant.go")), None),
-            "lib": "kshop_v11 (production's LIB)" if path == WORK else "untagged (every library version)",
+            "lib": "maze_v11 (production's LIB)" if path == WORK else "untagged (every library version)",
             "mechanism": a.mechanism, "knob": knob, "placement": place, "intended_effect": eff,
             "intended_own_ms_per_call": own,
             "dose": {"registered": "ab_own_time_delta_ms", "value_ms": None,

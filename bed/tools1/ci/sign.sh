@@ -14,6 +14,9 @@
 # both against rbd.env). Under runs/RUN/.lock (flock; one step of a run at a time: pr-check, build, ab, predict, sign).
 # The predicate keeps the v1 fields (service, baseline_digest, ab_record_digest: the first service's) and gains services
 # [{service, baseline_digest, ab_record_digest}] (every service; deploy.sh v2 deploys the one candidate digest to each).
+# A multi-image change (candidate.json digests, 2026-11-03): each A/B is checked against its service's own digest, each
+# services entry also names its candidate_digest, the predicate gains candidate_digests {service: digest}, and the same
+# attestation goes on every distinct image (deploy.sh verifies each image it deploys).
 # Exit 0 signed, 1 refused or failed. Last stdout line: one JSON object.
 set -euo pipefail
 STEP=sign
@@ -95,6 +98,14 @@ if {k: pj.get(k) for k in want} != want or pj.get("service") != cand["service"] 
 # every A/B the prediction used (one per service the one candidate image is for), checked again at signing time
 svcs = cand.get("services") or [cand["service"]]
 bases = cand.get("baselines") or {cand["service"]: cand.get("baseline_digest")}
+# each service's candidate digest: a multi-image change's digests map, else the one image's
+multi = "digests" in cand
+digs = cand["digests"] if multi else {x: cand["digest"] for x in svcs}
+if (not isinstance(digs, dict) or set(digs) != set(svcs) or digs[cand["service"]] != cand["digest"]
+        or not all(isinstance(v, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", v) for v in digs.values())):
+    fail("candidate.json's digests %r do not name one sha256 digest per listed service" % (digs,))
+if multi and pj.get("candidate_digests") != digs:
+    fail("predict.json's candidate_digests %s are not candidate.json's %s" % (pj.get("candidate_digests"), digs))
 pss = pj.get("services") or [{"service": cand["service"], "ab_dir": "ab", "baseline_digest": cand.get("baseline_digest"),
                                "record_digest": pj.get("record_digest")}]
 if [x.get("service") for x in pss] != svcs or svcs[0] != cand["service"] or pss[0].get("record_digest") != pj.get("record_digest"):
@@ -109,7 +120,7 @@ for x in pss:
     if not os.path.exists(abj):
         fail("no runs/RUN/%s/ab.json: the A/B is not this run's" % d)
     ab = json.load(open(abj))
-    wants = {"candidate_digest": cand["digest"], "baseline_digest": bases.get(s)}
+    wants = {"candidate_digest": digs[s], "baseline_digest": bases.get(s)}
     got = {"candidate_digest": ab.get("cand_digest"), "baseline_digest": ab.get("base_digest")}
     if got != wants or ab.get("service") != s or ab.get("ok") is not True or x.get("baseline_digest") != bases.get(s):
         fail("the A/B is not this run's: %s/ab.json %s (service %s, ok %s), candidate.json %s"
@@ -118,7 +129,10 @@ for x in pss:
     if rd != x.get("record_digest") or rd not in ev:
         fail("change.json's evidence %s is not ab.json's record %s (%s)" % (ev, rd, d))
     recs.append({"service": s, "baseline_digest": bases.get(s), "ab_record_digest": rd})
-if sorted(ev) != sorted(r["ab_record_digest"] for r in recs):
+    if multi:
+        recs[-1]["candidate_digest"] = digs[s]
+# per-route items (ROUTE_ITEMS=on) cite one record once per route: the evidence is compared as a set of records
+if sorted(set(ev)) != sorted({r["ab_record_digest"] for r in recs}):
     fail("change.json's evidence %s is not ab.json's record set %s" % (ev, [r["ab_record_digest"] for r in recs]))
 keep = ("number", "rule", "effect", "entry", "value", "threshold", "code")
 rules = [{k: r[k] for k in keep if k in r} for r in g["rules"] if r.get("evaluated")]
@@ -127,6 +141,8 @@ p = {"verdict": verdict, "rules": rules, "advisory": bool(g.get("advisory")), "c
      "fit_digest": g["digests"].get("fit") or change.get("fit"), "ab_record_digest": recs[0]["ab_record_digest"],
      "prediction_digest": pd, "policy_digest": pdig, "policy_sha256": "sha256:" + pin, "git_sha": sha,
      "decided_at": g.get("now")}
+if multi:   # a multi-image change: every service's image; each distinct one carries this same attestation
+    p["candidate_digests"] = digs
 if g.get("judge"):   # the CI judge, as the gate recorded it: provenance ci-judge, model, decision, answer and request digests
     p["judge"] = dict(g["judge"], request=g["digests"].get("judge_request"))
 jf = os.path.join(run, "judge", "judge.json")
@@ -138,6 +154,8 @@ if os.path.exists(jf):   # an advisory judge (JUDGE_MODE=advisory): recorded bes
         p["judge_advisory"] = {k: j.get(k) for k in ("model", "decision", "reasons", "answer", "request")}
 canon = lambda d: json.dumps(d, sort_keys=True, separators=(",", ":")) + "\n"
 row = {"schema": "rbd.ledger/v1", "predicate_type": typ, "image": "RBD_ECR@" + cand["digest"], "predicate": p}
+if multi:
+    row["images"] = ["RBD_ECR@" + d for d in sorted(set(digs.values()))]
 for name, d in (("predicate.json", p), ("ledger-row.json", row)):
     tmp = os.path.join(run, "." + name + ".tmp")
     with open(tmp, "w") as f:
@@ -149,6 +167,9 @@ PY
 ROW=$RUN/ledger-row.json
 # the digest the checks above passed (the predicate), never candidate.json read a second time
 cand_digest=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["candidate_digest"])' "$RUN/predicate.json")
+# every distinct image of the change (a multi-image change: one per image; else the one): each gets the attestation
+mapfile -t att_digests < <(python3 -I -c 'import json,sys; p=json.load(open(sys.argv[1]))
+print("\n".join(sorted(set((p.get("candidate_digests") or {}).values()) | {p["candidate_digest"]})))' "$RUN/predicate.json")
 verdict=$(cat "$RUN/gate/verdict.txt")
 
 # ledger: S3 first (write-once), then the local copy (write-once); an identical existing row is fine
@@ -180,10 +201,13 @@ PY
 # attestation on the candidate image (ECR login first: cosign reads ~/.docker/config.json)
 { aws ecr get-login-password --region "$RBD_REGION" | docker login --username AWS --password-stdin "${RBD_ECR%%/*}"; } >> "$LOG" 2>&1 ||
   ci_fail "ECR login failed"
-cosign attest --key "$RBD_KMS" --type "$TYPE" --predicate "$RUN/predicate.json" --tlog-upload=false --yes \
-  "$RBD_ECR@$cand_digest" >> "$LOG" 2>&1 || ci_fail "cosign attest failed"
-res=$(printf '{"step":"sign","ok":true,"verdict":"%s","candidate_digest":"%s","ledger_key":"%s","s3":"%s","signed_at":"%s"}' \
-  "$verdict" "$cand_digest" "$key" "$s3" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+for d in "${att_digests[@]}"; do
+  [[ $d =~ ^sha256:[0-9a-f]{64}$ ]] || ci_fail "predicate.json names digest '$d'"
+  cosign attest --key "$RBD_KMS" --type "$TYPE" --predicate "$RUN/predicate.json" --tlog-upload=false --yes \
+    "$RBD_ECR@$d" >> "$LOG" 2>&1 || ci_fail "cosign attest failed ($d)"
+done
+res=$(printf '{"step":"sign","ok":true,"verdict":"%s","candidate_digest":"%s","images":%s,"ledger_key":"%s","s3":"%s","signed_at":"%s"}' \
+  "$verdict" "$cand_digest" "$(printf '%s\n' "${att_digests[@]}" | jq -R . | jq -sc .)" "$key" "$s3" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
 printf '%s\n' "$res" > "$RUN/.sign.json.tmp" && mv -f "$RUN/.sign.json.tmp" "$RUN/sign.json"
 echo "sign: $verdict attested on $cand_digest; ledger $key ($s3)" >&2
 printf '%s\n' "$res"

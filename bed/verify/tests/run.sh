@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # verify/tests/run.sh: every offline test of the verifier (part E): bash -n, shellcheck, score.py's unit tests, the stubbed
-# truth/aa/collect tests. Scratch under VERIFY_SCRATCH [$HOME/rbd-dev/tmp/verify]. usage: bash verify/tests/run.sh
+# truth/aa/collect tests. Scratch under VERIFY_SCRATCH [$RBD_SCRATCH/verify]. usage: bash verify/tests/run.sh
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 V=$(dirname "$HERE")

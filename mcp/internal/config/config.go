@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -154,6 +155,9 @@ func (c *Config) Capture(name string) (string, error) { return lookup(c.Captures
 // Policy returns the policy file configured for a policy name.
 func (c *Config) Policy(name string) (string, error) { return lookup(c.Policies, name) }
 
+// Names returns the configuration's environment and capture names, sorted.
+func (c *Config) Names() (envs, captures []string) { return sortedKeys(c.Envs), sortedKeys(c.Captures) }
+
 // Env returns an environment's store.
 func (c *Config) Env(name string) (Env, error) {
 	if !envRE.MatchString(name) {
@@ -230,8 +234,13 @@ func resolveAll(what string, m map[string]string, base string) error {
 func resolve(p, base string) (string, error) {
 	if p == "~" || strings.HasPrefix(p, "~/") {
 		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
+		if err != nil || !filepath.IsAbs(home) {
+			// no HOME, or a relative one (an agent may start the server with a cleared environment): the user database
+			u, uerr := user.Current()
+			if uerr != nil || !filepath.IsAbs(u.HomeDir) {
+				return "", fmt.Errorf("no home folder for ~")
+			}
+			home = u.HomeDir
 		}
 		p = filepath.Join(home, p[1:])
 	}

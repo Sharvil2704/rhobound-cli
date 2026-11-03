@@ -18,7 +18,7 @@ S=$T/src
 mkrepo "$S"
 mkbaseline
 FX=$HERE/fixtures
-CH=$KIT/changes
+CH=$HERE/fixtures/changes
 
 prep() { # prep NAME 'branch cmds' RECORD [nostore] -> H = head sha: pr-check + build + the A/B record in place
   H=$(branch "$S" "$1" "$2")
@@ -29,7 +29,7 @@ prep() { # prep NAME 'branch cmds' RECORD [nostore] -> H = head sha: pr-check + 
 prep p "git apply $CH/c2-auth-small/change.patch" "$FX/ab-record-1ms.json"; P=$H
 prep b "git apply $CH/c3-auth-mid/change.patch" "$FX/ab-record-6ms.json"; B=$H
 prep i "git apply $CH/c1-noop/change.patch" "$FX/ab-record-0ms.json"; I=$H
-prep r "git apply --exclude=rhobound-change.json $CH/c3-auth-mid/change.patch; cp $CH/c2-auth-small/rhobound-change.json .; sed -i 's/20780/20781/' kshop/app/internal/work/lib_v11.go" "$FX/ab-record-1ms.json" nostore; R=$H
+prep r "git apply --exclude=rhobound-change.json $CH/c3-auth-mid/change.patch; cp $CH/c2-auth-small/rhobound-change.json .; sed -i 's/20780/20781/' maze/app/internal/work/lib_v11.go" "$FX/ab-record-1ms.json" nostore; R=$H
 
 predict() { # predict RUN [now] -> rc; out in $T/pred-RUN.out
   local rc=0
@@ -164,7 +164,7 @@ check "P: ledger row in S3 demo1/ledger/<key>.json and in RBD_HOME/ledger, ident
   cmp -s "$T/stub/s3/rhobound-research-123456789012-ap-south-1/demo1/ledger/$key.json" "$THOME/ledger/$key.json"
 check "P: the ledger row holds no account id" bash -c "! grep -q 123456789012 '$THOME/ledger/$key.json'"
 check "sign passed --key \$RBD_KMS --type .../gate-verdict/v1 --tlog-upload=false --yes, image by digest" \
-  grep -q "cosign attest --key awskms:///alias/rhobound-demo-verdict --type https://rhobound.dev/attestations/gate-verdict/v1 --predicate .* --tlog-upload=false --yes 123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop@sha256:" "$T/stub/calls.log"
+  grep -q "cosign attest --key awskms:///alias/rhobound-demo-verdict --type https://rhobound.dev/attestations/gate-verdict/v1 --predicate .* --tlog-upload=false --yes 123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze@sha256:" "$T/stub/calls.log"
 check "B and I are signed too (block, inconclusive)" test "$(fget "$T/sign-$B.out" verdict)" = block -a "$(fget "$T/sign-$I.out" verdict)" = inconclusive
 "$CI/sign.sh" "$P" > "$T/out" 2> "$T/err"
 check "a rerun of sign.sh with the same prediction is a no-op for the ledger (exit $?, s3 $(fget "$T/out" s3))" test "$(fget "$T/out" s3)" = exists
@@ -259,7 +259,7 @@ sed -n '1,12p' "$T/rep-$B.out" | sed 's/^/     | /'
 
 echo "== deploy"
 dep() { RBD_SETTLE_S=${RBD_SETTLE_S:-0} "$CI/deploy.sh" "$@" > "$T/dep.out" 2> "$T/dep.err"; echo $?; }
-nset() { grep -c "kubectl -n kshop set image" "$T/stub/calls.log"; }
+nset() { grep -c "kubectl -n maze set image" "$T/stub/calls.log"; }
 n0=$(nset)
 rc=$(dep --run "$B")
 check "refuses the signed BLOCK (exit $rc: $(fget "$T/dep.out" error | cut -c1-70))" test "$rc" -eq 1 -a "$(nset)" -eq "$n0"
@@ -276,7 +276,7 @@ rc=$(dep --run "$P")
 check "refuses a stale pass: production moved since the gate (exit $rc: $(fget "$T/dep.out" error | cut -c1-50))" test "$rc" -eq 1 -a "$(nset)" -eq "$n0"
 cp "$T/baseline.keep" "$THOME/baseline.json"
 cp "$T/stub/k8s/auth.image" "$T/auth.keep"
-echo -n "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop@sha256:$(printf y | sha256sum | cut -d' ' -f1)" > "$T/stub/k8s/auth.image"
+echo -n "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze@sha256:$(printf y | sha256sum | cut -d' ' -f1)" > "$T/stub/k8s/auth.image"
 rc=$(dep --run "$P")
 check "refuses when the Deployment does not run baseline.json's image (drift; exit $rc)" test "$rc" -eq 1 -a "$(nset)" -eq "$n0"
 cp "$T/auth.keep" "$T/stub/k8s/auth.image"
@@ -286,7 +286,7 @@ python3 -I -c 'import json,sys; p=json.load(open(sys.argv[1])); p["candidate_dig
 p["verdict"]="block"; json.dump(p,open(sys.argv[2]+"/block.json","w"))' "$pred" "$T" "$MX"
 for v in pass block; do
   cosign attest --key awskms:///alias/rhobound-demo-verdict --type https://rhobound.dev/attestations/gate-verdict/v1 \
-    --predicate "$T/$v.json" --tlog-upload=false --yes "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop@$MX"
+    --predicate "$T/$v.json" --tlog-upload=false --yes "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze@$MX"
 done
 rc=$(dep auth "$MX")
 check "refuses a digest that has a pass and a block (exit $rc: $(fget "$T/dep.out" error | cut -c1-50))" test "$rc" -eq 1 -a "$(nset)" -eq "$n0"
@@ -295,7 +295,7 @@ attest_pass() { # attest_pass DIGEST 'python edit of p': P's pass predicate for 
   python3 -I -c "import json,sys; p=json.load(open(sys.argv[1])); p['candidate_digest']=sys.argv[3]; $2; json.dump(p,open(sys.argv[2],'w'))" \
     "$pred" "$T/pp.json" "$1"
   cosign attest --key awskms:///alias/rhobound-demo-verdict --type https://rhobound.dev/attestations/gate-verdict/v1 \
-    --predicate "$T/pp.json" --tlog-upload=false --yes "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop@$1"
+    --predicate "$T/pp.json" --tlog-upload=false --yes "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze@$1"
 }
 deref() { # deref DESC EXPECTED ARGS...: deploy.sh refuses, nothing set
   local rc; rc=$(dep "${@:3}")
@@ -345,11 +345,11 @@ echo 3 > "$T/stub/k8s/auth.terminating"
 rc=$(dep --run "$P")
 check "ACCEPTS the signed pass (exit $rc)" test "$rc" -eq 0
 check "deploy waited for the terminating old pod before the refit (3 polls with it, then only the new image)" \
-  test "$(grep -c 'kubectl -n kshop get pods -l app=auth' "$T/stub/calls.log")" -ge 4
+  test "$(grep -c 'kubectl -n maze get pods -l app=auth' "$T/stub/calls.log")" -ge 4
 check "then the settle for the old image's spans to leave the trace files (RBD_SETTLE_S, 240 s under sudo), before refit.sh" \
   grep -q "waiting 0 s for the old image's spans to leave the trace files" "$T/dep.err"
 check "kubectl set image deployment/auth auth=RBD_ECR@<candidate digest>" \
-  grep -q "kubectl -n kshop set image deployment/auth auth=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop@$PD" "$T/stub/calls.log"
+  grep -q "kubectl -n maze set image deployment/auth auth=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze@$PD" "$T/stub/calls.log"
 check "verify-attestation used the KMS key, the type and --insecure-ignore-tlog=true" grep -q \
   "cosign verify-attestation --key awskms:///alias/rhobound-demo-verdict --type https://rhobound.dev/attestations/gate-verdict/v1 --insecure-ignore-tlog=true" "$T/stub/calls.log"
 check "baseline.json now names the candidate for auth (other services unchanged)" python3 -I -c '
@@ -367,8 +367,8 @@ for s in catalog pricing; do
   derive_record "$FX/ab-record-0ms.json" "$s" "$T/rec-$s-0.json"
   derive_record "$FX/ab-record-1ms.json" "$s" "$T/rec-$s-1.json"
 done
-v2prep() { # v2prep NAME -> H: a v2 request of catalog + pricing with a kshop/app change; pr-check and build (no A/B yet)
-  H=$(branch "$S" "$1" "echo '// $1' >> kshop/app/internal/work/lib_v11.go; v2req '[\"catalog\", \"pricing\"]'")
+v2prep() { # v2prep NAME -> H: a v2 request of catalog + pricing with a maze/app change; pr-check and build (no A/B yet)
+  H=$(branch "$S" "$1" "echo '// $1' >> maze/app/internal/work/lib_v11.go; v2req '[\"catalog\", \"pricing\"]'")
   "$CI/pr-check.sh" "$S" "$(git -C "$S" rev-parse main)" "$H" > "$T/prc-$1.out" 2> "$T/prc-$1.err" || { bad "pr-check $1"; cat "$T/prc-$1.err"; }
   "$CI/build.sh" "$S" "$H" catalog > "$T/build-$1.out" 2> "$T/build-$1.err" || { bad "build $1"; cat "$T/build-$1.err"; }
 }
@@ -453,7 +453,7 @@ cp "$T/stub/k8s/catalog.image" "$T/catalog.keep"
 cp "$T/stub/k8s/pricing.image" "$T/pricing.keep"
 n0=$(nset)
 deref "a v2 pass for catalog + pricing deployed as auth" "is for service .catalog,pricing., not .auth." auth "$DM"
-echo -n "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop@sha256:$(printf z | sha256sum | cut -d' ' -f1)" > "$T/stub/k8s/pricing.image"
+echo -n "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze@sha256:$(printf z | sha256sum | cut -d' ' -f1)" > "$T/stub/k8s/pricing.image"
 deref "a v2 pass when pricing's Deployment drifted from baseline.json" "deployment/pricing runs" --run "$M"
 cp "$T/pricing.keep" "$T/stub/k8s/pricing.image"
 python3 -I -c 'import json,sys; b=json.load(open(sys.argv[1])); b["services"]["pricing"]="sha256:"+"e"*64; json.dump(b,open(sys.argv[1],"w"))' "$THOME/baseline.json"
@@ -468,8 +468,8 @@ rm -f "$T/stub/k8s/catalog.prev" "$T/stub/k8s/pricing.prev"
 nr=$(grep -c '^refit ' "$T/stub/calls.log")
 rc=$(dep pricing "$DM")
 check "ACCEPTS the signed v2 pass (called as pricing, the second service; exit $rc): the one digest to catalog AND pricing" bash -c "[ $rc -eq 0 ] &&
-  grep -q 'kubectl -n kshop set image deployment/catalog catalog=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop@$DM' '$T/stub/calls.log' &&
-  grep -q 'kubectl -n kshop set image deployment/pricing pricing=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop@$DM' '$T/stub/calls.log'"
+  grep -q 'kubectl -n maze set image deployment/catalog catalog=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze@$DM' '$T/stub/calls.log' &&
+  grep -q 'kubectl -n maze set image deployment/pricing pricing=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze@$DM' '$T/stub/calls.log'"
 check "  baseline.json: catalog and pricing at the candidate, every other service unchanged; one refit; deploy.json lists both" python3 -I -c '
 import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2])); d=sys.argv[3]; dj=json.load(open(sys.argv[4]))
 sys.exit(not (a["services"]["catalog"]==d and a["services"]["pricing"]==d and {k:v for k,v in a["services"].items() if k not in ("catalog","pricing")}
@@ -480,6 +480,68 @@ rc=$(dep --run "$M")
 check "a second deploy of the v2 pass: already deployed to both, no second refit (exit $rc)" \
   test "$rc" -eq 0 -a "$(fget "$T/dep.out" already_deployed)" = true -a "$(grep -c '^refit ' "$T/stub/calls.log")" -eq $((nr + 1))
 
+echo "== multi-image: auth + catalog + pricing (images auth and hot): one build each, one A/B each, predict, sign every image, deploy each to its own"
+derive_record "$FX/ab-record-0ms.json" auth "$T/rec-auth-0.json"
+miprep() { # miprep NAME -> H: a v2 request of auth + catalog + pricing (two images); pr-check and build
+  H=$(branch "$S" "$1" "echo '// $1' >> maze/app/internal/work/lib_v11.go; v2req '[\"auth\", \"catalog\", \"pricing\"]'")
+  "$CI/pr-check.sh" "$S" "$(git -C "$S" rev-parse main)" "$H" > "$T/prc-$1.out" 2> "$T/prc-$1.err" || { bad "pr-check $1"; cat "$T/prc-$1.err"; }
+  "$CI/build.sh" "$S" "$H" auth > "$T/build-$1.out" 2> "$T/build-$1.err" || { bad "build $1"; cat "$T/build-$1.err"; }
+}
+miprep mi; MI=$H
+check "MI: two builds (tags auth-<sha> and catalog-<sha>): auth's digest is not catalog's, catalog's = pricing's; every record and the last line map them" python3 -I -c '
+import json,sys,os
+run,out,sha=sys.argv[1:4]; c={s: json.load(open(os.path.join(run,"candidate-%s.json"%s))) for s in ("auth","catalog","pricing")}
+o=json.loads(open(out).read().splitlines()[-1]); top=json.load(open(os.path.join(run,"candidate.json")))
+d={s: c[s]["digest"] for s in c}
+ok=(d["auth"]!=d["catalog"] and d["catalog"]==d["pricing"] and c["auth"]["tag"]=="auth-"+sha and c["pricing"]["tag"]=="catalog-"+sha
+    and all(c[s]["digests"]==d for s in c) and set(c["auth"]["images"])=={"auth","hot"}
+    and c["auth"]["images"]["hot"]=={"digest":d["catalog"],"tag":"catalog-"+sha,"services":["catalog","pricing"]}
+    and o["digests"]==d and o["digest"]==d["auth"] and top==c["auth"])
+sys.exit(not ok)' "$THOME/runs/$MI" "$T/build-mi.out" "$MI"
+check "  docker built cmd/auth and cmd/hot once each" bash -c "[ \$(grep -c 'docker build.*CMD=auth' '$T/stub/calls.log') -ge 1 ] && [ \$(grep -c 'docker build.*CMD=hot' '$T/stub/calls.log') -ge 1 ]"
+miprep mj; MJ=$H
+for s in auth catalog pricing; do ab_standin_svc "$MJ" "$s" "$T/rec-$s-0.json"; done
+python3 -I -c 'import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2])); a["cand_digest"]=b["digest"]; json.dump(a,open(sys.argv[1],"w"))' \
+  "$THOME/runs/$MJ/ab-auth/ab.json" "$THOME/runs/$MJ/candidate-catalog.json"
+rc=$(RBD_TEST_NOW=$NOW_FIT "$CI/predict.sh" "$MJ" > "$T/out" 2> "$T/err"; echo $?)
+check "predict.sh refuses an A/B of auth that measured catalog's image (exit $rc, no verdict kept)" bash -c "[ $rc -eq 2 ] &&
+  [ ! -e '$THOME/runs/$MJ/gate' ] && grep -q 'the A/B is not this run.s: ab-auth/ab.json' '$T/err'"
+for s in auth catalog pricing; do ab_standin_svc "$MI" "$s" "$T/rec-$s-0.json"; done
+rcMI=$(predict "$MI" "$NOW_FIT")
+check "MI: A/A records of all three -> pass, exit 0 (rule $(fget "$T/pred-$MI.out" rule))" test "$rcMI" -eq 0 -a "$(fget "$T/pred-$MI.out" verdict)" = pass
+check "MI: predict.json candidate_digests = candidate.json's digests; each services entry names its own candidate digest" python3 -I -c '
+import json,sys; p=json.load(open(sys.argv[1])); c=json.load(open(sys.argv[2]))
+sys.exit(not (p["candidate_digests"]==c["digests"] and [(x["service"],x["candidate_digest"]) for x in p["services"]]==[(s,c["digests"][s]) for s in ("auth","catalog","pricing")]))' \
+  "$THOME/runs/$MI/predict.json" "$THOME/runs/$MI/candidate.json"
+na=$(grep -c '^cosign attest' "$T/stub/calls.log")
+"$CI/sign.sh" "$MI" > "$T/sign-$MI.out" 2> "$T/sign-$MI.err" || { bad "sign MI"; cat "$T/sign-$MI.err"; }
+DA=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["digests"]["auth"])' "$THOME/runs/$MI/candidate.json")
+DH=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["digests"]["catalog"])' "$THOME/runs/$MI/candidate.json")
+check "MI: sign.sh attests both images (two cosign attest calls), the predicate names every service's digest" bash -c "
+  [ \$(grep -c '^cosign attest' '$T/stub/calls.log') -eq $((na + 2)) ] && grep -q 'cosign attest.*@$DA' '$T/stub/calls.log' &&
+  grep -q 'cosign attest.*@$DH' '$T/stub/calls.log'" 
+check "  predicate candidate_digests and services[].candidate_digest; ledger row images = both" python3 -I -c '
+import json,sys; p=json.load(open(sys.argv[1])); r=json.load(open(sys.argv[2])); c=json.load(open(sys.argv[3]))
+sys.exit(not (p["candidate_digests"]==c["digests"] and p["candidate_digest"]==c["digests"]["auth"]
+  and [x["candidate_digest"] for x in p["services"]]==[c["digests"][s] for s in ("auth","catalog","pricing")]
+  and r["images"]==sorted("RBD_ECR@"+d for d in set(c["digests"].values()))))' \
+  "$THOME/runs/$MI/predicate.json" "$THOME/runs/$MI/ledger-row.json" "$THOME/runs/$MI/candidate.json"
+cp "$THOME/baseline.json" "$T/baseline.mikeep"
+for s in auth catalog pricing; do cp "$T/stub/k8s/$s.image" "$T/$s.mikeep"; done
+n0=$(nset)
+mv "$STUB_DIR/att/${DH#sha256:}.jsonl" "$T/att-hot.keep"
+deref "a multi-image pass when one of its images (hot) carries no attestation" "no attestation of type .* verifies on $DH" --run "$MI"
+mv "$T/att-hot.keep" "$STUB_DIR/att/${DH#sha256:}.jsonl"
+rc=$(dep --run "$MI")
+check "ACCEPTS the signed multi-image pass (exit $rc: $(fget "$T/dep.out" error | cut -c1-80))" test "$rc" -eq 0
+check "  each Deployment runs its own digest; baseline.json maps each service to it; last_deploy.digests" python3 -I -c '
+import json,sys,os; k8s,base,da,dh=sys.argv[1:5]; b=json.load(open(base))
+img=lambda s: open(os.path.join(k8s,s+".image")).read().strip().split("@")[-1]
+sys.exit(not (img("auth")==da and img("catalog")==dh and img("pricing")==dh and b["services"]["auth"]==da
+  and b["services"]["catalog"]==dh and b["services"]["pricing"]==dh and b["last_deploy"]["digests"]=={"auth":da,"catalog":dh,"pricing":dh}))' \
+  "$T/stub/k8s" "$THOME/baseline.json" "$DA" "$DH"
+cp "$T/baseline.mikeep" "$THOME/baseline.json"
+for s in auth catalog pricing; do cp "$T/$s.mikeep" "$T/stub/k8s/$s.image"; rm -f "$T/stub/k8s/$s.prev"; done
 echo "== judge (stub)"
 "$CI/judge.sh" "$P" > "$T/out" 2> "$T/err"
 rc=$?

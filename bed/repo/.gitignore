@@ -1,7 +1,7 @@
 # build output and local captures never go to the repo
-/kshop/captures/
-/kshop/app/kshop-svc
-/kshop/app/kshop-load
+/maze/captures/
+/maze/app/maze-svc
+/maze/app/maze-load
 __pycache__/
 *.pyc
 *.tar

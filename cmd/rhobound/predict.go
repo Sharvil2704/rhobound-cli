@@ -82,7 +82,7 @@ func cmdPredict(args []string, out, errw io.Writer) error {
 		}
 	}
 	rep := report.Build(pos[0], inf, *c.keptShare, base, delta, changeList)
-	rep.Model = modelName(c)
+	rep.Model = modelName(c, inf.Topology)
 	return writeReport(rep, c, out, errw)
 }
 

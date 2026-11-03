@@ -17,6 +17,8 @@
     "profile.variance_changed",
     "profile.structure_changed",
     "profile.self_report_mismatch",
-    "ab.errors_differ"
+    "ab.errors_differ",
+    "profile.route_heterogeneous",
+    "ab.payload_changed"
   ]
 }

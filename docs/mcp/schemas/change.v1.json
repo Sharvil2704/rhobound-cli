@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/main/docs/mcp/schemas/change.v1.json",
   "title": "rhobound.change/v1",
-  "description": "A change set (DATA.md 11.2): what `predict --fit F --changes C` and `preview` apply. The server writes the agent's items into such a file with label declared, adds the measured items it resolved from its own records, and passes the file to the CLI; it never builds an argument string from names. Labels are checked, not trusted: any label other than declared must cite evidence the CLI can resolve to a record it computed (change.label_not_minted otherwise). Operations other than own_ms, own_pct, workers and load_scale are refused with change.unsupported_op in this version. Some documents outside this schema are refused by name, not as a shape error, because they are the usual ways a wrong number arrives: an item with a route key (change.route_scope_unsupported); an item with a source key of cpu-profile (change.cpu_profile_not_own_time), canary or histogram (change.includes_queueing) or microbenchmark (change.microbench_unvalidated); a value written as a string (change.free_text); the label estimated-microbench (change.microbench_unvalidated).",
+  "description": "A change set (DATA.md 11.2): what `predict --fit F --changes C` and `preview` apply. The server writes the agent's items into such a file with label declared, adds the measured items it resolved from its own records, and passes the file to the CLI; it never builds an argument string from names. Labels are checked, not trusted: any label other than declared must cite evidence the CLI can resolve to a record it computed (change.label_not_minted otherwise). Operations other than own_ms, own_pct, workers and load_scale are refused with change.unsupported_op in this version. Some documents outside this schema are refused by name, not as a shape error, because they are the usual ways a wrong number arrives: an item with a route key on an operation other than own_ms, or naming a route the fit does not keep (change.route_scope_unsupported); an item with a source key of cpu-profile (change.cpu_profile_not_own_time), canary or histogram (change.includes_queueing) or microbenchmark (change.microbench_unvalidated); a value written as a string (change.free_text); the label estimated-microbench (change.microbench_unvalidated).",
   "type": "object",
   "properties": {
     "schema": {"const": "rhobound.change/v1"},
@@ -16,9 +16,10 @@
         "properties": {
           "op": {"enum": ["own_ms", "own_pct", "workers", "load_scale",
                           "glue_ms", "cs2", "add_call", "remove_call", "set_p", "scale_count", "set_async",
-                          "make_parallel"]},
+                          "make_parallel", "own_var_ms2"]},
           "service": {"type": "string", "minLength": 1},
           "callee": {"type": "string", "minLength": 1},
+          "route": {"type": "string", "minLength": 1, "description": "an own_ms item restricted to one route of its service, as the fit names it (routes[].route): value ms on that route's visits; the queue moves by the route's share of it, the callers by the routes they reach. On another operation, or naming a route the fit does not, change.route_scope_unsupported"},
           "value": {"$ref": "defs.v1.json#/$defs/Value"},
           "label": {"$ref": "defs.v1.json#/$defs/Label"},
           "evidence": {"type": "array", "items": {"$ref": "defs.v1.json#/$defs/Digest"},

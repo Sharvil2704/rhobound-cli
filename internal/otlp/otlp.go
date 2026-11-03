@@ -49,7 +49,10 @@ type Span struct {
 	Addr   int32 // index into Data.Addrs (the peer and its port) for client spans with a peer, else -1
 	Scope  int32 // 1 + the index into Data.Scopes of the instrumentation scope that emitted the span; 0 when it names none
 	Kind   uint8
-	Ext    int32 // 1 + the index into Data.Exts of the span's other fields; 0 when it carries none of them
+	// Route is 1 + the index into Data.Routes of a SERVER span's route (RouteOf), 0 when it has none. It sits in the
+	// padding after Kind, so a Span stays 72 bytes.
+	Route uint16
+	Ext   int32 // 1 + the index into Data.Exts of the span's other fields; 0 when it carries none of them
 }
 
 // Dur returns the span's duration in milliseconds.
@@ -162,6 +165,9 @@ type Data struct {
 	Info []ResourceInfo
 	// Exts are the spans' other fields (Span.Ext - 1 indexes it).
 	Exts []SpanExt
+	// Routes are the SERVER spans' routes (Span.Route - 1 indexes it), at most MaxRoutes of them: the spans of a route
+	// read after that many have none.
+	Routes []string
 	// Stats count what the reader saw and normalized.
 	Stats ReadStats
 	// Ignored counts what the input carried that nothing reads, by what it was.
@@ -177,6 +183,14 @@ func (d *Data) InfoOf(i int32) *ResourceInfo {
 		return &d.Info[i]
 	}
 	return &ResourceInfo{}
+}
+
+// RouteName returns a span's route, or "" when it has none.
+func (d *Data) RouteName(sp *Span) string {
+	if sp.Route > 0 && int(sp.Route) <= len(d.Routes) {
+		return d.Routes[sp.Route-1]
+	}
+	return ""
 }
 
 // ExtOf returns a span's other fields, or the zero SpanExt when it carries none.
@@ -493,6 +507,39 @@ func route(js *jsonSpan) string {
 	return strings.TrimSpace(meth + " " + path)
 }
 
+// MaxRoutes is the most distinct routes the reader keeps (Data.Routes); MaxRouteBytes the longest route it keeps.
+const (
+	MaxRoutes     = 4096
+	MaxRouteBytes = 256
+)
+
+// methodPath matches a span name of the form "METHOD /path", as HTTP server instrumentations name their spans.
+var methodPath = regexp.MustCompile(`^[A-Z]+ /`)
+
+// serverRoute is the route a SERVER span's visit is counted under, for the per-route own time: "METHOD template"
+// from http.route when the span carries it; else the span's name when it reads "METHOD /path"; else, for an RPC
+// span (rpc.method set), its name ("pkg.Service/Method"); else "METHOD path" from url.path (then http.target) without
+// its query. "" when none applies, when the route is longer than MaxRouteBytes, or when it looks like personal data
+// (PersonalKind): such a visit counts under no route.
+func serverRoute(js *jsonSpan) string {
+	meth, _ := attr(js.Attributes, methodKeys)
+	join := func(p string) string { return strings.TrimSpace(meth + " " + noQuery(p)) }
+	var rt string
+	if v, ok := attr(js.Attributes, []string{"http.route"}); ok && v != "" {
+		rt = join(v)
+	} else if methodPath.MatchString(js.Name) {
+		rt = noQuery(js.Name)
+	} else if v, ok := attr(js.Attributes, []string{"rpc.method"}); ok && v != "" && js.Name != "" {
+		rt = js.Name
+	} else if v, ok := attr(js.Attributes, []string{"url.path", "http.target"}); ok && v != "" {
+		rt = join(v)
+	}
+	if len(rt) > MaxRouteBytes || PersonalKind(rt) != "" {
+		return ""
+	}
+	return rt
+}
+
 func hex64(s string) (uint64, bool) {
 	if len(s) != 16 {
 		return 0, false
@@ -733,7 +780,8 @@ type part struct {
 	addrs   []string
 	scopes  []string
 	exts    []SpanExt
-	spans   []Span // Res, Peer, Addr, Scope and Ext index into this part's own tables
+	routes  []string
+	spans   []Span // Res, Peer, Addr, Scope, Route and Ext index into this part's own tables
 	probes  []SpanKey
 	long    []longName
 	skipped int
@@ -805,6 +853,7 @@ func decodeRequest(raw []byte, lim Limits) (p part) {
 	addrIdx := map[string]int32{}
 	scopeIdx := map[string]int32{}
 	extIdx := map[SpanExt]int32{}
+	routeIdx := map[string]uint16{}
 	var ignoredAttrs int64 // span attributes nothing reads
 	defer func() {
 		if ignoredAttrs > 0 {
@@ -1077,6 +1126,17 @@ func decodeRequest(raw []byte, lim Limits) (p part) {
 				}
 				sp := Span{Trace: tid, ID: sid, Parent: pid, Start: js.Start.v, End: js.End.v,
 					Res: resIdx, Peer: -1, Addr: -1, Scope: scope, Kind: uint8(js.Kind)}
+				if js.Kind == KindServer {
+					if sr := serverRoute(js); sr != "" {
+						ri, seen := routeIdx[sr]
+						if !seen && len(p.routes) < MaxRoutes {
+							ri = uint16(len(p.routes)) + 1
+							p.routes = append(p.routes, sr)
+							routeIdx[sr] = ri
+						}
+						sp.Route = ri // 0 past MaxRoutes
+					}
+				}
 				if ext != (SpanExt{}) {
 					ei, seen := extIdx[ext]
 					if !seen {
@@ -1311,6 +1371,7 @@ func read(files []FileRef, lim Limits, partialTail bool) (*Data, error) {
 	addrIdx := map[string]int32{}
 	scopeIdx := map[string]int32{}
 	extIdx := map[SpanExt]int32{}
+	routeIdx := map[string]uint16{}
 	var firstErr error
 	stopped := false
 	halt := func(err error) {
@@ -1400,6 +1461,16 @@ func read(files []FileRef, lim Limits, partialTail bool) (*Data, error) {
 			}
 			emap[i+1] = gi
 		}
+		rtmap := make([]uint16, len(p.routes)+1) // 0 stays 0: no route
+		for i, s := range p.routes {
+			gi, ok := routeIdx[s]
+			if !ok && len(d.Routes) < MaxRoutes {
+				gi = uint16(len(d.Routes)) + 1
+				d.Routes = append(d.Routes, s)
+				routeIdx[s] = gi
+			}
+			rtmap[i+1] = gi
+		}
 		for _, ln := range p.long {
 			if d.LongNames == nil {
 				d.LongNames = map[SpanKey]string{}
@@ -1428,6 +1499,7 @@ func read(files []FileRef, lim Limits, partialTail bool) (*Data, error) {
 			}
 			sp.Scope = smap[sp.Scope]
 			sp.Ext = emap[sp.Ext]
+			sp.Route = rtmap[sp.Route]
 			d.Spans = append(d.Spans, sp)
 		}
 	}

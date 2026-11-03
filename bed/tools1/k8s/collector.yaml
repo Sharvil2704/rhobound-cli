@@ -1,4 +1,4 @@
-# The trace pipeline in kshop-obs (SPEC 3), applied by collector.sh, which fills @COLLECTOR_IMAGE@, @BUSYBOX_IMAGE@ (both from ECR
+# The trace pipeline in maze-obs (SPEC 3), applied by collector.sh, which fills @COLLECTOR_IMAGE@, @BUSYBOX_IMAGE@ (both from ECR
 # by digest, images.json) and @CONFIG_SHA@ (a changed configuration rolls the Collector).
 # The Collector (contrib image, UID 10001) writes /var/lib/rbd/traces on edge1; an init container makes that folder its own.
 # spans-reader: busybox on edge1, the same hostPath read-only, so tools1 copies files with kubectl exec ... tar (no ssh);
@@ -6,13 +6,13 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: kshop-obs
+  name: maze-obs
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: otel-collector
-  namespace: kshop-obs
+  namespace: maze-obs
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -37,13 +37,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: otel-collector
-    namespace: kshop-obs
+    namespace: maze-obs
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector
-  namespace: kshop-obs
+  namespace: maze-obs
 spec:
   replicas: 1
   strategy:
@@ -113,7 +113,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: otel-collector
-  namespace: kshop-obs
+  namespace: maze-obs
 spec:
   selector:
     app: otel-collector
@@ -127,7 +127,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: spans-reader
-  namespace: kshop-obs
+  namespace: maze-obs
   labels:
     app: spans-reader
 spec:

@@ -316,10 +316,12 @@ func scriptedAgent(t *testing.T, fx loopFixture, era string) {
 	if p["verdict"] != "pass" || r["mean_change"] != "pass" || r["unmeasured_delta"] != "" || v["weakest_label"] != "measured-ab" {
 		t.Fatalf("measured: %v", v)
 	}
-	// the pass has a margin of about 0.08 ms under the 2.261 ms threshold (the A/B record measures b at 0.355 +- 0.32
-	// ms, not the 0.4 ms injected; testdata/mcp/README.md): pinned here, so drift shows before the verdict flips
-	near(t, "measured band lo", obj(t, e["band_ms"])["lo"], -1.36, 0.01)
-	near(t, "measured band hi", obj(t, e["band_ms"])["hi"], 2.18, 0.01)
+	// the pass has a margin of about 0.002 ms under the 2.261 ms threshold (the A/B record measures b at 0.355 +- 0.32
+	// ms, not the 0.4 ms injected; testdata/mcp/README.md; and since the variance patch the prediction also applies
+	// b's measured own-time variance difference +- 2 standard errors, which widened the band from -1.36..2.18):
+	// pinned here, so drift shows before the verdict flips
+	near(t, "measured band lo", obj(t, e["band_ms"])["lo"], -1.4332, 0.01)
+	near(t, "measured band hi", obj(t, e["band_ms"])["hi"], 2.2603, 0.01)
 	// the measured change set is b's delta alone: a and c ran the same image in both arms
 	var set struct {
 		Items []struct {

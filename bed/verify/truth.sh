@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# verify/truth.sh: the orchestrator's truth bracket of one change, OUTSIDE the product (SPEC 7). On rbd-tools1 as user rbd.
+# verify/truth.sh: the truth bracket of one change, OUTSIDE the product. On rbd-tools1 as user rbd.
 #   truth.sh CHANGE SERVICE CAND_DIGEST [--keep]   the bracket (about 30 min: run it under setsid nohup, poll truth.json)
 #   truth.sh CHANGE SERVICE CAND_DIGEST --check    preflight only (env, baseline, live image, names free, lock free); changes nothing
 # Under the cluster lock, for the whole run:
 #   0. B0 waits until the background load has run RBD_WARM_B0 (120) s at the current setting (load.sh set/reset restarts it)
 #   1. B0 = capture.sh truth-CHANGE-b0 600 SEED (production at baseline.json)
-#   2. kubectl -n kshop set image deployment/SERVICE SERVICE=RBD_ECR@CAND_DIGEST; rollout status (OUT OF BAND: no gate)
+#   2. kubectl -n maze set image deployment/SERVICE SERVICE=RBD_ECR@CAND_DIGEST; rollout status (OUT OF BAND: no gate)
 #   3. warm-up 180 s (the background load runs: capture.sh restarts it after its window)
 #   4. C = capture.sh truth-CHANGE-c 600 SEED2
 #   5. unless --keep: set image back to baseline.json's digest; rollout status; warm-up 120 s
@@ -29,8 +29,8 @@ WHO="truth $CHANGE"
 . "$(dirname "$(readlink -f "$0")")/vlib.sh"
 valid_name "$CHANGE" || { echo "CHANGE: [a-z0-9-], at most 41 chars" >&2; usage; }
 IFS=, read -r -a SVCS <<< "$SERVICE"   # 2026-10-31: SERVICE may list up to 5 services (one candidate image, CI v2)
-((${#SVCS[@]} >= 1 && ${#SVCS[@]} <= 5)) || { echo "SERVICE: 1 to 5 kshop service names, comma-separated" >&2; usage; }
-for s_ in "${SVCS[@]}"; do [[ $s_ =~ ^[a-z][a-z0-9-]{0,30}$ ]] || { echo "SERVICE: a kshop service name" >&2; usage; }; done
+((${#SVCS[@]} >= 1 && ${#SVCS[@]} <= 5)) || { echo "SERVICE: 1 to 5 maze service names, comma-separated" >&2; usage; }
+for s_ in "${SVCS[@]}"; do [[ $s_ =~ ^[a-z][a-z0-9-]{0,30}$ ]] || { echo "SERVICE: a maze service name" >&2; usage; }; done
 [[ $(printf '%s\n' "${SVCS[@]}" | sort -u | wc -l) == "${#SVCS[@]}" ]] || { echo "SERVICE: a service twice" >&2; usage; }
 IFS=, read -r -a CANDL <<< "$CAND"   # one digest for every listed service (one image), or one per service in order
 ((${#CANDL[@]} == 1 || ${#CANDL[@]} == ${#SVCS[@]})) || { echo "CAND_DIGEST: one digest, or one per listed service" >&2; usage; }
@@ -104,7 +104,7 @@ nodes_of() {   # nodes_of PHASE: the nodes of each listed service's pods now (tr
 
 settle_b0() {   # B0 starts only after the background load has run WARM_B0 s at the current setting (a load.sh set/reset restarts it)
   local st age
-  st=$("${KG[@]}" get job "${RBD_BGLOAD_JOB:-kshop-bgload}" -o 'jsonpath={.status.startTime}' 2> /dev/null || true)
+  st=$("${KG[@]}" get job "${RBD_BGLOAD_JOB:-maze-bgload}" -o 'jsonpath={.status.startTime}' 2> /dev/null || true)
   if [[ -z $st ]]; then warn "background load job not found: B0 waits the full ${WARM_B0}s"; B0_SETTLE=$WARM_B0
   else age=$(($(date -u +%s) - $(date -u -d "$st" +%s))); ((age >= WARM_B0)) || B0_SETTLE=$((WARM_B0 - age)); fi
   ((B0_SETTLE == 0)) || { vlog "B0 waits ${B0_SETTLE}s: the background load started at ${st:-?}"; snooze "$B0_SETTLE"; }
@@ -180,8 +180,8 @@ mark rollout_start
 ROLLED=1
 set_image cand || vdie "rollout of $CAND failed"
 mark rollout_done
-bg=$("${KG[@]}" get job "${RBD_BGLOAD_JOB:-kshop-bgload}" -o 'jsonpath={.status.active}' 2> /dev/null || true)
-[[ $bg == 1 ]] || warn "background load job ${RBD_BGLOAD_JOB:-kshop-bgload} not active (got '$bg'): the warm-up ran without it"
+bg=$("${KG[@]}" get job "${RBD_BGLOAD_JOB:-maze-bgload}" -o 'jsonpath={.status.active}' 2> /dev/null || true)
+[[ $bg == 1 ]] || warn "background load job ${RBD_BGLOAD_JOB:-maze-bgload} not active (got '$bg'): the warm-up ran without it"
 snooze "$WARM_C"
 nodes_of c
 mark c_start

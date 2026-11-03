@@ -6,7 +6,7 @@
 #   run E: a provider that answers escalate (A/A record)       -> inconclusive (exit 3), judge admitted, signed, reported
 #   run M: a provider whose answer cites another packet digest -> judge refused; pass (exit 0), no judge in gate.json
 #   run F: a provider that fails                               -> judge unavailable; pass (exit 0)
-#   JUDGE_MODE=advisory (the owner's choice): the judge escalates in both runs below, and the rules alone decide
+#   JUDGE_MODE=advisory: the judge escalates in both runs below, and the rules alone decide
 #   run V: the 1 ms record                                     -> pass (exit 0), the judge recorded as advisory
 #   run W: the 6 ms record                                     -> block (exit 1), signed with judge_advisory, reported
 # shellcheck disable=SC2016  # test code: single-quoted programs
@@ -19,11 +19,11 @@ S=$T/src
 mkrepo "$S"
 mkbaseline
 FX=$HERE/fixtures
-CH=$KIT/changes
+CH=$HERE/fixtures/changes
 cp -r "$KIT/tools1/judge" "$TROOT/judge"
 prep() { # prep NAME ITERATIONS [RECORD] -> H: c2's change with another iteration count (a distinct commit), pr-check, build,
   # the record (a run's prediction is keyed by it: two runs that share a record share one write-once ledger row)
-  H=$(branch "$S" "$1" "git apply $CH/c2-auth-small/change.patch; sed -i 's/6927/$2/' kshop/app/internal/work/lib_v11.go")
+  H=$(branch "$S" "$1" "git apply $CH/c2-auth-small/change.patch; sed -i 's/6927/$2/' maze/app/internal/work/lib_v11.go")
   "$CI/pr-check.sh" "$S" "$(git -C "$S" rev-parse main)" "$H" > "$T/prc-$1.out" 2> "$T/prc-$1.err" || { bad "pr-check $1"; cat "$T/prc-$1.err"; }
   "$CI/build.sh" "$S" "$H" "$(fget "$T/prc-$1.out" service)" > "$T/build-$1.out" 2> "$T/build-$1.err" || { bad "build $1"; cat "$T/build-$1.err"; }
   ab_standin "$H" "${3:-$FX/ab-record-1ms.json}"

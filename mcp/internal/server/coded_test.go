@@ -147,6 +147,10 @@ func TestEnvWithoutBaselineIsCoded(t *testing.T) {
 			t.Errorf("%s %s: %v, want -32602", c.tool, c.args, err)
 		}
 	}
+	// the refusal of an unknown environment names the configured ones, so the model's next call can be right
+	if _, _, err := h.try("context", `{"env":"nowhere"}`); err == nil || !strings.Contains(err.Error(), "environments: staging") {
+		t.Errorf("unknown environment: %v, want the configured environments named", err)
+	}
 }
 
 // TestFitTTLFromConfig: fit_ttl_h sets how long fit handles live and how old a baseline may be (fit.expired); without

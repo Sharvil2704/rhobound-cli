@@ -412,9 +412,9 @@ func TestInterrupted(t *testing.T) {
 	}
 }
 
-// The arms see what kshop's callers send (SPEC 5, review R13): the headers of a plain Go GET through a transport like
-// kshop-svc's (keep-alive, or Connection: close as its fresh_conn calls), no driver header or User-Agent, and with -host
-// the Host production's callers use. (kshop-svc's otelhttp transport adds a traceparent; abdrive sends none, so the
+// The arms see what maze's callers send (SPEC 5, review R13): the headers of a plain Go GET through a transport like
+// maze-svc's (keep-alive, or Connection: close as its fresh_conn calls), no driver header or User-Agent, and with -host
+// the Host production's callers use. (maze-svc's otelhttp transport adds a traceparent; abdrive sends none, so the
 // arm's SERVER span stays the trace's root, which splitarms.py and SPEC 0b rule 4 rely on.)
 func TestCallerHeaders(t *testing.T) {
 	tagHeader = ""
@@ -433,7 +433,7 @@ func TestCallerHeaders(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	for _, fresh := range []bool{false, true} {
-		// the reference: one request as kshop-svc's do() makes it, less otelhttp's traceparent
+		// the reference: one request as maze-svc's do() makes it, less otelhttp's traceparent
 		ref := &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{MaxIdleConns: 1024,
 			MaxIdleConnsPerHost: 256, IdleConnTimeout: 90 * time.Second, DisableKeepAlives: fresh}}
 		mu.Lock()
@@ -468,7 +468,7 @@ func TestCallerHeaders(t *testing.T) {
 		}
 		for _, r := range reqs {
 			if !reflect.DeepEqual(r.h, want) || r.host != "auth:8080" {
-				t.Fatalf("fresh %v: headers %v Host %q, want kshop's %v Host auth:8080", fresh, r.h, r.host, want)
+				t.Fatalf("fresh %v: headers %v Host %q, want maze's %v Host auth:8080", fresh, r.h, r.host, want)
 			}
 		}
 		if s := readSummary(t, filepath.Join(out, "summary.json")); s.Host != "auth:8080" {

@@ -15,6 +15,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/Sharvil2704/rhobound-cli/internal/contract"
 	"github.com/Sharvil2704/rhobound-cli/internal/infer"
 	"github.com/Sharvil2704/rhobound-cli/internal/model"
 	"github.com/Sharvil2704/rhobound-cli/internal/otlp"
@@ -380,47 +381,71 @@ func TestCallShapesMixtureAgainstTheSimulator(t *testing.T) {
 	}
 }
 
-// TestBatchArrivalsAreWarnedOf: calls made at once reach the callee together and queue behind each other, which the model,
-// taking every call as an arrival of its own, does not have. With one worker the model's callee is about 60% too fast
-// whatever the load, and the report says so; with a quiet callee of 8 workers there is nothing to say. The one
-// exception is a callee at most 30% busy: there the hop is the mean of the client-minus-server time less the model's
-// wait (hops.go), and that mean holds the batch's wait, so A is about 20% too fast, not 60%, and a warning says that the
-// hop holds waiting the model does not show.
+// desPredictPlain is desPredict with --plain: the basic model, which takes every call as an arrival of its own.
+func desPredictPlain(t *testing.T, spans []span, workers map[string]int) (*infer.Inferred, *model.Result) {
+	t.Helper()
+	d, err := otlp.ReadDir(writeOTLP(t, spans))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inf, err := infer.Run(d, infer.Options{Workers: workers, Plain: true})
+	if err != nil {
+		t.Fatalf("infer: %v", err)
+	}
+	res, err := model.AnalyticWith(inf.Topology, inf.LamExtPerMs, nil, model.Plain)
+	if err != nil || !res.Stable {
+		t.Fatalf("model: %v", err)
+	}
+	return inf, res
+}
+
+// codedBatch reports whether the inference coded a model.batch_arrivals warning (a doubt of the fit).
+func codedBatch(inf *infer.Inferred) bool {
+	for _, c := range inf.WarningCodes {
+		if c == contract.ModelBatchArrivals {
+			return true
+		}
+	}
+	return false
+}
+
+// noBatch is the refined model without the batch term: what the model was before it took calls made at once as batches.
+var noBatch = model.Config{ArrivalWeight: model.Default.ArrivalWeight, MatchedMax: true}
+
+// TestBatchArrivalsAreWarnedOf: calls made at once reach the callee together and queue behind each other. The refined
+// model takes them as one batch (model.Config.Batch: an M^X/G/c queue at the callee, and the caller waits for the last
+// of them), so with one worker A is within 8% of the simulation at 30% and 40% load, and the report notes how the batch
+// is modelled, with no model.batch_arrivals doubt. Without the batch term (each call an arrival of its own) the callee
+// is about 60% too fast whatever the load. --plain keeps the model.batch_arrivals doubt: the basic model has no batch
+// term. With a quiet callee of 8 workers there is nothing to say.
 func TestBatchArrivalsAreWarnedOf(t *testing.T) {
-	cfg := desCfg{types: desTypes("fan4"), rho: 0.4, ca: 1_000_000, cb: 1, sb: 10, seconds: 200, seed: 3}
-	spans, total, _ := desRun(cfg)
-	inf, res := desPredict(t, spans, map[string]int{"B": 1})
-	topo := inf.Topology
-	if !hasWarning(inf, "A calls B 4 times at once (on 100% of its visits); B has 1 worker and is ") {
-		t.Errorf("no batch warning for four calls at once to one worker: %v", inf.Warnings)
-	}
-	if e := desRel(res.L[topo.Index("A")], mean(total)); e > -40 {
-		t.Errorf("A is %+.1f%% off its simulation; the batch effect should leave it far below (about -60%%)", e)
-	}
-	if inf.Stats[topo.Index("B")].HopFromMean || hasWarning(inf, "explains little of the difference") {
-		t.Errorf("B is %.0f%% busy: its hop is read from the mean: %v", 100*res.Rho[topo.Index("B")], inf.Warnings)
-	}
-	cfg.rho = 0.3
-	spans, total, _ = desRun(cfg)
-	inf, res = desPredict(t, spans, map[string]int{"B": 1})
-	topo = inf.Topology
-	if !hasWarning(inf, "A calls B 4 times at once (on 100% of its visits); B has 1 worker and is ") {
-		t.Errorf("no batch warning at 30%% utilization: %v", inf.Warnings)
-	}
-	if !inf.Stats[topo.Index("B")].HopFromMean || !hasWarning(inf, "A -> B: a call takes ") || !hasWarning(inf, "explains little of the difference") {
-		t.Errorf("B at %.0f%%: hop from the mean %v, hop %.1f ms; warnings %v", 100*res.Rho[topo.Index("B")], inf.Stats[topo.Index("B")].HopFromMean,
-			topo.Services[topo.Index("B")].Hop, inf.Warnings)
-	}
-	if !hasWarning(inf, "(and part of it may be the calls of one group, made to B at once, queueing behind each other)") {
-		t.Errorf("the hop warning should say that part of the hop may be the group's own queue: %v", inf.Warnings)
-	}
-	if e := desRel(res.L[topo.Index("A")], mean(total)); e < -40 || e > -5 {
-		t.Errorf("A is %+.1f%% off its simulation; the hop should hold part of the batch's wait (about -20%%)", e)
+	for _, rho := range []float64{0.4, 0.3} {
+		cfg := desCfg{types: desTypes("fan4"), rho: rho, ca: 1_000_000, cb: 1, sb: 10, seconds: 200, seed: 3}
+		spans, total, _ := desRun(cfg)
+		inf, res := desPredict(t, spans, map[string]int{"B": 1})
+		topo := inf.Topology
+		if !hasWarning(inf, "A calls B 4 times at once (on 100% of its visits); B has 1 worker and is ") ||
+			!hasWarning(inf, "The model takes the 4 calls as one batch") || codedBatch(inf) {
+			t.Errorf("B %.0f%% busy: want the batch noted as modelled, uncoded: %v %v", 100*rho, inf.Warnings, inf.WarningCodes)
+		}
+		if e := desRel(res.L[topo.Index("A")], mean(total)); math.Abs(e) > 8 {
+			t.Errorf("B %.0f%% busy: A is %+.1f%% off its simulation with the batch term", 100*rho, e)
+		}
+		old, err := model.AnalyticWith(topo, inf.LamExtPerMs, nil, noBatch)
+		if err != nil || !old.Stable {
+			t.Fatalf("model: %v", err)
+		}
+		if e := desRel(old.L[topo.Index("A")], mean(total)); e > -40 {
+			t.Errorf("B %.0f%% busy: without the batch term A is %+.1f%% off its simulation; it should be far below (about -60%%)", 100*rho, e)
+		}
+		if inf, _ = desPredictPlain(t, spans, map[string]int{"B": 1}); !codedBatch(inf) {
+			t.Errorf("--plain, B %.0f%% busy: no model.batch_arrivals doubt: %v", 100*rho, inf.Warnings)
+		}
 	}
 	// the mixture's groups of calls at once are checked too, and named by the service whose calls they are
-	cfg = desCfg{types: desTypes("mix"), rho: 0.3, ca: 1_000_000, cb: 4, sb: 10, seconds: 200, seed: 3}
-	spans, _, _ = desRun(cfg)
-	inf, _ = desPredict(t, spans, map[string]int{"B": 4})
+	cfg := desCfg{types: desTypes("mix"), rho: 0.3, ca: 1_000_000, cb: 4, sb: 10, seconds: 200, seed: 3}
+	spans, _, _ := desRun(cfg)
+	inf, _ := desPredict(t, spans, map[string]int{"B": 4})
 	if !hasWarning(inf, "A calls B 4 times at once (on 20% of its visits); B has 4 workers and is ") {
 		t.Errorf("no batch warning in the mixture (four at once, 4 workers, 30%% busy): %v", inf.Warnings)
 	}
@@ -452,6 +477,47 @@ func TestVariableCountsOfABusyCaller(t *testing.T) {
 		if math.Abs(e) > 8 {
 			t.Errorf("a caller with one worker at 70%%: off by %+.1f%% in a run (runs %+.1f)", e, errs)
 		}
+	}
+}
+
+// TestBatchChangeAgainstTheSimulator: four calls at once to one worker, B's service time +20% at the same arrival
+// rate: the change of A (the batch's makespan) against the simulator on the same seeds, mean of four runs, within 10%.
+// Without the batch term, taking the calls as arrivals of their own, the model misses most of it.
+func TestBatchChangeAgainstTheSimulator(t *testing.T) {
+	var pred, plain, truth []float64
+	for seed := int64(1); seed <= 4; seed++ {
+		base := desCfg{types: desTypes("fan4"), rho: 0.3, ca: 1_000_000, cb: 1, sb: 10, seconds: 100, seed: seed}
+		spans, total0, _ := desRun(base)
+		inf, _ := desPredict(t, spans, map[string]int{"B": 1})
+		for _, pl := range []bool{false, true} {
+			cfg := model.Default
+			if pl {
+				cfg = noBatch
+			}
+			topo := inf.Topology
+			n, bi, ai := len(topo.Services), topo.Index("B"), topo.Index("A")
+			p := model.Patch{DS: make([]float64, n), Shift: make([]bool, n), Glue: make([]float64, n)}
+			p.DS[bi] = 0.2 * topo.Services[bi].S
+			d, err := model.ChangePatchWith(topo, inf.LamExtPerMs, p, cfg)
+			if err != nil || !d.Stable {
+				t.Fatalf("change: %v", err)
+			}
+			if pl {
+				plain = append(plain, d.Patched.L[ai]-d.Base.L[ai])
+			} else {
+				pred = append(pred, d.Patched.L[ai]-d.Base.L[ai])
+			}
+		}
+		slow := base
+		slow.sb, slow.rho = 12, 0.3*1.2
+		_, total1, _ := desRun(slow)
+		truth = append(truth, mean(total1)-mean(total0))
+	}
+	t.Logf("four at once, one worker, 30%% busy, B +20%%: change of A %.2f ms (without the batch term %.2f), simulated %.2f",
+		mean(pred), mean(plain), mean(truth))
+	within(t, "batch: change of A", mean(pred), mean(truth), 0.10)
+	if mean(plain) > 0.6*mean(truth) {
+		t.Errorf("without the batch term the change %.2f ms should fall well short of the simulated %.2f", mean(plain), mean(truth))
 	}
 }
 

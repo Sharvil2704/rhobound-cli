@@ -15,7 +15,7 @@ done
 echo "== baseline: $(jq -c '{capture, fit: .fit.digest, updated_at, services: (.services | length)}' "$RBD_HOME/baseline.json" 2>&1)"
 echo "== images:"; jq -r 'to_entries[] | select(.value | type == "string" and test("@sha256:")) | "  \(.key) \(.value | split("@")[1][0:19])"' "$RBD_HOME/images.json" 2>&1
 echo "== lock: $(rbd_lock_holder)"
-echo "== $("$RBD_OPT/kshop/bgload.sh" status 2>&1)"
+echo "== $("$RBD_OPT/maze/bgload.sh" status 2>&1)"
 for u in rbd-ecr-secret.timer rbd-bgload.timer rhobound-mcp.service rbd-imds-block.service; do echo "  $u: $(systemctl is-active "$u" 2>&1)"; done
 ru=$(sed -n 1p /opt/actions-runner/.service 2> /dev/null)
 echo "  runner: ${ru:-not registered} $( [ -n "$ru" ] && systemctl is-active "$ru" 2>&1)"

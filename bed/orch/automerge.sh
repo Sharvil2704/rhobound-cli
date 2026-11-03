@@ -3,13 +3,13 @@
 #   bash orch/automerge.sh pr N --task TASK [--wait S]  one PR: waits (up to S s [7200]) for its rhobound/verdict, merges a
 #                                                       pass, waits for the deploy.yml run of the merge commit (S9)
 #   bash orch/automerge.sh once                         every open PR labelled rbd-bench that a state/bench/<task>/pr.json
-#                                                       (orch/bench.sh) names: records each verdict, merges at most ONE pass
+#                                                       (an earlier run's bench funnel, not kept here) names: records each verdict, merges at most ONE pass
 #   bash orch/automerge.sh watch [INTERVAL]             'once' every INTERVAL s [300] until the kill switch exists
-# Runs HERE (the orchestrator) with gh only: no ssh, no AWS, no model key. It waits for a gate (~15-25 min) and a deploy with
+# Runs HERE (your workstation) with gh only: no ssh, no AWS, no model key. It waits for a gate (~15-25 min) and a deploy with
 # its refit (~15 min): run it detached (setsid nohup bash orch/automerge.sh ... > state/logs/automerge-T.log 2>&1 < /dev/null &).
 # It reads ONLY typed state, never a PR's title, body, comments, commit messages or any model text:
 #   the PR (gh pr view --json): state OPEN, not a draft, label rbd-bench, head branch rbd/*, base main, not from a fork, author
-#     = this gh account (make_prs.sh opened it), mergeable MERGEABLE (UNKNOWN: asked again), files[].path only kshop/app/** and
+#     = this gh account (make_prs.sh opened it), mergeable MERGEABLE (UNKNOWN: asked again), files[].path only maze/app/** and
 #     rhobound-change.json (what make_prs.sh and pr-check.sh admit), head sha 40 hex;
 #   the newest commit status 'rhobound/verdict' ON THAT EXACT HEAD SHA (gh api .../commits/HEAD/statuses), created by
 #     AUTOMERGE_STATUS_CREATOR [github-actions[bot]: gate.yml's token; empty = not checked]: state success is the only merge
@@ -30,7 +30,7 @@
 # an in-flight one. deploy.sh stays the enforcement point (a KMS-signed pass for that digest); this script only merges.
 # Kill switch: state/automerge.stop (any content): no merge from then on (checked before every merge and every loop), exit 5.
 # DRYRUN=1: every read, the decision printed as JSON on stdout, no merge, no file written.
-# Before merging a pass: AUTOMERGE_GUARD [orch/variance_guard.sh] HEAD must exit 0 (the owner's variance relaxation is for
+# Before merging a pass: AUTOMERGE_GUARD [orch/variance_guard.sh] HEAD must exit 0 (the variance relaxation of 2026-10-30 is for
 # improvements only: a variance-changing pass that is not an improvement at every measured service is left open).
 # Writes state/bench/<task>/timeline.json (shared schema: task pr head gate_run gate_started gate_ended verdict rule
 # merged_at merge_sha deploy_run deploy_ended deploy_ok; atomic replace; a new head resets it) and appends every decision to
@@ -38,11 +38,11 @@
 # Exit (pr): 0 merged and its deploy.yml run succeeded (once/watch: 0 unless an error); 1 error, merge refused or the deploy
 # failed; 3 not merged: the verdict is not pass, or a precondition failed (stale base, conflict, files, author, label);
 # 4 timed out (no verdict, or the deploy run did not end); 5 kill switch. A planted change (rbd-plant) is exit 3.
-# Env: REPO [Sharvil2704/rhobound-demo]  RBD_STATE [kit/state]  DRYRUN [0]  AUTOMERGE_POLL [60 s]  AUTOMERGE_DEPLOY_WAIT
+# Env: REPO [Sharvil2704/rhobound-maze-bed]  RBD_STATE [kit/state]  DRYRUN [0]  AUTOMERGE_POLL [60 s]  AUTOMERGE_DEPLOY_WAIT
 #      [5400 s]  AUTOMERGE_LOCK_WAIT [7200 s]  AUTOMERGE_STATUS_CREATOR [github-actions[bot]]
 set -euo pipefail
 DEMO=$(cd "$(dirname "$0")/.." && pwd)
-REPO=${REPO:-Sharvil2704/rhobound-demo}
+REPO=${REPO:-Sharvil2704/rhobound-maze-bed}
 STATE=${RBD_STATE:-$DEMO/state}
 DRYRUN=${DRYRUN:-0}
 POLL=${AUTOMERGE_POLL:-60}
@@ -160,9 +160,9 @@ if (pr.get("author") or {}).get("login") != me:
 files = [f.get("path") for f in pr.get("files") or []]
 if not files or len(files) >= 100:
     R("%d changed files (1..99 checkable)" % len(files))
-bad = [p for p in files if not re.fullmatch(r"kshop/app/.+|rhobound-change\.json", str(p))]
+bad = [p for p in files if not re.fullmatch(r"maze/app/.+|rhobound-change\.json", str(p))]
 if bad:
-    R("files outside kshop/app/ and rhobound-change.json: %s" % ", ".join(map(str, bad[:5])))
+    R("files outside maze/app/ and rhobound-change.json: %s" % ", ".join(map(str, bad[:5])))
 m = pr.get("mergeable")
 if m == "UNKNOWN" or m is None:
     Wt("mergeability not computed yet")
@@ -318,7 +318,7 @@ merge_one() {
     return 3
   fi
   head=$(af head)
-  # the owner's variance relaxation is for improvements only (orch/variance_guard.sh): a pass whose A/B changed a variance
+  # the variance relaxation of 2026-10-30 is for improvements only (orch/variance_guard.sh): a pass whose A/B changed a variance
   # merges only when every measured service improved; otherwise it is recorded and left open for a person
   if [[ -n $GUARD ]]; then
     local g grc=0

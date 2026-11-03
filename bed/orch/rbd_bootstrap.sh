@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
-# rbd_bootstrap.sh STEP...   demo1 from this box over ssh (SPEC 3, 4, 8). Every step is idempotent; run them in this order:
-#   build        (local) rhobound + rhobound-mcp for linux/amd64 from a clean git archive of this repository (RBD_SRC_REF, default HEAD) -> build/linux-amd64/
+# rbd_bootstrap.sh STEP...   the bed, from your workstation over ssh. Every step is idempotent; run them in this order:
+#   build        (local) rhobound + rhobound-mcp for linux/amd64 from a clean git archive of this repository's commit (HEAD, or
+#                RBD_SRC_SHA), this machine's rhobound (build/rhobound-local) and abdrive (tools1/abdrive/bin); was bed-spec3 19baaed, SPEC3 F1/F4/F5) -> build/linux-amd64/
 #   kit          upload tools1/ (+ the two binaries) -> rbd-tools1:/opt/rbd (root-owned; also after another part changed tools1/)
 #   tools1       kit + /opt/rbd/etc/rbd.env from the seed (+ RBD_POLICY_SHA256 = sha256 of repo/policy/gate.json, RBD_POLICY_DIGEST
-#                = the effective-policy digest build/rhobound-arm64's `gate` writes for it on orch/fixtures/policy-digest-prediction.json,
-#                which the INSTALLED CLI on rbd-tools1 must reproduce before rbd.env is written there, AB_LOCK_WAIT; the owner's
+#                = the effective-policy digest build/rhobound-local's `gate` writes for it on orch/fixtures/policy-digest-prediction.json,
+#                which the INSTALLED CLI on rbd-tools1 must reproduce before rbd.env is written there, AB_LOCK_WAIT; your
 #                knobs live in rbd.env.local, never written here) + setup/tools1-setup.sh (users, packages, aws, kubectl, cosign (a
 #                WARNING when it fails), IMDS rule for ghrunner, sudoers)
 #   k3s          k3s v1.36.5+k3s1: server on cp1, agents edge1/load1/app1-3/ab1 with their pool labels and taints
 #   kubeconfig   cp1's kubeconfig (address = cp1's private IP) -> rbd-tools1:/opt/rbd/etc/kubeconfig (user rbd only)
-#   ecr-secret   namespaces kshop, kshop-obs, rbd-ab + the "ecr" imagePullSecret, and its 4-h timer (rbd-ecr-secret.timer)
+#   ecr-secret   namespaces maze, maze-obs, rbd-ab + the "ecr" imagePullSecret, and its 4-h timer (rbd-ecr-secret.timer)
 #   images       main -> rbd-tools1:/var/lib/rbd/src/main (+ src/main.sha, written after the tree); setup/images.sh: build.sh x 11,
 #                mirror Collector + busybox, abdrive. main = GitHub main at RBD_MAIN_SHA or state/main.sha (orch/publish_main.sh
 #                writes it): cloned from RBD_MAIN_URL [https://github.com/RBD_GH_REPO.git] and that exact commit archived; without a
 #                sha: refused (RBD_ALLOW_UNPUBLISHED=1, tests only: repo/ with a WARNING)
 #   collector    tools1/k8s: the Collector on edge1 + spans-reader
-#   kshop        the 10 services at baseline.json's digests
+#   maze        every service at baseline.json's digests
 #   bgload       the background load + its 5-min "ensure" timer
 #   mcp          rhobound-mcp http on 127.0.0.1:8765 (token, config, unit)
 #   runner       the GitHub runner: its files (pinned release) + a registration token minted HERE (gh api), passed on ssh's stdin
-#   verify       part E's verify/{truth.sh,aa.sh,collect.sh,vlib.sh} -> rbd-tools1:/opt/rbd/verify (root-owned; not in all)
+#   verify       verify/{truth,truthx,stagedx,candidate,aa,collect,vlib}.sh -> rbd-tools1:/opt/rbd/verify (root-owned; not in all)
 #   all          every step above in this order (build first);   core = tools1 .. bgload (SPEC 0b: the core path first)
 #   status       what runs where;   env   (local) print the rbd.env the seed gives
 # RBD_DRY=1 prints every remote command instead of running it (no ssh, no gh, no build). Uses orch/rbd_lib.sh (seed, ssh config).
@@ -29,20 +30,22 @@ RBD_ME=rbd_bootstrap
 HERE=$(dirname "$(readlink -f "$0")")
 # shellcheck source=rbd_lib.sh
 . "$HERE/rbd_lib.sh"
-INSTALLER=${RBD_K3S_INSTALLER:-$HOME/rbd-dev/k3s-install-v1.36.5_k3s1.sh}
+INSTALLER=${RBD_K3S_INSTALLER:-$HERE/third_party/k3s-install-v1.36.5_k3s1.sh}
 INSTALLER_SHA=46177d4c99440b4c0311b67233823a8e8a2fc09693f6c89af1a7161e152fbfad
 K3S_VER='v1.36.5+k3s1'
-SRC_REPO=${RBD_MCP_SRC:-$(cd "$DEMO/.." && pwd)}
-SRC_REF=${RBD_SRC_REF:-HEAD}   # the commit of this repository to build for the machines
-SRC_SHA=${RBD_SRC_SHA:-$(git -C "$SRC_REPO" rev-parse "$SRC_REF^{commit}" 2> /dev/null)}   # set RBD_SRC_SHA to pin it
-VERSION=0.1.0+${SRC_SHA:0:7}
+# the engine and MCP server are built from this repository's own commit (bed/ lives in it): rhobound at the root, rhobound-mcp
+# in mcp/. RBD_SRC_SHA pins a commit (the build refuses another); unset, it is the checkout's HEAD.
+SRC_REPO=${RBD_MCP_SRC:-$(cd "$HERE/../.." && pwd)}
+SRC_REF=${RBD_SRC_REF:-HEAD}
+SRC_SHA=${RBD_SRC_SHA:-$(git -C "$SRC_REPO" rev-parse "$SRC_REF^{commit}" 2> /dev/null || true)}
+VERSION=0.1.0+${SRC_SHA:0:8}
 BIN=$DEMO/build/linux-amd64
-GO=${RBD_GO:-$(command -v go)}
-CAPPED=${RBD_CAPPED:-$HOME/rbd-dev/capped.sh}
-SCRATCH=${RBD_TMP:-$HOME/rbd-dev/tmp}
-GH_REPO=${RBD_GH_REPO:-Sharvil2704/rhobound-demo}
+GO=${RBD_GO:-$(command -v go || echo go)}
+CAPPED=${RBD_CAPPED:-$HERE/capped.sh}
+SCRATCH=${RBD_TMP:-${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}}
+GH_REPO=${RBD_GH_REPO:-Sharvil2704/rhobound-maze-bed}
 REPO_DIR=${RBD_REPO_DIR:-$DEMO/repo}
-LCLI=${RBD_LOCAL_CLI:-$DEMO/build/rhobound-arm64}   # this box's build of the same source, for RBD_POLICY_DIGEST
+LCLI=${RBD_LOCAL_CLI:-$DEMO/build/rhobound-local}   # the build step's host build of the same source, for RBD_POLICY_DIGEST
 PFIX=$HERE/fixtures/policy-digest-prediction.json
 SUBNET_RE=${RBD_SUBNET_RE:-^10\.82\.1\.[0-9]+$}
 AS_RBD='sudo -u rbd -H'
@@ -56,7 +59,7 @@ build() {
   local sha tmp b
   sha=$(git -C "$SRC_REPO" rev-parse "$SRC_REF^{commit}" 2> /dev/null) || die "no $SRC_REF in $SRC_REPO"
   [ "$sha" = "$SRC_SHA" ] || die "$SRC_REF is $sha, not the pinned $SRC_SHA: refusing to build"
-  if [ -n "$DRY" ]; then echo "DRY local: git archive $SRC_SHA | go build (linux/amd64, capped) ./cmd/rhobound and mcp ./cmd/rhobound-mcp -> $BIN" >&2; return 0; fi
+  if [ -n "$DRY" ]; then echo "DRY local: git archive $SRC_SHA | go build (linux/amd64, capped) ./cmd/rhobound and mcp ./cmd/rhobound-mcp -> $BIN, and ./cmd/rhobound for this machine -> $LCLI" >&2; return 0; fi
   mkdir -p "$SCRATCH" "$BIN"
   tmp=$(mktemp -d "$SCRATCH/partB-build.XXXXXX") || die "mktemp"
   git -C "$SRC_REPO" archive --format=tar "$SRC_SHA" | tar -x -C "$tmp" || { rm -rf "$tmp"; die "git archive failed"; }
@@ -69,7 +72,13 @@ build() {
     file -b "$BIN/.$name.new" | grep -q 'ELF 64-bit LSB.*x86-64' || { rm -rf "$tmp"; die "$name is not a linux/amd64 binary"; }
     mv -f "$BIN/.$name.new" "$BIN/$name"
   done
+  # this machine's own build of the same commit (the tools1 step computes RBD_POLICY_DIGEST with it)
+  log "go build rhobound for this machine ($(go env GOOS 2> /dev/null)/$(go env GOARCH 2> /dev/null)) -> $LCLI"
+  ( cd "$tmp" && GOTMPDIR=$SCRATCH CGO_ENABLED=0 bash "$CAPPED" "$GO" build -trimpath -buildvcs=false -ldflags "-X main.Version=$VERSION" \
+      -o "$LCLI" ./cmd/rhobound ) || { rm -rf "$tmp"; die "go build of this machine's rhobound failed"; }
   rm -rf "$tmp"
+  log "abdrive (the A/B driver) -> tools1/abdrive/bin/abdrive"
+  CAPPED=$CAPPED GO=$GO bash "$DEMO/tools1/abdrive/build.sh" > /dev/null || die "tools1/abdrive/build.sh failed"
   ( cd "$BIN" && sha256sum rhobound rhobound-mcp > SHA256SUMS )
   log "built from $SRC_SHA: $(tr '\n' ' ' < "$BIN/SHA256SUMS" | sed 's/  / /g')"
 }
@@ -88,7 +97,7 @@ kit() {
   rm -rf "$st"
 }
 
-policy_digest() {   # RBD_POLICY_DIGEST: gate.json digests.policy as this box's build of the CLI writes it for repo/policy/gate.json
+policy_digest() {   # RBD_POLICY_DIGEST: gate.json digests.policy as the workstation's build of the CLI writes it for repo/policy/gate.json
   local g
   [ -x "$LCLI" ] && [ -s "$PFIX" ] || { log "ERROR: no $LCLI or $PFIX: RBD_POLICY_DIGEST cannot be computed"; return 1; }
   mkdir -p "$SCRATCH"
@@ -97,7 +106,7 @@ policy_digest() {   # RBD_POLICY_DIGEST: gate.json digests.policy as this box's 
   echo "$g"
 }
 
-rbd_env() {   # /opt/rbd/etc/rbd.env from the seed (no secret in it) + the policy pins; owner knobs go to rbd.env.local, never written here
+rbd_env() {   # /opt/rbd/etc/rbd.env from the seed (no secret in it) + the policy pins; your knobs go to rbd.env.local, never written here
   local pin pdig
   pin=$(sha256sum < "$REPO_DIR/policy/gate.json" 2> /dev/null | cut -d' ' -f1)
   [[ $pin =~ ^[0-9a-f]{64}$ ]] || { log "ERROR: no $REPO_DIR/policy/gate.json to pin (RBD_POLICY_SHA256)"; return 1; }
@@ -122,7 +131,7 @@ tools1() {
   tar -C "$st" -cf - prediction.json policy.json | rsh_in "$t" 'd=$(mktemp -d /var/tmp/rbd-pdigest.XXXXXX) || exit 1; rc=0; tar -xf - -C "$d" && RBD_TMP=$d bash /opt/rbd/setup/policy-digest.sh /opt/rbd/bin/rhobound "$d/prediction.json" "$d/policy.json" '"$pdig"' || rc=1; rm -rf "$d"; exit $rc' \
     || { rm -rf "$st"; die "the installed rhobound on $t does not write RBD_POLICY_DIGEST $pdig for repo/policy/gate.json: rbd.env not written"; }
   rm -rf "$st"
-  [ -n "$DRY" ] || log "RBD_POLICY_DIGEST $pdig (this box's CLI and $t's agree)"
+  [ -n "$DRY" ] || log "RBD_POLICY_DIGEST $pdig (the workstation's CLI and $t's agree)"
   printf '%s\n' "$env" | rsh_in "$t" 'sudo install -d -m 0755 /opt/rbd/etc && sudo tee /opt/rbd/etc/.rbd.env.new > /dev/null && sudo chmod 0644 /opt/rbd/etc/.rbd.env.new && sudo mv -f /opt/rbd/etc/.rbd.env.new /opt/rbd/etc/rbd.env' \
     || die "cannot write rbd.env on $t"
   rsh "$t" 'sudo /opt/rbd/setup/tools1-setup.sh' || die "tools1-setup.sh failed on $t"
@@ -241,7 +250,7 @@ images() {
   step images
   need_seed
   local t sha tarf; t=$(tools)
-  [ -d "$REPO_DIR/kshop/app" ] || die "no $REPO_DIR/kshop/app (part D's repo/)"
+  [ -d "$REPO_DIR/maze/app" ] || die "no $REPO_DIR/maze/app (part D's repo/)"
   mkdir -p "$SCRATCH"; tarf=$(mktemp "$SCRATCH/partB-main.XXXXXX") || die "mktemp"
   sha=$(main_tree "$tarf") || { rm -f "$tarf"; die "cannot pack main (see above)"; }
   # main.sha (sha + newline, rbd 0644) goes first and comes back last, by rename: build.sh takes the plain tree src/main only as that sha
@@ -257,18 +266,18 @@ images() {
 }
 
 collector() { step collector; need_seed; rsh "$(tools)" "$AS_RBD /opt/rbd/k8s/collector.sh" || die "collector.sh failed"; }
-kshop() { step kshop; need_seed; rsh "$(tools)" "$AS_RBD /opt/rbd/kshop/app.sh" || die "app.sh failed"; }
+maze() { step maze; need_seed; rsh "$(tools)" "$AS_RBD /opt/rbd/maze/app.sh" || die "app.sh failed"; }
 bgload() {
   step bgload
   need_seed
-  rsh "$(tools)" "set -e; $AS_RBD /opt/rbd/kshop/bgload.sh start; sudo install -m 0644 /opt/rbd/setup/rbd-bgload.service /opt/rbd/setup/rbd-bgload.timer /etc/systemd/system/; sudo systemctl daemon-reload; sudo systemctl enable --now rbd-bgload.timer > /dev/null 2>&1; $AS_RBD /opt/rbd/kshop/bgload.sh status" \
+  rsh "$(tools)" "set -e; $AS_RBD /opt/rbd/maze/bgload.sh start; sudo install -m 0644 /opt/rbd/setup/rbd-bgload.service /opt/rbd/setup/rbd-bgload.timer /etc/systemd/system/; sudo systemctl daemon-reload; sudo systemctl enable --now rbd-bgload.timer > /dev/null 2>&1; $AS_RBD /opt/rbd/maze/bgload.sh status" \
     || die "bgload failed"
 }
 verify() {
   step verify
   need_seed
-  local f; for f in truth.sh aa.sh collect.sh vlib.sh; do [ -f "$DEMO/verify/$f" ] || die "no $DEMO/verify/$f (part E)"; done
-  tar -C "$DEMO/verify" -czf - truth.sh aa.sh collect.sh vlib.sh | rsh_in "$(tools)" 'set -e; rm -rf /var/tmp/rbd-verify; mkdir -p /var/tmp/rbd-verify; tar -xzf - -C /var/tmp/rbd-verify; sudo install -d -m 0755 -o root -g root /opt/rbd/verify; for f in /var/tmp/rbd-verify/*; do sudo install -m 0755 -o root -g root "$f" "/opt/rbd/verify/.$(basename "$f").new"; sudo mv -f "/opt/rbd/verify/.$(basename "$f").new" "/opt/rbd/verify/$(basename "$f")"; done; rm -rf /var/tmp/rbd-verify; ls /opt/rbd/verify' \
+  local f; for f in truth.sh truthx.sh stagedx.sh candidate.sh aa.sh collect.sh vlib.sh; do [ -f "$DEMO/verify/$f" ] || die "no $DEMO/verify/$f (part E)"; done
+  tar -C "$DEMO/verify" -czf - truth.sh truthx.sh stagedx.sh candidate.sh aa.sh collect.sh vlib.sh | rsh_in "$(tools)" 'set -e; rm -rf /var/tmp/rbd-verify; mkdir -p /var/tmp/rbd-verify; tar -xzf - -C /var/tmp/rbd-verify; sudo install -d -m 0755 -o root -g root /opt/rbd/verify; for f in /var/tmp/rbd-verify/*; do sudo install -m 0755 -o root -g root "$f" "/opt/rbd/verify/.$(basename "$f").new"; sudo mv -f "/opt/rbd/verify/.$(basename "$f").new" "/opt/rbd/verify/$(basename "$f")"; done; rm -rf /var/tmp/rbd-verify; ls /opt/rbd/verify' \
     || die "verify install failed"
 }
 mcp() { step mcp; need_seed; rsh "$(tools)" 'sudo /opt/rbd/mcp/mcp-setup.sh' || die "mcp-setup.sh failed"; }
@@ -297,16 +306,16 @@ status() { need_seed; rsh "$(tools)" "$AS_RBD /opt/rbd/setup/status.sh"; }
 [ $# -ge 1 ] || { sed -n '2,/^set -uo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 2; }
 for s in "$@"; do
   case $s in
-    build | kit | tools1 | k3s | kubeconfig | images | collector | kshop | bgload | mcp | runner | verify | status) ;;
+    build | kit | tools1 | k3s | kubeconfig | images | collector | maze | bgload | mcp | runner | verify | status) ;;
     env) need_seed; rbd_env || exit 1; echo; exit 0 ;;
     ecr-secret | all | core) ;;
-    *) die "unknown step '$s' (build kit tools1 k3s kubeconfig ecr-secret images collector kshop bgload mcp runner verify all core status env)" 2 ;;
+    *) die "unknown step '$s' (build kit tools1 k3s kubeconfig ecr-secret images collector maze bgload mcp runner verify all core status env)" 2 ;;
   esac
 done
 for s in "$@"; do
   case $s in
-    all) build; tools1; k3s; kubeconfig; ecr_secret; images; collector; kshop; bgload; mcp; runner ;;
-    core) tools1; k3s; kubeconfig; ecr_secret; images; collector; kshop; bgload ;;
+    all) build; tools1; k3s; kubeconfig; ecr_secret; images; collector; maze; bgload; mcp; runner ;;
+    core) tools1; k3s; kubeconfig; ecr_secret; images; collector; maze; bgload ;;
     ecr-secret) ecr_secret ;;
     *) "$s" ;;
   esac

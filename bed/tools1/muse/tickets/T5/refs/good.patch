@@ -1,0 +1,75 @@
+diff --git a/maze/app/internal/svc/catalog/catalog.go b/maze/app/internal/svc/catalog/catalog.go
+index 9f1d6f5..155049b 100644
+--- a/maze/app/internal/svc/catalog/catalog.go
++++ b/maze/app/internal/svc/catalog/catalog.go
+@@ -10,6 +10,7 @@ import (
+ 	"sync/atomic"
+ 
+ 	"maze/internal/rt"
++	"maze/internal/svc/pricing"
+ )
+ 
+ var words = strings.Fields(`red blue green black white steel oak linen wool cotton lamp chair table desk sofa rug
+@@ -101,6 +102,53 @@ func Search(terms []string, k int) []int {
+ 	return ids
+ }
+ 
++// BulkQty is the quantity a search result's bulk price is quoted at (pricing's top volume tier).
++const BulkQty = 50
++
++// Hit is one search result with its bulk price.
++type Hit struct {
++	ID        int // the product, as Search returns it
++	BulkCents int // the price of one unit when BulkQty are bought, as pricing charges it
++}
++
++// SearchHits returns Search's results, in Search's order, each with its bulk price: pricing.Quote for a line of
++// BulkQty units of the product, divided by BulkQty and rounded to the nearest cent (half up).
++func SearchHits(terms []string, k int) []Hit {
++	ids := Search(terms, k)
++	hits := make([]Hit, len(ids))
++	for i, id := range ids {
++		hits[i] = Hit{ID: id, BulkCents: bulkCents(id)}
++	}
++	return hits
++}
++
++// bulk holds each product's bulk price once it has been quoted (0: not yet; every price is positive). pricing.Quote
++// rebuilds its discount table on every call, a few milliseconds of CPU, so one Quote per hit would add tens of
++// milliseconds to every search; a product's bulk price never changes while the service runs, so it is quoted once.
++var bulk = make([]atomic.Int64, len(products))
++
++func bulkCents(id int) int {
++	if v := bulk[id].Load(); v != 0 {
++		return int(v)
++	}
++	total := pricing.Quote([]pricing.Line{{Cents: products[id].Price, Qty: BulkQty}})
++	v := (total + BulkQty/2) / BulkQty
++	bulk[id].Store(int64(v))
++	return v
++}
++
++// appendHits prints hits as [id:cents id:cents ...].
++func appendHits(b []byte, hits []Hit) []byte {
++	b = append(b, '[')
++	for i, h := range hits {
++		if i > 0 {
++			b = append(b, ' ')
++		}
++		b = fmt.Appendf(b, "%d:%d", h.ID, h.BulkCents)
++	}
++	return append(b, ']')
++}
++
+ func init() {
+ 	rt.Register("catalog.item", func(r *rt.Req) error {
+ 		p := products[int(seq.Add(1))%len(products)]
+@@ -108,7 +156,7 @@ func init() {
+ 		return nil
+ 	})
+ 	rt.Register("catalog.search", func(r *rt.Req) error {
+-		r.Out = fmt.Appendf(nil, "%v", Search(query(), 20))
++		r.Out = appendHits(nil, SearchHits(query(), 20))
+ 		return nil
+ 	})
+ 	rt.Register("catalog.merge", func(r *rt.Req) error {

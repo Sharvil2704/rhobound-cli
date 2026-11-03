@@ -61,8 +61,8 @@ co = gj["steps"][0]
 check("gate: checkout of the PR head, fetch-depth 0, no persisted credentials",
       co["with"] == {"ref": "${{ github.event.pull_request.head.sha }}", "fetch-depth": 0, "persist-credentials": False})
 called = [m for r in runs(gj) for m in re.findall(r"sudo -n -u rbd /opt/rbd/ci/([a-z-]+)\.sh", r)]
-check("gate: steps in order pr-check, build, ab, predict, sign, report (all via sudo -n -u rbd)",
-      called == ["pr-check", "build", "ab", "predict", "sign", "report"])
+check("gate: steps in order pr-check, build, ab, ab (preview, longer A/B), predict, sign, report (all via sudo -n -u rbd)",
+      called == ["pr-check", "build", "ab", "ab", "ab", "predict", "sign", "report"])
 check("gate: no ${{ }} expression inside any run script (inputs come through env)", all("${{" not in r for r in runs(gj)))
 rep = next(s for s in gj["steps"] if s.get("id") == "report")
 check("gate: the report goes to GITHUB_STEP_SUMMARY (all but report.sh's JSON line)",
@@ -72,7 +72,7 @@ check("gate: commit status rhobound/verdict via the REST API with GITHUB_TOKEN, 
       st["if"] == "${{ always() }}" and st["env"]["GITHUB_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
       and "/statuses/" in gj["env"]["STATUS_URL"] and 'context:"rhobound/verdict"' in st["run"])
 check("gate: status success on pass, failure on block|inconclusive, description 'verdict: rule'",
-      "pass) state=success" in st["run"] and "block | inconclusive) state=failure" in st["run"] and 'desc="$VERDICT: $RULE"' in st["run"])
+      "pass | built) state=success" in st["run"] and "block | inconclusive) state=failure" in st["run"] and 'desc="$VERDICT: $RULE"' in st["run"])
 pr = next(s for s in gj["steps"] if s.get("id") == "predict")
 check("gate: predict keeps going on block (1) and inconclusive (3), stops on anything else",
       "rc=${PIPESTATUS[0]}" in pr["run"] and "0 | 1 | 3) ;;" in pr["run"])
@@ -103,7 +103,7 @@ check("the token reaches curl only through -K <0600 mktemp file> (%d scripts), n
       len(tok) == 2 and all(not ("curl" in l and ("GITHUB_TOKEN" in l or "Authorization" in l)) for r in tok for l in r.splitlines())
       and all('curl -fsS -K "$cfg"' in r and 'cfg=$(mktemp "$RUNNER_TEMP/' in r and "trap 'rm -f \"$cfg\"' EXIT" in r for r in tok))
 import shutil, subprocess, tempfile
-with tempfile.TemporaryDirectory(dir=os.environ.get("SCRATCH", "$HOME/rbd-dev/tmp")) as td:
+with tempfile.TemporaryDirectory(dir=os.environ.get("SCRATCH") or tempfile.gettempdir()) as td:
     os.makedirs(os.path.join(td, "bin"))
     with open(os.path.join(td, "bin", "curl"), "w") as f:
         f.write('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$LOGD/argv"\n'
@@ -131,7 +131,8 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("SCRATCH", "$HOME/rbd-dev/tm
                   rd("cfg"), os.listdir(rt), out.stderr[-300:]))
     check("the status steps run (stub curl): token not in curl's argv, config file mode 600 then removed, body sent",
           len(good) == 2 and all(good))
-# CI v2: pr-check -> service + services outputs; ONE build for all services (its baselines map); one ab.sh per service
+# CI v2: pr-check -> service + services outputs; one build step for all services (its baselines and digests maps); one
+# ab.sh --all for every service at once (2026-11-03: parallel A/Bs, multi-image changes)
 step = {s.get("id"): s for s in gj["steps"] if s.get("id")}
 check("gate: pr-check writes service (the first) and services (a comma list) to GITHUB_OUTPUT",
       'echo "service=$(jq -r .service <<< "$last")"' in step["prc"]["run"]
@@ -140,17 +141,24 @@ check("gate: build once with the first service, every listed service must have a
       step["build"]["env"] == {"SERVICE": "${{ steps.prc.outputs.service }}", "SERVICES": "${{ steps.prc.outputs.services }}"}
       and step["build"]["run"].count("/opt/rbd/ci/build.sh") == 1 and 'echo "baselines=$bases"' in step["build"]["run"]
       and "::error title=no production image::" in step["build"]["run"])
-check("gate: one ab.sh per listed service, AB_DIR ab-<service>, that service's production digest, the one candidate",
-      step["ab"]["env"] == {"SERVICES": "${{ steps.prc.outputs.services }}", "BASES": "${{ steps.build.outputs.baselines }}",
-                            "CAND": "${{ steps.build.outputs.digest }}"}
-      and 'for svc in "${svcs[@]}"; do' in step["ab"]["run"]
-      and 'sudo -n -u rbd /opt/rbd/ci/ab.sh "$HEAD_SHA" "$svc" "$base" "$CAND" "ab-$svc"' in step["ab"]["run"])
+check("gate: one ab.sh --all for every listed service at once (it reads the run's own candidate digests: no env, no digest)",
+      "env" not in step["ab"]
+      and step["ab"]["run"].strip() == 'sudo -n -u rbd /opt/rbd/ci/ab.sh "$HEAD_SHA" --all | tee "$RUNNER_TEMP/ab-all.out"')
+check("gate: build outputs every service's digest (digests: a multi-image change's map, else {service: digest}); abx's candidate is its service's",
+      'echo "digests=$(jq -c' in step["build"]["run"] and "'.digests // {(.service): .digest}' <<< \"$last\")" in step["build"]["run"]
+      and step["abx"]["env"].get("DIGESTS") == "${{ steps.build.outputs.digests }}" and "CAND" not in step["abx"]["env"]
+      and """CAND=$(jq -r --arg s "$svc" '.[$s] // empty' <<< "$DIGESTS")""" in step["abx"]["run"])
+check("gate: abx previews any change (no single-service guard) and runs the longer A/B of every service at once (ab.sh --all N)",
+      "no preview" not in step["abx"]["run"]
+      and 'sudo -n -u rbd /opt/rbd/ci/ab.sh "$HEAD_SHA" "$svc" "$base" "$CAND" "ab-$svc" preview' in step["abx"]["run"]
+      and 'sudo -n -u rbd /opt/rbd/ci/ab.sh "$HEAD_SHA" --all "$n"' in step["abx"]["run"])
 # and run them (stub sudo prints the step's canned last line): what reaches GITHUB_OUTPUT and ab.sh's arguments
-with tempfile.TemporaryDirectory(dir=os.environ.get("SCRATCH", "$HOME/rbd-dev/tmp")) as td:
+with tempfile.TemporaryDirectory(dir=os.environ.get("SCRATCH") or tempfile.gettempdir()) as td:
     os.makedirs(os.path.join(td, "bin"))
     with open(os.path.join(td, "bin", "sudo"), "w") as f:
         f.write('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$LOGD/sudo"\n'
-                'case $4 in */pr-check.sh) echo "$PRC_OUT" ;; */build.sh) echo "$BUILD_OUT" ;; *) echo \'{"step":"ab","ok":true}\' ;; esac\n')
+                'case "$4 ${*: -1}" in */pr-check.sh*) echo "$PRC_OUT" ;; */build.sh*) echo "$BUILD_OUT" ;;\n'
+                '  *" preview") echo "$PREVIEW_OUT" ;; *) echo \'{"step":"ab","ok":true}\' ;; esac\n')
     os.chmod(os.path.join(td, "bin", "sudo"), 0o755)
     D = {s: "sha256:" + s[0] * 64 for s in ("catalog", "pricing", "x")}
 
@@ -176,8 +184,8 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("SCRATCH", "$HOME/rbd-dev/tm
     out, o, s = runstep("build", {"SERVICE": "catalog", "SERVICES": "catalog,pricing"})
     check("gate (run): build.sh called once with the first service; outputs digest and the baselines map",
           out.returncode == 0 and s.splitlines() == ["-n -u rbd /opt/rbd/ci/build.sh /w %s catalog" % ("a" * 40)]
-          and o.splitlines() == ["digest=" + D["x"], "baselines=" + json.dumps({"catalog": D["catalog"], "pricing": D["pricing"]},
-                                                                                  separators=(",", ":"))])
+          and o.splitlines() == ["digest=" + D["x"], "digests=" + json.dumps({"catalog": D["x"]}, separators=(",", ":")),
+                                 "baselines=" + json.dumps({"catalog": D["catalog"], "pricing": D["pricing"]}, separators=(",", ":"))])
     out, o, s = runstep("build", {"SERVICE": "catalog", "SERVICES": "catalog,pricing"},
                         {"step": "build", "ok": True, "service": "catalog", "digest": D["x"], "baselines": {"catalog": D["catalog"]}})
     check("gate (run): the build step fails when a listed service (pricing) has no production digest",
@@ -186,14 +194,22 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("SCRATCH", "$HOME/rbd-dev/tm
                         {"step": "build", "ok": True, "service": "auth", "digest": D["x"], "baseline_digest": D["catalog"]})
     check("gate (run): a build.sh last line without baselines (v1) still gives baselines {auth: baseline_digest}",
           out.returncode == 0 and "baselines=" + json.dumps({"auth": D["catalog"]}, separators=(",", ":")) in o.splitlines())
-    out, o, s = runstep("ab", {"SERVICES": "catalog,pricing", "CAND": D["x"],
-                               "BASES": json.dumps({"catalog": D["catalog"], "pricing": D["pricing"]})})
-    check("gate (run): ab.sh once per service: RUN, the service, its production digest, the one candidate, AB_DIR ab-<service>",
-          out.returncode == 0 and s.splitlines() == ["-n -u rbd /opt/rbd/ci/ab.sh %s %s %s %s ab-%s" % ("a" * 40, v, D[v], D["x"], v)
-                                                     for v in ("catalog", "pricing")])
+    out, o, s = runstep("ab", {})
+    check("gate (run): ab.sh once, RUN --all (every listed service at once)",
+          out.returncode == 0 and s.splitlines() == ["-n -u rbd /opt/rbd/ci/ab.sh %s --all" % ("a" * 40)])
+    ax = {"SERVICES": "catalog,pricing", "BASES": json.dumps({"catalog": D["catalog"], "pricing": D["pricing"]}),
+          "DIGESTS": json.dumps({"catalog": D["x"], "pricing": D["x"]})}
+    out, o, s = runstep("abx", dict(ax, PREVIEW_OUT=json.dumps({"step": "ab-preview", "ok": True, "extend_seconds": 600})))
+    check("gate (run): abx on two services: the preview (first service), then one ab.sh RUN --all 600",
+          out.returncode == 0 and s.splitlines() == ["-n -u rbd /opt/rbd/ci/ab.sh %s catalog %s %s ab-catalog preview"
+                                                     % ("a" * 40, D["catalog"], D["x"]),
+                                                     "-n -u rbd /opt/rbd/ci/ab.sh %s --all 600" % ("a" * 40)])
+    out, o, s = runstep("abx", dict(ax, PREVIEW_OUT=json.dumps({"step": "ab-preview", "ok": True, "extend_seconds": 0})))
+    check("gate (run): abx when the preview asks for nothing: the preview only",
+          out.returncode == 0 and len(s.splitlines()) == 1 and s.splitlines()[0].endswith(" preview"))
 if shutil.which("shellcheck"):
     bad = []
-    with tempfile.TemporaryDirectory(dir=os.environ.get("SCRATCH", "$HOME/rbd-dev/tmp")) as td:
+    with tempfile.TemporaryDirectory(dir=os.environ.get("SCRATCH") or tempfile.gettempdir()) as td:
         for name, job in (("gate", gj), ("deploy", dj)):
             for i, r in enumerate(runs(job)):
                 if not r:

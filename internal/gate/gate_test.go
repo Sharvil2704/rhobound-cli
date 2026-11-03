@@ -498,7 +498,7 @@ func TestPolicyDefaultsAndUnknownKeys(t *testing.T) {
 	if p.MaxEntryMeanChangePct != nil || *p.MaxEntryMeanChangeMs != 2 || p.MaxUtilizationAfter != 0.80 ||
 		p.MaxUtilizationValidated != 0.58 || p.ModelBand == nil || p.ModelBand.ChangeFrac != 0.163 ||
 		p.ModelBand.LatencyFrac != 0.0227 || p.MisfitMaxErrorPct != 10 || p.MaxFitAgeH != 24 ||
-		p.EvaluateAt != EvaluateBusiest || len(p.TrustedLabels) != 2 || len(p.DoubtsThatHold) != 14 ||
+		p.EvaluateAt != EvaluateBusiest || len(p.TrustedLabels) != 2 || len(p.DoubtsThatHold) != 16 ||
 		p.MaxPreviewAttempts != 5 || p.Enforce || len(p.Exceptions) != 0 {
 		t.Fatalf("defaults: %+v", p)
 	}
@@ -1051,5 +1051,120 @@ func TestBlockBandRecord(t *testing.T) {
 	if strings.Contains(md, "block band") || strings.Contains(md, "block_band") || !strings.Contains(md, "| entry | before | change | band | threshold | outcome |\n"+
 		"|---|---|---|---|---|---|\n| storefront | 63.252 | 9.321 .. 10.518 | 3.15 .. 16.23 | 3.163 | inconclusive |\n") {
 		t.Errorf("summary.md under the default:\n%s", md)
+	}
+}
+
+// An entry whose change range is inverted (lo > hi) is not passed on its high end alone: its low end, 10 ms, is over
+// the 2.261 ms threshold (lean/Rbproofs/Gate.lean, inverted_range_passes).
+func TestInvertedRangeIsNotPassed(t *testing.T) {
+	enforce := `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "enforce": true}`
+	r := chain(0.4, 0.5, change.LabelMeasuredAB)
+	r.Entries = []report.Entry{entry("a", 45.22, 10, 0)}
+	if hi := r.Entries[0].BandMs.Hi; !(hi <= 2.261) {
+		t.Fatalf("the case needs a band whose high end passes, got %v", hi)
+	}
+	res := eval(t, r, policy(t, enforce))
+	if row := rowOf(t, res, "10"); row.Effect != Inconclusive || row.Rule != RuleRangeInverted {
+		t.Fatalf("rule 10 on an inverted range: %s %s, want %s %s", row.Effect, row.Rule, Inconclusive, RuleRangeInverted)
+	}
+	if res.Verdict == Pass {
+		t.Fatal("an inverted range passed")
+	}
+}
+
+// TestUnboundedWorkers: rule 10's block with the change raising a service whose workers are a trusted lower bound (c,
+// 0.20 -> 0.30) is inconclusive only at an entry whose change with c unbounded (workers_unbounded) would not block;
+// an entry whose change would still block keeps the block, and the row names it (GateRules.lean, GR-1).
+func TestUnboundedWorkers(t *testing.T) {
+	full := policy(t, basePolicy)
+	model := policy(t, `{"schema": "rhobound.policy/v1", "max_entry_mean_change_pct": 5, "block_band": "model"}`)
+	raisedC := func() *report.V2 {
+		r := chain(3.5, 6.0, change.LabelMeasuredAB) // a's change 4.165..7.14 ms, T 2.261 ms: a block
+		r.Rows[2].UtilizationAfter, r.Rows[2].WorkersLower = &change.Range{Lo: 0.30, Hi: 0.30}, true
+		return r
+	}
+	for _, p := range []*Policy{full, model} {
+		// the block rests on c: with c unbounded the change is 1.0..1.5 ms, its band's low end under T
+		r := raisedC()
+		withUnbounded(&r.Entries[0], 1.0, 1.5, "c")
+		res := eval(t, r, p)
+		r10 := rowOf(t, res, "10")
+		if res.Verdict != Inconclusive || r10.Rule != RuleChangeUpperBound || r10.Effect != Inconclusive ||
+			res.Entries[0].Effect != Inconclusive || r10.Value == nil || !(*r10.Value > 2.261) ||
+			!reflect.DeepEqual(res.DecideWith, []string{"workers:c"}) {
+			t.Errorf("%s: a block that rests on c: %s, row %+v, decide_with %q", p.BlockBand, res.Verdict, r10, res.DecideWith)
+		}
+		// a range that leaves out c says nothing of c's queueing: inconclusive as without one
+		r = raisedC()
+		withUnbounded(&r.Entries[0], 4.165, 7.14, "b")
+		if res = eval(t, r, p); res.Verdict != Inconclusive || rowOf(t, res, "10").Rule != RuleChangeUpperBound {
+			t.Errorf("%s: a range without c: %s, row %+v", p.BlockBand, res.Verdict, rowOf(t, res, "10"))
+		}
+		// two entries: a's block rests on c, z's does not; z keeps the block and the row names it, at z's low end
+		r = raisedC()
+		withUnbounded(&r.Entries[0], 1.0, 1.5, "c")
+		r.Entries = append(r.Entries, entry("z", 45.22, 5.0, 6.0))
+		withUnbounded(&r.Entries[1], 4.9, 5.9, "c")
+		res = eval(t, r, p)
+		r10 = rowOf(t, res, "10")
+		if res.Verdict != Block || res.ExitCode != ExitBlock || r10.Rule != RuleMeanChange || r10.Effect != Block ||
+			r10.Entry != "z" || r10.Value == nil || *r10.Value != 5.0-0.0227*45.22 || res.Entries[0].Effect != Inconclusive ||
+			res.Entries[1].Effect != Block || len(res.DecideWith) != 0 {
+			t.Errorf("%s: two entries: %s, row %+v, entries %+v, decide_with %q", p.BlockBand, res.Verdict, r10,
+				res.Entries, res.DecideWith)
+		}
+	}
+	// the block test's widening: a construct over-predicting the change unbounded widens its low end by 1 ms, which
+	// the default reads (3.4 - 1.0265 - 1 under T) and block_band "model" does not (3.4 - 1.0265 above it)
+	r := raisedC()
+	withUnbounded(&r.Entries[0], 3.4, 4.0, "c")
+	r.Entries[0].Unbounded.BandMs.Lo -= 1
+	if res := eval(t, r, full); res.Verdict != Inconclusive || rowOf(t, res, "10").Rule != RuleChangeUpperBound {
+		t.Errorf("the default with the construct: %s, row %+v", res.Verdict, rowOf(t, res, "10"))
+	}
+	if res := eval(t, r, model); res.Verdict != Block || rowOf(t, res, "10").Rule != RuleMeanChange {
+		t.Errorf("block_band model with the construct: %s, row %+v", res.Verdict, rowOf(t, res, "10"))
+	}
+	// a lower-bound c the gate does not trust (a clock-skew finding) holds nothing: the block stands, range or not
+	r = raisedC()
+	r.Findings = []contract.Finding{contract.NewFinding(contract.TraceClockSkew)}
+	if res := eval(t, r, full); res.Verdict != Block || rowOf(t, res, "10").Rule != RuleMeanChange {
+		t.Errorf("an untrusted lower bound: %s, row %+v", res.Verdict, rowOf(t, res, "10"))
+	}
+}
+
+// A straddle at rule 10 whose change is measured by A/B alone, and whose band would pass at a narrower range around
+// the same centre, is measurement-limited: the gate says how many times the A/B's visits would decide it (ABScale,
+// gate.json ab_scale) and names a longer A/B, not another change. Experiment 2's T7: four clean changes were held at
+// range_straddles while their decide_with asked for the A/B that had just run. A declared change, or a straddle whose
+// centre and model band alone are over the threshold, keeps the measurement line and no ABScale.
+func TestMeasuredStraddleAsksForALongerAB(t *testing.T) {
+	p := policy(t, basePolicy)
+	res := Evaluate(Input{Report: chain(0.2, 1.2, change.LabelMeasuredAB), Policy: p, Now: now})
+	if res.Verdict != Inconclusive || rowOf(t, res, "10").Rule != RuleRangeStraddles {
+		t.Fatalf("verdict %s, rule 10 %+v", res.Verdict, rowOf(t, res, "10"))
+	}
+	if !(res.ABScale > 1) || len(res.DecideWith) == 0 || !strings.HasPrefix(res.DecideWith[0], "a longer A/B of b: about ") {
+		t.Fatalf("ABScale %v, decide_with %q: want a scale above 1 and a longer A/B", res.ABScale, res.DecideWith)
+	}
+	// the scale it names is the one that passes: the range narrowed by its square root around the centre
+	k := res.ABScale
+	c, h := 0.7, 0.5
+	w := h / math.Sqrt(k)
+	if r2 := Evaluate(Input{Report: chain(c-w, c+w, change.LabelMeasuredAB), Policy: p, Now: now}); r2.Verdict != Pass {
+		t.Errorf("at %.1f times the visits the range is [%.3f, %.3f]: verdict %s, want pass", k, c-w, c+w, r2.Verdict)
+	}
+	rec, err := NewRecord(res, p, nil, Digests{})
+	if err != nil || rec.ABScale == nil || *rec.ABScale != k {
+		t.Errorf("gate.json ab_scale %v (%v), want %v", rec.ABScale, err, k)
+	}
+	for name, r := range map[string]*report.V2{
+		"a declared change":                   chain(0.2, 1.2, change.LabelDeclared),
+		"a centre over the threshold already": chain(2.0, 2.6, change.LabelMeasuredAB),
+	} {
+		res := Evaluate(Input{Report: r, Policy: p, Now: now})
+		if res.ABScale != 0 || len(res.DecideWith) == 0 || strings.HasPrefix(res.DecideWith[0], "a longer A/B") {
+			t.Errorf("%s: ABScale %v, decide_with %q: want no scale and the measurement line", name, res.ABScale, res.DecideWith)
+		}
 	}
 }

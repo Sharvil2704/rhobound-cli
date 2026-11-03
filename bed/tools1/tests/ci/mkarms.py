@@ -1,4 +1,4 @@
-# Two synthetic A/B arm captures of a LEAF service (auth) from a real kshop capture: auth SERVER spans made roots, arm b's
+# Two synthetic A/B arm captures of a LEAF service (auth) from a real maze capture: auth SERVER spans made roots, arm b's
 # spans EXTRA_MS longer, the same request times in both arms; rc-a/rc-b.json and loadgen.csv as ab.sh writes them.
 # Adapted from the 2026-10-30 offline proof (SPEC 0b, leaf/mkarms.py); the only change is the EXTRA_MS argument.
 #   python3 -I mkarms.py SPANS.jsonl.gz OUT SECONDS EXTRA_MS

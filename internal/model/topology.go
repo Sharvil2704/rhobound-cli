@@ -27,6 +27,10 @@ type Call struct {
 	// callers, the mean of its calls' hops by the calls observed).
 	Hop    float64
 	HasHop bool
+	// RouteQ, when the child has Routes, is the share of this call's visits that each of the child's routes takes
+	// (in the order of Child.Routes, summing to 1): the caller waits for those routes, not the child's blend
+	// (RouteAdj). Nil is the blend.
+	RouteQ []float64
 }
 
 // CallHop is the network time added to call c of a service of this topology: the call's own when it has one, else
@@ -87,6 +91,10 @@ type Service struct {
 	// hold an uneven split, since it picks a replica per connection. Each
 	// replica is a queue fed its share (ResidenceShares).
 	Shares []float64
+	// Routes, when set, are the routes of a service whose visits differ by route (routes.go): each one's share of
+	// the visits, own time and calls. The queue still sees the blend (S, CS2, Calls); a call with RouteQ sees the
+	// routes it reaches.
+	Routes []Route
 }
 
 // ErrCycle is the error Finish returns for a call graph with a cycle: the model needs a DAG.
@@ -247,6 +255,9 @@ func (t *Topology) Finish() error {
 	}
 	if len(order) != n {
 		return ErrCycle
+	}
+	if err := t.checkRoutes(); err != nil {
+		return err
 	}
 	t.order = order
 	return nil

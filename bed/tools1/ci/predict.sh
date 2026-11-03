@@ -3,12 +3,17 @@
 #   sudo -n -u rbd /opt/rbd/ci/predict.sh RUN                         (RUN = the PR head sha)
 # Reads runs/RUN/{candidate.json, policy.json (pr-check)}, every A/B folder runs/RUN/ab/ and runs/RUN/ab-<service>/ (ab.sh's
 # AB_DIR; never ab*.old-*, an earlier A/B moved aside) with {ab.json, record/ab-record.json}, and baseline.json (the fit).
-# The services are candidate.json's (CI v2: services, one candidate image for all; v1: service). An A/B folder counts when
-# its ab.json is ok; each one that counts must name a listed service (ab-<service>/ its own), the one candidate digest and
+# The services are candidate.json's (CI v2: services, one candidate image for all, or a multi-image change's digests map,
+# each service its own image's digest; v1: service). An A/B folder counts when
+# its ab.json is ok; each one that counts must name a listed service (ab-<service>/ its own), its candidate digest and
 # that service's production digest at the build (candidate.json baselines; still production's now); every listed service
 # needs exactly one: refused otherwise (no verdict on half a blast radius). One change item per service, SPEC 0b rule 3:
 # value = that record's own_ms.delta for the service as a point, label measured-ab, evidence = the record's digest; the CLI
-# widens each to +-2 SE. Writes runs/RUN/{change.json, prediction.json, gate/, predict.json}.
+# widens each to +-2 SE. ROUTE_ITEMS (rbd.env.local): off (the default) or on; on, a service whose record has routes
+# (diff-fit writes them for two or more routes both arms read) gets one own_ms item per route instead, value that route's
+# own_ms.delta, route its name: the engine moves the queue by the route's share and each caller by the routes it reaches
+# (a CLI with route items, maze-fix effbb804 or later, is required; the bed's 19baaed refuses them).
+# Writes runs/RUN/{change.json, prediction.json, gate/, predict.json}.
 # predict.json names the candidate and baseline digests and sha256(candidate.json) it measured (sign.sh signs only that);
 # its service/baseline_digest/record_digest/delta_ms are the first service's, and services lists them all (with ab_dir).
 # policy.json is copied to a private temporary file; the copy must be the pinned policy (sha256 = RBD_POLICY_SHA256, rbd.env)
@@ -16,12 +21,12 @@
 # RBD_POLICY_DIGEST (rbd.env, the bootstrap's gate of the pinned policy): refused otherwise or unset, no verdict kept.
 # One verdict per run: refused once runs/RUN holds predict.json or gate/ (a re-gate needs a new commit). Under
 # runs/RUN/.lock (flock; one step of a run at a time: pr-check, build, ab, predict, sign).
-# The judge (owner knob JUDGE_CMD in rbd.env.local; ARCHITECTURE 7): after the prediction, before the gate,
+# The judge (the knob JUDGE_CMD in rbd.env.local; ARCHITECTURE 7): after the prediction, before the gate,
 #   rhobound judge-packet -> JUDGE_OUT=runs/RUN/judge $JUDGE_CMD packet.json > answer.json (its request.json, model.txt)
 #   -> rhobound judge-check -> rhobound gate ... --judge-answer --judge-packet --judge-model --judge-request (ci-judge).
 # A judge that fails or is refused is "judge unavailable" (judge/judge.json says why): the gate decides without it, and it
 # is never asked again. escalate turns the verdict into inconclusive; nothing a judge says can loosen one.
-# JUDGE_MODE (rbd.env.local): gate (the default: the answer goes to the gate as above) or advisory (the owner's choice on
+# JUDGE_MODE (rbd.env.local): gate (the default: the answer goes to the gate as above) or advisory (the choice on
 # 2026-10-30: the judge is asked and checked the same way, its admitted answer is recorded in judge/judge.json, the
 # report and the signed predicate as advisory, and the gate decides on the rules alone).
 # Exit = the gate's: 0 pass, 1 block, 3 inconclusive; 2 when no verdict could be computed. Last stdout line: one JSON object.
@@ -74,10 +79,12 @@ PCOPY=$(mktemp "$RUN/.policy-gate.XXXXXX") || ci_fail "cannot make a temporary f
 trap 'rm -f "$PCOPY"' EXIT
 cp -- "$RUN/policy.json" "$PCOPY" || ci_fail "cannot copy runs/$RUNID/policy.json"
 
+RITEMS=${ROUTE_ITEMS:-off}
+[[ $RITEMS == on || $RITEMS == off ]] || ci_fail "ROUTE_ITEMS must be on or off, not '$RITEMS' (rbd.env.local)"
 # change.json (python: the delta must round-trip exactly; the CLI compares it to the record bit for bit)
-fit=$(python3 -I - "$RUN" "$RBD_HOME/baseline.json" "$RHOBOUND_STATE" "$RBD_POLICY_SHA256" "$PCOPY" 2>> "$ERR" <<'PY'
+fit=$(python3 -I - "$RUN" "$RBD_HOME/baseline.json" "$RHOBOUND_STATE" "$RBD_POLICY_SHA256" "$PCOPY" "$RITEMS" 2>> "$ERR" <<'PY'
 import hashlib, json, os, re, sys
-run, base_path, state, pin, pcopy = sys.argv[1:6]
+run, base_path, state, pin, pcopy, ritems = sys.argv[1:7]
 def fail(msg):
     print(msg, file=sys.stderr); sys.exit(1)
 craw = open(os.path.join(run, "candidate.json"), "rb").read()
@@ -87,6 +94,12 @@ svcs = cand.get("services") or [svc]   # CI v2: every service the one candidate 
 bases = cand.get("baselines") or {svc: cand.get("baseline_digest")}
 if svcs[0] != svc or set(bases) != set(svcs) or bases[svc] != cand.get("baseline_digest") or len(set(svcs)) != len(svcs):
     fail("candidate.json is inconsistent: service %s, services %s, baselines %s" % (svc, svcs, bases))
+# each service's candidate digest: its image's (a multi-image change's digests map), else the one image's
+multi = "digests" in cand
+digs = cand.get("digests") if multi else {s: cand["digest"] for s in svcs}
+if (not isinstance(digs, dict) or set(digs) != set(svcs) or digs[svc] != cand["digest"]
+        or not all(isinstance(v, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", v) for v in digs.values())):
+    fail("candidate.json's digests %r do not name one sha256 digest per listed service, the first one's = digest" % (digs,))
 base = json.load(open(base_path))
 if not isinstance(base.get("fit"), dict) or not base["fit"].get("dir"):
     fail("baseline.json has no production fit yet (run refit.sh)")
@@ -130,7 +143,7 @@ items, meta = [], []
 for s in svcs:
     d, ab = found[s]
     # the A/B must have measured THIS run's images (ab.sh's ab.json): a workflow cannot pass ab.sh other digests unnoticed
-    want = {"service": s, "base_digest": bases[s], "cand_digest": cand["digest"]}
+    want = {"service": s, "base_digest": bases[s], "cand_digest": digs[s]}
     got = {k: ab.get(k) for k in want}
     if got != want:
         fail("the A/B is not this run's: %s/ab.json %s, candidate.json %s" % (d, got, want))
@@ -152,10 +165,20 @@ for s in svcs:
         fail("own_ms.delta of %s is not a number" % s)
     # the arms' image digests, when the Collector reports them (SPEC 0b rule 5): recorded, never decisive here
     seen = {k: rec["arms"][k].get("images", {}).get(s, []) for k in ("baseline", "candidate")}
-    images = {"baseline": match(seen["baseline"], bases[s]), "candidate": match(seen["candidate"], cand["digest"])}
-    items.append({"op": "own_ms", "service": s, "value": delta, "label": "measured-ab", "evidence": ["sha256:" + rsha]})
+    images = {"baseline": match(seen["baseline"], bases[s]), "candidate": match(seen["candidate"], digs[s])}
+    routes = (rows[0].get("routes") or []) if ritems == "on" else []
+    for r in routes:
+        rd = (r.get("own_ms") or {}).get("delta") if isinstance(r, dict) else None
+        if not isinstance(rd, (int, float)) or isinstance(rd, bool) or not isinstance(r.get("route"), str) or not r["route"]:
+            fail("a route of %s in the record has no name or no numeric own_ms.delta: %s" % (s, r))
+        items.append({"op": "own_ms", "service": s, "route": r["route"], "value": rd, "label": "measured-ab",
+                      "evidence": ["sha256:" + rsha]})
+    if not routes:
+        items.append({"op": "own_ms", "service": s, "value": delta, "label": "measured-ab", "evidence": ["sha256:" + rsha]})
     meta.append({"service": s, "ab_dir": d, "baseline_digest": bases[s], "record_digest": "sha256:" + rsha, "delta_ms": delta,
-                 "images": images})
+                 "images": images, "routes": [r["route"] for r in routes]})
+    if multi:
+        meta[-1]["candidate_digest"] = digs[s]
 change = {"schema": "rhobound.change/v1", "fit": fsha, "items": items}
 tmp = os.path.join(run, ".change.json.tmp")
 with open(tmp, "w") as f:
@@ -165,6 +188,7 @@ with open(os.path.join(run, ".predict-meta.json"), "w") as f:
     json.dump({"service": svc, "record_digest": meta[0]["record_digest"], "delta_ms": meta[0]["delta_ms"],
                "images": meta[0]["images"], "services": meta,
                "candidate_digest": cand["digest"], "baseline_digest": cand.get("baseline_digest"),
+               "candidate_digests": digs if multi else None,
                "candidate_sha256": "sha256:" + hashlib.sha256(craw).hexdigest()}, f)
 print(fit)
 PY
@@ -269,6 +293,8 @@ out = {"step": "predict", "ok": grc == 0, "exit": grc, "verdict": verdict, "rule
        "prediction_digest": g["digests"]["report"], "predict_exit": prc, "images": meta["images"], "now": g.get("now"),
        "candidate_digest": meta["candidate_digest"], "baseline_digest": meta["baseline_digest"],
        "candidate_sha256": meta["candidate_sha256"]}
+if meta.get("candidate_digests"):   # a multi-image change: every service's candidate digest
+    out["candidate_digests"] = meta["candidate_digests"]
 tmp = os.path.join(run, ".predict.json.tmp")
 with open(tmp, "w") as f:
     f.write(json.dumps(out, indent=1, sort_keys=True) + "\n")

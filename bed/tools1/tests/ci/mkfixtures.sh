@@ -2,16 +2,16 @@
 # Make an A/B record fixture with the REAL CLI: mkarms.py (auth arms, arm b EXTRA_MS longer) -> check --cut per arm ->
 # diff-fit. Copies the record to fixtures/ab-record-EXTRA_MSms.json. Heavy (2 x 43 MB raw arms): run once, by hand.
 #   bash tools1/tests/ci/mkfixtures.sh EXTRA_MS
-# Env: RHOBOUND [build/rhobound-arm64]  SPANS [rs2 base-poisson100-r1 spans]  SCRATCH [$HOME/rbd-dev/tmp/partD]
+# Env: RHOBOUND [build/rhobound-local]  SPANS [rs2 base-poisson100-r1 spans]  SCRATCH [$RBD_SCRATCH/partD]
 set -euo pipefail
 [[ $# -eq 1 && $1 =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "usage: mkfixtures.sh EXTRA_MS" >&2; exit 2; }
 X=$1
 HERE=$(cd "$(dirname "$0")" && pwd)
 KIT=$(cd "$HERE/../../.." && pwd)
-CLI=${RHOBOUND:-$KIT/build/rhobound-arm64}
-SPANS=${SPANS:-$HOME/rbd-dev/capture/traces/spans.jsonl.gz}
-W=${SCRATCH:-$HOME/rbd-dev/tmp/partD}/fx-$X
-CAP=$HOME/rbd-dev/capped.sh
+CLI=${RHOBOUND:-$KIT/build/rhobound-local}
+SPANS=${SPANS:?set SPANS to a recorded kshop capture (traces/spans.jsonl.gz): the fixtures are committed; this only regenerates them}
+W=${SCRATCH:-${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}/partD}/fx-$X
+CAP=$(cd "$(dirname "$0")/../../.." && pwd)/orch/capped.sh
 run() { if [[ -f $CAP ]]; then RB_MEM_MAX=2G GOMAXPROCS=2 bash "$CAP" "$@"; else "$@"; fi; }
 
 rm -rf "$W"; mkdir -p "$W/state"

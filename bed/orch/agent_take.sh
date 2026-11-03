@@ -4,35 +4,35 @@
 #      into them, follows a link in them, or runs them; everything is read as data (python3 -I) after the tree check
 #   2. tree check: only real folders and regular files (no symlink, device, fifo), nothing beside RUN, at most 5 MB in all
 #   3. content checks: result.json ok; manifest rbd.agent-change/v1 lists exactly the files under files/ (sha256 and size as
-#      listed, .go under kshop/app/, at most 8); base_sha = state/main.sha (repo/ is that commit); the service is one of
-#      repo/kshop/spec.json; title one printable line <= 72; summary 1..1000 printable (newlines allowed); no CI-skip token
+#      listed, .go under maze/app/, at most 8); base_sha = state/main.sha (repo/ is that commit); the service is one of
+#      repo/maze/spec.json; title one printable line <= 72; summary 1..1000 printable (newlines allowed); no CI-skip token
 #      ([skip ci] and kin: the gate would never run); served_by/model names plain; a changed file keeps its build constraints
 #      exactly (a new file has none) and has no //go:embed, //go:linkname, cgo directive or import "C";
 #      rhobound-change.json is exactly {schema v1, services: [service], summary} or (SPEC2 4, the bench's runs)
 #      {schema "rbd.change-request/v2", services: 1..3 distinct names of spec.json, the first the manifest's service,
-#      summary, base?}: base (optional) must be a key of the kit's tools1/kshop/bases.json (no bases.json: refused)
-#   4. the files over a copy of repo/kshop in a fresh git repo -> change.patch (git diff; only kshop/app/*.go)
+#      summary, base?}: base (optional) must be a key of the kit's tools1/maze/bases.json (no bases.json: refused)
+#   4. the files over a copy of repo/maze in a fresh git repo -> change.patch (git diff; only maze/app/*.go)
 #   5. compiled here, never run, inside capped.sh (2G, GOMAXPROCS=2, timeout 600 s): go build ./... (default tags and
-#      kshop_v11) and go vet -tags kshop_v11, offline (GOPROXY=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local CGO_ENABLED=0
-#      -buildvcs=false, GOTMPDIR on disk). This box's Go is newer than the image's (1.26.9): an API newer than 1.26 compiles
+#      maze_v11) and go vet -tags maze_v11, offline (GOPROXY=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local CGO_ENABLED=0
+#      -buildvcs=false, GOTMPDIR on disk). The workstation's Go may be newer than the image's (1.26.9): an API newer than 1.26 compiles
 #      here and fails in the CI build. Errors -> state/agent/RUN.compile.txt (exit 3: agent.py --feedback takes it)
 #   6. the leak scan of publish_main.sh on the patch, title and summary (no public IPv4, no 12-digit number)
 #   7. changes/c5-model/{change.patch, rhobound-change.json, title.txt, manifest.json}, the checked run in state/agent/RUN;
-#      then: bash changes/make_prs.sh c5-model   (CHANGE is cN-model, or cN-bench for the bench funnel's pick: orch/bench.sh)
+#      then: bash changes/make_prs.sh c5-model   (CHANGE is cN-model, or cN-bench for the pick of an earlier run's bench funnel)
 # Exit 0 ok, 1 refused, 3 does not compile. Env: RBD_AGENT_LOCAL (tests: an OUT folder here instead of the fetch),
 # RBD_AGENT_TAR (tests: a crafted tar stream instead of the fetch),
 # RBD_CAPPED (the capped.sh to use; tests may set it to "" for none).
 # shellcheck disable=SC2015,SC2016  # A && B || die is meant; go list templates are single-quoted
 set -euo pipefail
 DEMO=$(cd "$(dirname "$0")/.." && pwd)
-CAPPED=${RBD_CAPPED-$HOME/rbd-dev/capped.sh}
+CAPPED=${RBD_CAPPED-$(dirname "$(readlink -f "$0")")/capped.sh}
 say() { echo "[agent_take $(date -u +%H:%M:%S)] $*" >&2; }
 die() { echo "agent_take: error: $*" >&2; exit "${2:-1}"; }
 [[ ($# -eq 1 || $# -eq 2) && $1 =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$ ]] || die "usage: agent_take.sh RUN [CHANGE] (letters, digits, - _)" 1
 RUN=$1 CHANGE=${2:-c5-model}
-[[ $CHANGE =~ ^c[0-9]{1,2}-(model|bench)$ ]] || die "CHANGE must be cN-model or cN-bench (make_prs.sh opens it), not $CHANGE" 1
+[[ $CHANGE =~ ^c[0-9]{1,2}-(model|bench|muse)$ ]] || die "CHANGE must be cN-model, cN-bench or cN-muse (make_prs.sh opens it), not $CHANGE" 1
 [[ -s $DEMO/state/main.sha ]] || die "no state/main.sha (orch/publish_main.sh writes it)"
-mkdir -p "$DEMO/../.tmp-bed"; W=$(mktemp -d "$DEMO/../.tmp-bed/agent_take.XXXXXX") || die "mktemp"
+SCR=${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}; mkdir -p "$SCR"; W=$(mktemp -d "$SCR/agent_take.XXXXXX") || die "mktemp"
 W=$(cd "$W" && pwd -P)   # canonical: go list prints real paths
 trap 'rm -rf "$W"' EXIT
 F=$W/fetch; mkdir -p "$F"
@@ -83,7 +83,7 @@ if total > 5_000_000:
     no("%d bytes in the run (at most 5 MB)" % total)
 EOF
 
-python3 -I - "$L" "$DEMO/repo" "$(head -c 64 "$DEMO/state/main.sha")" "$DEMO/tools1/kshop/bases.json" << 'EOF' || die "the agent's output is refused (above)"
+python3 -I - "$L" "$DEMO/repo" "$(head -c 64 "$DEMO/state/main.sha")" "$DEMO/tools1/maze/bases.json" << 'EOF' || die "the agent's output is refused (above)"
 import hashlib, json, os, re, sys
 L, repo, main_sha, bases = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 def no(msg):
@@ -105,7 +105,7 @@ if man.get("schema") != "rbd.agent-change/v1":
     no("manifest schema %r" % man.get("schema"))
 if man.get("base_sha") != main_sha:
     no("the model worked on %r, but repo/ and state/main.sha are %s: re-run it on the current main" % (man.get("base_sha"), main_sha))
-pat = re.compile(r"kshop/app/(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*[A-Za-z0-9_][A-Za-z0-9_.-]*\.go")
+pat = re.compile(r"maze/app/(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*[A-Za-z0-9_][A-Za-z0-9_.-]*\.go")
 listed = {}
 for f in man.get("files") or []:
     p = f.get("path", "") if isinstance(f, dict) else ""
@@ -138,7 +138,7 @@ for p, f in listed.items():
     m = banned.search(t)
     if m and not banned.search(orig):
         no("%s: %r is not allowed in a model-written change" % (p, m.group().strip()))
-svcs = sorted(json.load(open(os.path.join(repo, "kshop", "spec.json")))["services"])
+svcs = sorted(json.load(open(os.path.join(repo, "maze", "spec.json")))["services"])
 svc, title, summ = man.get("service"), man.get("title"), man.get("summary")
 if not isinstance(man.get("turns"), int):
     no("turns is not a number")
@@ -169,18 +169,18 @@ if rc["schema"] == "rbd.change-request/v2":
         no("rhobound-change.json v2 services %r: 1..3 distinct names of spec.json, the first the manifest's %s" % (sv, svc))
     if "base" in rc:
         if not os.path.isfile(bases):
-            no("rhobound-change.json names base %r but the kit has no tools1/kshop/bases.json" % (rc["base"],))
+            no("rhobound-change.json names base %r but the kit has no tools1/maze/bases.json" % (rc["base"],))
         keys = json.load(open(bases))
         if not isinstance(rc["base"], str) or not isinstance(keys, dict) or rc["base"] not in keys:
-            no("rhobound-change.json base %r is not a key of tools1/kshop/bases.json" % (rc["base"],))
+            no("rhobound-change.json base %r is not a key of tools1/maze/bases.json" % (rc["base"],))
 print("agent_take: %s: %d file(s) for %s by %s (%d turns, MCP calls: %s)" % (os.path.basename(L), len(listed), svc,
       ", ".join(man.get("served_by") or [man.get("model")]), man["turns"], ", ".join(c.get("tool", "?") for c in man.get("mcp_calls") or [])), file=sys.stderr)
 EOF
 
 G=$W/g; mkdir -p "$G"
-cp -r "$DEMO/repo/kshop" "$G/kshop"
+cp -r "$DEMO/repo/maze" "$G/maze"
 gi() { git -C "$G" -c user.name=agent_take -c user.email=agent-take@localhost "$@"; }
-gi init -q -b main && gi add -A && gi commit -q -m base || die "git init/commit of repo/kshop failed"
+gi init -q -b main && gi add -A && gi commit -q -m base || die "git init/commit of repo/maze failed"
 python3 -I - "$L/files" "$G" << 'EOF' || die "cannot place the files"
 import os, shutil, sys
 src, dst = sys.argv[1], sys.argv[2]
@@ -195,16 +195,16 @@ for d, _, names in os.walk(src, followlinks=False):
             shutil.copyfileobj(i, o)
 EOF
 gi add -A
-outside=$(gi diff --cached --name-only | grep -Ev '^kshop/app/.+\.go$' || true)
-[[ -z $outside ]] || die "the change touches paths outside kshop/app/*.go: $outside"
+outside=$(gi diff --cached --name-only | grep -Ev '^maze/app/.+\.go$' || true)
+[[ -z $outside ]] || die "the change touches paths outside maze/app/*.go: $outside"
 [[ -n $(gi diff --cached --name-only) ]] || die "the change is empty against repo/"
 gi diff --cached > "$W/change.patch"
 
-say "compiling (never running) the change here, capped: go build (default, kshop_v11), go vet -tags kshop_v11"
-mkdir -p "$W/gotmp"   # go's work files on disk, never the /tmp tmpfs (it fills: orchestrator pitfalls)
+say "compiling (never running) the change here, capped: go build (default, maze_v11), go vet -tags maze_v11"
+mkdir -p "$W/gotmp"   # go's work files on disk, never the /tmp tmpfs (it can fill)
 # agent_take's own build cache (not the user's): trimmed when over 3 GB; every file the compile writes is capped at
 # 256 MB (ulimit -f), so a model-written giant array fails to compile instead of filling the disk
-GC=$DEMO/../.tmp-bed/agent-gocache; mkdir -p "$GC"
+GC=$SCR/agent-gocache; mkdir -p "$GC"
 (( $(du -sm "$GC" | cut -f1) < 3000 )) || { say "trimming $GC"; rm -rf "$GC"; mkdir -p "$GC"; }
 (( $(df -Pm "$GC" | awk 'NR==2 {print $4}') > 4000 )) || die "less than 4 GB free for the compile: refused (free space first)"
 goenv=(env -i "PATH=$PATH" "HOME=$HOME" "GOPATH=$(go env GOPATH)" "GOCACHE=$GC" "GOMODCACHE=$(go env GOMODCACHE)"
@@ -214,19 +214,22 @@ cap=()
 [[ -z $CAPPED ]] || cap=(env RB_MEM_MAX=2G bash "$CAPPED")
 : > "$W/compile.txt"
 ok=1
-gorun() { (cd "$G/kshop/app" && ulimit -f 262144 && "${cap[@]}" timeout 600 "${goenv[@]}" "$@"); }
-for tags in "" kshop_v11; do
+gorun() { (cd "$G/maze/app" && ulimit -f 262144 && "${cap[@]}" timeout 600 "${goenv[@]}" "$@"); }
+for tags in "" maze_v11; do
   (gorun go build -trimpath -buildvcs=false -tags "$tags" -o /dev/null ./...) >> "$W/compile.txt" 2>&1 ||
     { ok=0; echo "(go build -tags '$tags' failed)" >> "$W/compile.txt"; }
 done
-(gorun go vet -tags kshop_v11 ./...) >> "$W/compile.txt" 2>&1 ||
-  { ok=0; echo "(go vet -tags kshop_v11 failed)" >> "$W/compile.txt"; }
+(gorun go vet -tags maze_v11 ./...) >> "$W/compile.txt" 2>&1 ||
+  { ok=0; echo "(go vet -tags maze_v11 failed)" >> "$W/compile.txt"; }
 if [[ $ok == 1 ]]; then   # a changed file that neither tag set compiles here was never checked: refused
-  for tags in "" kshop_v11; do
-    gorun go list -tags "$tags" -f '{{$d := .Dir}}{{range .GoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}' ./... >> "$W/built.txt" 2>> "$W/compile.txt" || ok=0
+  for tags in "" maze_v11; do
+    lf='{{$d := .Dir}}{{range .GoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}'
+    # go vet -tags maze_v11 compiled the packages' test files too: they were checked
+    [[ $tags == maze_v11 ]] && lf+='{{range .TestGoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}{{range .XTestGoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}'
+    gorun go list -tags "$tags" -f "$lf" ./... >> "$W/built.txt" 2>> "$W/compile.txt" || ok=0
   done
   while IFS= read -r f; do
-    grep -qxF "$G/$f" "$W/built.txt" || die "$f is compiled under neither the default tags nor kshop_v11 here: it was never checked (refused)"
+    grep -qxF "$G/$f" "$W/built.txt" || die "$f is compiled under neither the default tags nor maze_v11 here: it was never checked (refused)"
   done < <(gi diff --cached --name-only)
 fi
 mkdir -p "$DEMO/state/agent"

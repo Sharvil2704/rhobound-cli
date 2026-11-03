@@ -49,8 +49,8 @@ var numberSites = map[string]struct{ codes, names []string }{
 	"internal/change/change.go check own_ms":          {codes: []string{contract.ChangeNegativeTime}},
 	"internal/change/change.go check glue_ms":         {codes: []string{contract.ChangeNegativeTime}},
 	"internal/change/change.go check change_ms":       {codes: []string{contract.ChangeNegativeTime}},
-	"internal/change/change.go check cs2_delta":       {codes: []string{contract.ProfileVarianceChanged}},
-	"internal/change/change.go check cs2_se":          {codes: []string{contract.ProfileVarianceChanged}},
+	"internal/change/change.go check var_delta":       {codes: []string{contract.ProfileVarianceChanged}},
+	"internal/change/change.go check var_se":          {codes: []string{contract.ProfileVarianceChanged}},
 	"internal/change/change.go check unsigned_ranges": {codes: []string{contract.ChangeTooManyRanges}},
 	"internal/change/change.go check limit":           {codes: []string{contract.ChangeTooManyRanges}},
 	// the engine's and the model's refusals

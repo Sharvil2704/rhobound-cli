@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# rbd_connect.sh: the orchestrator's side of the demo1 machines (spawned from CloudShell with spawn_demo.sh). ssh only; no AWS credentials here.
+# rbd_connect.sh: your workstation's side of the demo1 machines (spawned from CloudShell with spawn_two.sh). ssh only; no AWS credentials here.
 #
-#   rbd_connect.sh seed FILE|-          read the pasted output of `spawn_demo.sh inventory`; writes the seed and an ssh config of its own
+#   rbd_connect.sh seed FILE|-          read the pasted output of `spawn_two.sh inventory`; writes the seed and an ssh config of its own
 #   rbd_connect.sh list                 the machines in the seed, and the ECR repository, KMS alias, bucket
 #   rbd_connect.sh test [TARGET]        connect to each machine at once: base ready, type, CPUs, memory, disk, clock, time cap, S3 upload
 #   rbd_connect.sh ssh NODE [CMD...]    a shell (or one command) on a machine
 #   rbd_connect.sh exec TARGET CMD...   one command on several machines at once; output per machine (logs in STATE/logs)
-#   rbd_connect.sh myip                 the address the machines allow ssh from (the seed's ORCH_IP); this box's own public IPv4
-#                                       is read in the EC2 console (this box never asks an outside service, SPEC 0)
+#   rbd_connect.sh myip                 the address the machines allow ssh from (the seed's ORCH_IP); your workstation's own public IPv4
+#                                       is read where it runs, e.g. the EC2 console (nothing here asks an outside service)
 # TARGET: a node name, a cluster (d, tools), a role (cp, edge, load, app, ab, tools), or all (the default).
 # The paste: KEY=VALUE lines with any upper-case prefix (RBD_REGION=, RS3_REGION=, ...: REGION CAMPAIGN BUCKET ORCH_IP MAX_HOURS
 # HARD_MAX_HOURS SSH_USER), "<PREFIX>_NODE name kc=.. role=.. type=.. public=.. private=.. id=.. state=.. zone=.. launch=.." rows,
@@ -56,11 +56,11 @@ seed() {
       [A-Z]*_REGION=*) region=${line#*=}; [[ $region =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]] || die "bad region: $region" 2 ;;
       [A-Z]*_CAMPAIGN=*) camp=${line#*=}; [[ $camp =~ ^[a-z][a-z0-9]{1,11}$ ]] || die "bad campaign: $camp" 2 ;;
       [A-Z]*_BUCKET=*) bucket=${line#*=}; [[ $bucket =~ ^[a-z0-9][a-z0-9.-]{2,62}$ ]] || die "bad bucket: $bucket" 2 ;;
-      [A-Z]*_ORCH_IP=*) orch=${line#*=}; [[ $orch =~ $IPRE ]] || die "bad orchestrator IP: $orch" 2 ;;
+      [A-Z]*_ORCH_IP=*) orch=${line#*=}; [[ $orch =~ $IPRE ]] || die "bad workstation IP (ORCH_IP): $orch" 2 ;;
       [A-Z]*_HARD_MAX_HOURS=*) hardh=${line#*=}; [[ $hardh =~ ^[0-9]+$ ]] || die "bad HARD_MAX_HOURS" 2 ;;
       [A-Z]*_MAX_HOURS=*) maxh=${line#*=}; [[ $maxh =~ ^[0-9]+$ ]] || die "bad MAX_HOURS" 2 ;;
       [A-Z]*_SSH_USER=*) [ "${line#*=}" = ubuntu ] || die "unexpected SSH_USER: ${line#*=}" 2 ;;
-      ecr_repo=*) ecr=${line#*=}; [[ $ecr =~ ^[0-9]{12}\.dkr\.ecr\.[a-z]{2}-[a-z]+-[0-9]\.amazonaws\.com/rhobound-demo/kshop$ ]] || die "bad ecr_repo: $ecr" 2 ;;
+      ecr_repo=*) ecr=${line#*=}; [[ $ecr =~ ^[0-9]{12}\.dkr\.ecr\.[a-z]{2}-[a-z]+-[0-9]\.amazonaws\.com/rhobound-demo/maze$ ]] || die "bad ecr_repo: $ecr" 2 ;;
       kms_alias=*) kms=${line#*=}; [[ $kms =~ ^alias/[A-Za-z0-9/_-]{1,250}$ ]] || die "bad kms_alias: $kms" 2 ;;
       bucket=*) bucket2=${line#*=}; [[ $bucket2 =~ ^[a-z0-9][a-z0-9.-]{2,62}$ ]] || die "bad bucket: $bucket2" 2 ;;
       account=*) account=${line#*=}; [[ $account =~ ^[0-9]{12}$ ]] || die "bad account: $account" 2 ;;
@@ -89,8 +89,8 @@ seed() {
   done < <(if [ "$src" = - ]; then cat; else cat "$src"; fi)
   [ -n "$bucket" ] || bucket=$bucket2
   [ -z "$bucket2" ] || [ "$bucket2" = "$bucket" ] || die "two different buckets in the paste: $bucket and $bucket2" 2
-  [ -n "$region" ] && [ -n "$camp" ] && [ -n "$bucket" ] || die "the paste has no REGION= / CAMPAIGN= / BUCKET= line (is it the output of 'spawn_demo.sh inventory'?)" 2
-  [ -n "$ecr" ] && [ -n "$kms" ] && [ -n "$account" ] || die "the paste has no ecr_repo= / kms_alias= / account= line (spawn_demo.sh inventory of demo1)" 2
+  [ -n "$region" ] && [ -n "$camp" ] && [ -n "$bucket" ] || die "the paste has no REGION= / CAMPAIGN= / BUCKET= line (is it the output of 'spawn_two.sh inventory'?)" 2
+  [ -n "$ecr" ] && [ -n "$kms" ] && [ -n "$account" ] || die "the paste has no ecr_repo= / kms_alias= / account= line (spawn_two.sh inventory of demo1)" 2
   [ "${ecr%%.*}" = "$account" ] || die "ecr_repo is not in account $account" 2
   [[ $ecr == *".dkr.ecr.$region.amazonaws.com/"* ]] || die "ecr_repo is not in region $region" 2
   [ "$nrows" -ge 1 ] || die "the paste has no NODE row" 2
@@ -148,17 +148,17 @@ test_all() {
   echo "connecting to ${#ns[@]} machine(s) as ubuntu with $KEY (first contact records each host key in $KH)"
   par probe "${ns[@]}"; local rc=$?
   if [ $rc != 0 ]; then
-    echo "some machines failed. 'base=NOT-YET' = cloud-init still running (wait 3-5 min). 'Connection timed out' = the security group does not let this box in: $0 myip"
+    echo "some machines failed. 'base=NOT-YET' = cloud-init still running (wait 3-5 min). 'Connection timed out' = the security group does not let this workstation in: $0 myip"
   fi
   return $rc
 }
 
-myip() {   # no probe of any outside service from here (SPEC 0): the seed's address and where to read this box's own
+myip() {   # no probe of any outside service from here: the seed's address and where to read this workstation's own
   local want=""
   [ -s "$SEED" ] && want=$(jq -r '.orch_ip // ""' "$SEED")
-  echo "the machines allow ssh from: ${want:-(no seed yet: the owner sets ORCH_IP in CloudShell)}"
-  echo "this box's public IPv4: read it in the EC2 console (this instance > Details > Public IPv4 address)."
-  echo "if the two differ, the owner runs in CloudShell:   bash spawn_demo.sh allow-ip <this box's public IPv4>"
+  echo "the machines allow ssh from: ${want:-(no seed yet: ORCH_IP is set in CloudShell, at spawn_two.sh up)}"
+  echo "this workstation's public IPv4: read it where it runs (for an EC2 instance: the EC2 console > the instance > Public IPv4 address)."
+  echo "if the two differ, run in CloudShell:   BED=1 bash spawn_two.sh allow-ip <this workstation's public IPv4>"
 }
 
 case ${1:-help} in

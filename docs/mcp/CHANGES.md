@@ -1,5 +1,9 @@
 # rhobound-mcp: what it adds to rhobound-cli
 
+> **History.** This page records the October 2026 demo on the kshop bed. That bed has been replaced in `bed/` by the maze
+> bed, and its files are in this branch's history (commit 04ea0e9). The current results are in
+> [docs/RESULTS.md](../RESULTS.md).
+
 Base: [rhobound-cli `main`](https://github.com/Sharvil2704/rhobound-cli/tree/main) at `1a2df09` (2026-10-21), a CLI that
 predicts mean latency from traces for a change you state by hand. This branch (2026-10-27 to 2026-10-31) makes the
 prediction **measured, gated, agent-facing and deployable**: the change comes from an A/B of the real image, the verdict

@@ -1,0 +1,17 @@
+{
+ "schema": "rbd.muse-ticket/v1",
+ "id": "T9",
+ "ticket": "MED-44",
+ "title": "Thumbnails should be sharpened",
+ "source": "Muse experiment 2b (2026-11-03): a harder example where rhobound should help; written for media, the hottest shared service; its latency effect was not measured before the runs",
+ "prompt": "task.md",
+ "services": ["media"],
+ "image": "media",
+ "routes": ["media GET /thumb"],
+ "entries_touched": ["mobile (feed: a batch of 4-12 thumbnails per /feed)", "web (layout -> media)"],
+ "user_facing_entries": ["web /browse", "mobile /feed", "search-api /q", "checkout /buy", "partner /bulk"],
+ "slo_ms": 4.0,
+ "writable": ["maze/app/internal/svc/media/"],
+ "test_tags": "hidden",
+ "notes": "media: 4 workers, about 515 calls/s at 3.5 ms (45% busy, spec.json); a direct 2-D 7x7 convolution is about 800k multiply-adds per thumbnail (about 1-2 ms of CPU), a separable or integer one several times less"
+}

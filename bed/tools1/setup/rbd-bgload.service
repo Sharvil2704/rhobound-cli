@@ -6,4 +6,4 @@ After=network-online.target
 Type=oneshot
 User=rbd
 Group=rbd
-ExecStart=/opt/rbd/kshop/bgload.sh ensure
+ExecStart=/opt/rbd/maze/bgload.sh ensure

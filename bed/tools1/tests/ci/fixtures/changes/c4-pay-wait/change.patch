@@ -1,0 +1,20 @@
+diff --git a/maze/app/internal/work/lib_v11.go b/maze/app/internal/work/lib_v11.go
+index 14c8e83..7e4740b 100644
+--- a/maze/app/internal/work/lib_v11.go
++++ b/maze/app/internal/work/lib_v11.go
+@@ -22,7 +22,7 @@ func VerifyToken(token string) bool {
+ // compliance delay); wallet payments are unchanged.
+ func RiskCheck(method string) bool {
+ 	if method == "card" {
+-		time.Sleep(6 * time.Millisecond)
++		time.Sleep(15 * time.Millisecond)
+ 	}
+ 	return method != "blocked"
+ }
+diff --git a/rhobound-change.json b/rhobound-change.json
+new file mode 100644
+index 0000000..b7bfdba
+--- /dev/null
++++ b/rhobound-change.json
+@@ -0,0 +1 @@
++{"schema": "rbd.change-request/v1", "services": ["payments"], "summary": "payments risk_check: lengthen the mandatory compliance hold on card payments from 6 ms to 15 ms (wallet unchanged)."}

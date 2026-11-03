@@ -15,6 +15,9 @@
 # predicate names for it (one already at DIGEST is left as is). Each is set, then each rollout waited for; a failed rollout
 # undoes every service this run set (baseline.json unchanged); then every old pod gone, one settle, baseline.json updated
 # for all of them in one write, one refit.
+# A multi-image change (2026-11-03: the predicate's candidate_digests {service: digest}): each service goes to ITS image;
+# DIGEST must be one of them, and every other image of the change must verify too, its newest pass predicate the same
+# verdict (the same prediction, services and digests): one signed pass covers the whole change or nothing deploys.
 # Exit 0 deployed (or already deployed), 1 refused or failed. Last stdout line: one JSON object.
 set -euo pipefail
 STEP=deploy
@@ -56,7 +59,7 @@ else ci_fail "usage: deploy.sh SERVICE DIGEST | deploy.sh --run GIT_SHA"
 fi
 [[ $DIGEST =~ ^sha256:[0-9a-f]{64}$ ]] || ci_fail "DIGEST must be sha256:<64 hex>"
 python3 -I -c 'import json,sys; sys.exit(sys.argv[2] not in json.load(open(sys.argv[1]))["services"])' \
-  "$RBD_ROOT/kshop/spec.json" "$SERVICE" 2> /dev/null || ci_fail "unknown service '$SERVICE'"
+  "$RBD_ROOT/maze/spec.json" "$SERVICE" 2> /dev/null || ci_fail "unknown service '$SERVICE'"
 IMAGE=$RBD_ECR@$DIGEST
 mkdir -p "$RBD_HOME/deploys"
 STAMP=$(date -u +%Y%m%d-%H%M%S)
@@ -77,6 +80,7 @@ cosign verify-attestation --key "$RBD_KMS" --type "$TYPE" --insecure-ignore-tlog
 IFS= read -r -d '' DECIDE <<'PY' || true
 import base64, hashlib, json, os, re, sys
 mode, att, svc, digest, typ, home, pin, pdig, spec, base_path, imgs = sys.argv[1:12]
+DRE = r"sha256:[0-9a-f]{64}"
 def refuse(msg):
     print("REFUSE " + msg); sys.exit(0)
 preds = []
@@ -112,8 +116,15 @@ if not 1 <= len(targets) <= 5 or len(set(targets)) != len(targets) or not all(t 
     refuse("the pass verdict lists services %r: want 1 to 5 distinct services of spec.json" % (targets,))
 if svc not in targets:
     refuse("the pass verdict is for service %r, not %r" % (",".join(map(str, targets)), svc))
-if p.get("candidate_digest") != digest:
-    refuse("the pass verdict names candidate %s, not %s" % (p.get("candidate_digest"), digest))
+# each service's image: a multi-image change's candidate_digests, else the one candidate digest
+cmap = p.get("candidate_digests")
+if cmap is not None and (not isinstance(cmap, dict) or set(cmap) != set(targets)):
+    refuse("the pass verdict's candidate_digests %r do not cover its services %r" % (cmap, targets))
+tdig = {t: (cmap[t] if cmap is not None else p.get("candidate_digest")) for t in targets}
+if not all(isinstance(d, str) and re.fullmatch(DRE, d) for d in tdig.values()):
+    refuse("the pass verdict names a candidate that is not a sha256 digest: %r" % (tdig,))
+if digest not in tdig.values() or (cmap is None and p.get("candidate_digest") != digest):
+    refuse("the pass verdict names candidate %s, not %s" % (p.get("candidate_digest") if cmap is None else tdig, digest))
 sha = str(p.get("git_sha", ""))
 if not re.fullmatch(r"[0-9a-f]{40}", sha):
     refuse("the pass verdict names no commit (git_sha %r)" % sha)
@@ -125,14 +136,14 @@ if not os.path.exists(pol) or hashlib.sha256(open(pol, "rb").read()).hexdigest()
 if p.get("policy_digest") != pdig:
     refuse("the pass verdict's policy_digest %s is not the pinned effective policy RBD_POLICY_DIGEST %s"
            % (p.get("policy_digest"), pdig))
-if mode == "targets":
-    print("TARGETS " + " ".join(targets)); sys.exit(0)
+if mode == "targets":   # the prediction, then SERVICE=DIGEST for every service the pass covers
+    print("TARGETS %s %s" % (p.get("prediction_digest"), " ".join("%s=%s" % (t, tdig[t]) for t in targets))); sys.exit(0)
 cur = dict(l.split(" ", 1) for l in open(imgs).read().splitlines() if " " in l)
 base = json.load(open(base_path)).get("services", {})
 todo = []
 for t in targets:
     now, img = base.get(t), cur.get(t, "")
-    if now == digest and img.endswith("@" + digest):
+    if now == tdig[t] and img.endswith("@" + tdig[t]):
         continue   # already deployed (baseline.json agrees)
     if pbase.get(t) != now:
         refuse("stale verdict: %s was measured against production %s, production is now %s" % (t, pbase.get(t), now))
@@ -143,26 +154,40 @@ if not todo:
     print("ALREADY %s" % sha); sys.exit(0)
 print("OK %s %s %s" % (sha, p.get("decided_at"), " ".join(todo)))
 PY
-decide() { python3 -I -c "$DECIDE" "$1" "$att" "$SERVICE" "$DIGEST" "$TYPE" "$RBD_HOME" "$RBD_POLICY_SHA256" "$RBD_POLICY_DIGEST" \
-  "$RBD_ROOT/kshop/spec.json" "$RBD_HOME/baseline.json" "$imgs"; }
+decide() { # decide MODE [ATT DIGEST]: the verification above, on att/DIGEST or another image's attestations
+  python3 -I -c "$DECIDE" "$1" "${2:-$att}" "$SERVICE" "${3:-$DIGEST}" "$TYPE" "$RBD_HOME" "$RBD_POLICY_SHA256" \
+    "$RBD_POLICY_DIGEST" "$RBD_ROOT/maze/spec.json" "$RBD_HOME/baseline.json" "$imgs"; }
 imgs=$RBD_HOME/deploys/$STAMP-$SERVICE.images.txt
 dec=$(decide targets) || ci_fail "the verification step failed"
 case $dec in
   REFUSE*) ci_fail "${dec#REFUSE }" ;;
-  TARGETS*) read -r -a TARGETS <<< "${dec#TARGETS }" ;;
+  TARGETS*) read -r -a TPAIRS <<< "${dec#TARGETS }" ;;
   *) ci_fail "unexpected verification result" ;;
 esac
+TARGETS=() OTHERS=(); declare -A TDIG=()
+for x in "${TPAIRS[@]:1}"; do
+  t=${x%%=*} d=${x#*=}; TARGETS+=("$t"); TDIG[$t]=$d
+  [[ $d == "$DIGEST" || " ${OTHERS[*]} " == *" $d "* ]] || OTHERS+=("$d")
+done
+# a multi-image change: every other image must carry the same signed pass (the same prediction, services and digests)
+for d in "${OTHERS[@]}"; do
+  oatt=$RBD_HOME/deploys/$STAMP-$SERVICE.att-${d:7:12}.jsonl
+  cosign verify-attestation --key "$RBD_KMS" --type "$TYPE" --insecure-ignore-tlog=true "$RBD_ECR@$d" > "$oatt" 2>> "$LOG" ||
+    ci_fail "no attestation of type $TYPE signed by the KMS key verifies on $d (an image of this change)"
+  odec=$(decide targets "$oatt" "$d") || ci_fail "the verification step failed ($d)"
+  [[ $odec == "$dec" ]] || ci_fail "the image $d of this change does not carry the same signed pass (${odec#REFUSE })"
+done
 : > "$imgs"
 for t in "${TARGETS[@]}"; do
-  img=$(kubectl -n kshop get deployment "$t" -o jsonpath="{.spec.template.spec.containers[?(@.name==\"$t\")].image}" 2>> "$LOG") ||
-    ci_fail "cannot read deployment/$t in namespace kshop"
+  img=$(kubectl -n maze get deployment "$t" -o jsonpath="{.spec.template.spec.containers[?(@.name==\"$t\")].image}" 2>> "$LOG") ||
+    ci_fail "cannot read deployment/$t in namespace maze"
   printf '%s %s\n' "$t" "$img" >> "$imgs"
 done
 dec=$(decide state) || ci_fail "the verification step failed"
 case $dec in
   REFUSE*) ci_fail "${dec#REFUSE }" ;;
   ALREADY*)
-    echo "deploy: ${TARGETS[*]} already run $DIGEST (baseline.json agrees); nothing to do, no refit" >&2
+    echo "deploy: ${TARGETS[*]} already run their candidates (baseline.json agrees); nothing to do, no refit" >&2
     printf '{"step":"deploy","ok":true,"service":"%s","services":%s,"digest":"%s","already_deployed":true}\n' "$SERVICE" \
       "$(ci_jlist "${TARGETS[@]}")" "$DIGEST"
     exit 0 ;;
@@ -176,19 +201,19 @@ undo_all() { # undo every service this run set (newest first): the cluster is le
   local i d
   for ((i = ${#ROLLED[@]} - 1; i >= 0; i--)); do
     d=${ROLLED[i]}
-    kubectl -n kshop rollout undo "deployment/$d" >> "$LOG" 2>&1 || true
-    kubectl -n kshop rollout status "deployment/$d" --timeout=300s >> "$LOG" 2>&1 || true
+    kubectl -n maze rollout undo "deployment/$d" >> "$LOG" 2>&1 || true
+    kubectl -n maze rollout status "deployment/$d" --timeout=300s >> "$LOG" 2>&1 || true
   done
 }
 for t in "${TODO[@]}"; do
-  if ! kubectl -n kshop set image "deployment/$t" "$t=$IMAGE" >> "$LOG" 2>&1; then
+  if ! kubectl -n maze set image "deployment/$t" "$t=$RBD_ECR@${TDIG[$t]}" >> "$LOG" 2>&1; then
     undo_all
     ci_fail "kubectl set image of $t failed; rolled back ${ROLLED[*]:-nothing}, baseline.json unchanged"
   fi
   ROLLED+=("$t")
 done
 for t in "${TODO[@]}"; do
-  if ! kubectl -n kshop rollout status "deployment/$t" --timeout="${RBD_ROLLOUT_TIMEOUT:-300s}" >> "$LOG" 2>&1; then
+  if ! kubectl -n maze rollout status "deployment/$t" --timeout="${RBD_ROLLOUT_TIMEOUT:-300s}" >> "$LOG" 2>&1; then
     undo_all
     ci_fail "rollout of $t did not complete; rolled back ${ROLLED[*]}, baseline.json unchanged"
   fi
@@ -198,8 +223,8 @@ done
 for t in "${TODO[@]}"; do
   others=unknown
   for _ in $(seq 1 "${RBD_POD_WAIT_S:-180}"); do
-    ids=$(kubectl -n kshop get pods -l "app=$t" -o jsonpath='{range .items[*]}{.status.containerStatuses[*].imageID}{"\n"}{end}' 2>> "$LOG") || ids=""
-    others=$(grep -v -e "@$DIGEST\$" -e '^$' <<< "$ids" || true)
+    ids=$(kubectl -n maze get pods -l "app=$t" -o jsonpath='{range .items[*]}{.status.containerStatuses[*].imageID}{"\n"}{end}' 2>> "$LOG") || ids=""
+    others=$(grep -v -e "@${TDIG[$t]}\$" -e '^$' <<< "$ids" || true)
     [[ -n $ids && -z $others ]] && break
     others=${others:-no pod listed}
     sleep 1
@@ -213,18 +238,21 @@ done
 # with no old-image span inside the window; 150 s was not enough (T2, 2026-10-30 19:06Z). 240 s is.
 settle=${RBD_SETTLE_S:-240}
 [[ -n ${SUDO_USER:-} ]] && settle=240   # tests only may shorten it
-echo "deploy: ${TODO[*]} run only $DIGEST; waiting ${settle} s for the old image's spans to leave the trace files" >&2
+echo "deploy: ${TODO[*]} run only their candidates; waiting ${settle} s for the old image's spans to leave the trace files" >&2
 sleep "$settle"
-python3 -I - "$RBD_HOME/baseline.json" "$SERVICE" "$DIGEST" "$GIT_SHA" "${TARGETS[@]}" <<'PY' || ci_fail "baseline.json update failed (the image IS deployed)"
+python3 -I - "$RBD_HOME/baseline.json" "$SERVICE" "$DIGEST" "$GIT_SHA" "${TPAIRS[@]:1}" <<'PY' || ci_fail "baseline.json update failed (the image IS deployed)"
 import datetime, json, os, sys
 path, svc, digest, sha = sys.argv[1:5]
-targets = sys.argv[5:]
+pairs = [x.split("=", 1) for x in sys.argv[5:]]
+targets = [t for t, _ in pairs]
 b = json.load(open(path))
 now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-for t in targets:   # every service the pass covers (one already at DIGEST stays at it)
-    b.setdefault("services", {})[t] = digest
+for t, d in pairs:   # every service the pass covers, each to its own image (one already at it stays at it)
+    b.setdefault("services", {})[t] = d
 b["updated_at"] = now
 b["last_deploy"] = {"service": svc, "services": targets, "digest": digest, "git_sha": sha, "at": now}
+if len({d for _, d in pairs}) > 1:
+    b["last_deploy"]["digests"] = dict(pairs)
 tmp = path + ".tmp"
 with open(tmp, "w") as f:
     f.write(json.dumps(b, indent=1, sort_keys=True) + "\n")

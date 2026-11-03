@@ -1,5 +1,9 @@
 # Results on AWS (2026-10-30 / 31)
 
+> **History.** This page records the October 2026 demo on the kshop bed. That bed has been replaced in `bed/` by the maze
+> bed, and its files are in this branch's history (commit 04ea0e9). The current results are in
+> [docs/RESULTS.md](../RESULTS.md).
+
 The full loop ran on a live bed: a coding agent (Meta `muse-spark-1.3`) changes a microservice app through the MCP server,
 the CI gate measures the new image in an isolated A/B and predicts its effect on every user-facing request, and only a
 KMS-signed pass deploys. Each prediction below was hashed and committed before production was measured.

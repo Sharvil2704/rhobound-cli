@@ -1,0 +1,1 @@
+{"id": "T9", "title": "Catalog greets its callers", "services": ["catalog"], "writable": ["maze/app/internal/svc/catalog/"], "test_tags": "hidden", "expected": "a test ticket for tools1/muse/tests: no latency effect"}

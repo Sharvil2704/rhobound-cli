@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# publish_main.sh   the PRIVATE GitHub repo's main = this kit's repo/ (part D), pushed once from here (SPEC 6, 8). The orchestrator
+# publish_main.sh   the PRIVATE GitHub repo's main = this kit's repo/ (part D), pushed once from here. Your workstation
 #   runs it with gh before `rbd_bootstrap.sh images`, which then builds production from exactly that commit:
 #   1. gh must be logged in with the repo and workflow scopes (the first push holds .github/workflows/*.yml)
 #   2. repo/ is copied into a fresh folder under RBD_TMP, leak-scanned (no IPv4 literal outside 127/8, 0.0.0.0, RFC 1918 and the
 #      documentation ranges; no standalone 12-digit number that is not part of a decimal fraction: an AWS account id) and
-#      committed once on main (author: the gh account's noreply address; a Co-Authored-By trailer)
+#      committed once on main (author: the gh account's noreply address)
 #   3. REPO is created (private) when missing; an existing one must be private. Merge commits only (no squash, no rebase:
 #      deploy.yml finds the PR as the merge commit's second parent), the workflow token read-only by default
 #   4. GitHub has no main: it is pushed. GitHub's main holds the same tree: nothing is pushed. Another tree: refused (never a
 #      force-push; merged PRs move main on, and state/main.sha keeps the published commit)
 #   5. state/main.sha = GitHub main's sha; printed as the last line
-# Env: REPO [RBD_GH_REPO, as rbd_bootstrap.sh; Sharvil2704/rhobound-demo]  URL [https://github.com/REPO.git; tests: a local bare repo]  DRYRUN [0; 1 = steps 1-2,
-#   the reads of 3-4, no create, no edit, no push, no state/main.sha]  RBD_REPO_DIR [demo1/repo]  RBD_TMP [$HOME/rbd-dev/tmp]
+# Env: REPO [RBD_GH_REPO, as rbd_bootstrap.sh; Sharvil2704/rhobound-maze-bed]  URL [https://github.com/REPO.git; tests: a local bare repo]  DRYRUN [0; 1 = steps 1-2,
+#   the reads of 3-4, no create, no edit, no push, no state/main.sha]  RBD_REPO_DIR [demo1/repo]  RBD_TMP [$RBD_SCRATCH or $TMPDIR/rbd]
 # Exit 0 published (or already there); 1 refused or failed; 2 usage. git over https uses gh as its credential helper.
 # shellcheck disable=SC2015
 set -uo pipefail
 RBD_ME=publish_main
 # shellcheck source=rbd_lib.sh
 . "$(dirname "$(readlink -f "$0")")/rbd_lib.sh"
-REPO=${REPO:-${RBD_GH_REPO:-Sharvil2704/rhobound-demo}}
+REPO=${REPO:-${RBD_GH_REPO:-Sharvil2704/rhobound-maze-bed}}
 URL=${URL:-https://github.com/$REPO.git}
 DRYRUN=${DRYRUN:-0}
 REPO_DIR=${RBD_REPO_DIR:-$DEMO/repo}
-SCRATCH=${RBD_TMP:-$HOME/rbd-dev/tmp}
+SCRATCH=${RBD_TMP:-${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}}
 [ $# = 0 ] || { sed -n '2,/^# shellcheck/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 2; }
 [[ $REPO =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]] || die "bad REPO: $REPO" 2
-[ -d "$REPO_DIR/kshop/app" ] && [ -f "$REPO_DIR/policy/gate.json" ] || die "no $REPO_DIR/kshop/app or policy/gate.json (part D's repo/)" 2
+[ -d "$REPO_DIR/maze/app" ] && [ -f "$REPO_DIR/policy/gate.json" ] || die "no $REPO_DIR/maze/app or policy/gate.json (part D's repo/)" 2
 for c in gh git python3 jq; do command -v "$c" > /dev/null || die "$c is required"; done
 gitc() { git -c credential.helper= -c 'credential.helper=!gh auth git-credential' "$@"; }
 
@@ -65,8 +65,7 @@ sys.exit(1 if bad else 0)
 ') || die "the leak scan refuses $REPO_DIR (the lines above): nothing was created or pushed"
 nf=$(git -C "$M" ls-files | wc -l)
 git -C "$M" -c user.name="$glogin" -c user.email="$gid+$glogin@users.noreply.github.com" -c commit.gpgsign=false commit -q \
-  -m "kshop demo main: the services, the gate policy and the workflows" \
-  -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" || die "git commit failed"
+  -m "maze demo main: the services, the gate policy and the workflows" || die "git commit failed"
 tree=$(git -C "$M" rev-parse 'HEAD^{tree}') || die "no tree"
 log "repo/: $nf files scanned clean, tree ${tree:0:12}"
 
@@ -77,7 +76,7 @@ if ! info=$(view); then
   grep -qE 'Could not resolve to a Repository|HTTP 404' "$W/view.err" || die "gh repo view $REPO failed: $(head -c 300 "$W/view.err")"
   if [ "$DRYRUN" = 1 ]; then log "DRYRUN: would create $REPO (private)"; info='{"visibility":"PRIVATE"}'; missing=1
   else
-    gh repo create "$REPO" --private --description "rhobound demo: kshop and its latency gate (private)" > /dev/null || die "gh repo create $REPO failed"
+    gh repo create "$REPO" --private --description "rhobound demo: maze and its latency gate (private)" > /dev/null || die "gh repo create $REPO failed"
     log "created $REPO (private)"
     info=$(view) || die "gh repo view $REPO failed after the create: $(head -c 300 "$W/view.err")"
   fi

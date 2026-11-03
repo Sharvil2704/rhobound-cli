@@ -5,13 +5,13 @@
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 KIT=$(cd "$HERE/../../.." && pwd)
 CI=$KIT/tools1/ci
-CLI=${RHOBOUND:-$KIT/build/rhobound-arm64}
-SCR=${SCRATCH:-$HOME/rbd-dev/tmp/partD}
+CLI=${RHOBOUND:-$KIT/build/rhobound-local}
+SCR=${SCRATCH:-${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}/partD}
 NOW_FIT=2026-10-22T06:00:00Z   # within max_fit_age_h of the fixture fit (a real 2026-10-22 rs2 window)
 PIN=$(sha256sum "$(dirname "${BASH_SOURCE[0]}")/fixtures/repo-day1/policy/gate.json" | cut -d' ' -f1)   # RBD_POLICY_SHA256 of the day-1 main the tests build from (repo/ follows GitHub main)
 # RBD_POLICY_DIGEST (contract 1): the CLI's gate.json digests.policy for the pinned policy, as the bootstrap writes it.
 # Written here, not computed: t_flow.sh checks the real CLI's gate against it and fails loudly when they differ.
-PDIG=sha256:67fdf7dcfbc6fe60d47254f3811324bb50fe740ac0fcdb5d64e3cbeb379fd633
+PDIG=sha256:c2ab0e1fa42fd249597a1b9e253340d4cd24d4e18e970183518b0018496805bb
 PASS=0 FAILS=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $*"; }
 bad() { FAILS=$((FAILS + 1)); echo "  FAIL $*"; }
@@ -27,18 +27,19 @@ mkenv() { # mkenv NAME: T (scratch), TROOT (/opt/rbd), THOME (/var/lib/rbd), STU
   T=$SCR/t-$1
   rm -rf "$T"
   TROOT=$T/opt THOME=$T/var
-  mkdir -p "$TROOT/bin" "$TROOT/lib" "$TROOT/kshop" "$TROOT/ci" "$TROOT/etc" "$THOME/state" "$THOME/runs" \
+  mkdir -p "$TROOT/bin" "$TROOT/lib" "$TROOT/maze" "$TROOT/ci" "$TROOT/etc" "$THOME/state" "$THOME/runs" \
     "$T/stub/k8s" "$T/stub/ecr" "$T/stub/s3" "$T/stub/att"
   cp "$HERE/fakebin/aws" "$HERE/fakebin/docker" "$HERE/fakebin/cosign" "$HERE/fakebin/kubectl" "$TROOT/bin/"
   ln -s "$CLI" "$TROOT/bin/rhobound"
   cp "$HERE/fakebin/refit.sh" "$TROOT/ci/refit.sh"
-  # the kit as part B ships it (tools1/lib, tools1/kshop) when present, else stand-ins
+  # the kit as part B ships it (tools1/lib, tools1/maze) when present, else stand-ins
   local k
-  for k in kshop/Dockerfile kshop/spec.json; do
-    if [[ -r $KIT/tools1/$k ]]; then cp "$KIT/tools1/$k" "$TROOT/$k"; else cp "$KIT/repo/$k" "$TROOT/$k"; fi
-  done
+  cp "$KIT/tools1/maze/Dockerfile" "$TROOT/maze/Dockerfile"
+  # spec.json: the fixture world's (fixtures/repo-day1: the ten kshop-shaped services, each with an image; catalog and
+  # pricing share one), so the tests exercise the generic CI logic and the one-image rules, not maze's 32 services
+  cp "$REPO0/maze/spec.json" "$TROOT/maze/spec.json"
   # the kit's bases.json (CI v2 base keys), plus a stand-in go127 when the kit has none yet (never a real digest)
-  python3 -I - "$KIT/tools1/kshop/bases.json" "$TROOT/kshop/bases.json" << 'PY'
+  python3 -I - "$KIT/tools1/maze/bases.json" "$TROOT/maze/bases.json" << 'PY'
 import hashlib, json, os, sys
 src, dst = sys.argv[1:3]
 b = json.load(open(src)) if os.path.exists(src) else {}
@@ -50,12 +51,12 @@ PY
 RBD_REGION=ap-south-1
 RBD_ACCOUNT=123456789012
 RBD_BUCKET=rhobound-research-123456789012-ap-south-1
-RBD_ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop
+RBD_ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze
 RBD_KMS=awskms:///alias/rhobound-demo-verdict
 KUBECONFIG=$TROOT/etc/kubeconfig
 RHOBOUND_STATE=$THOME/state
 RBD_HOME=$THOME
-RBD_REPO=Sharvil2704/rhobound-demo
+RBD_REPO=Sharvil2704/rhobound-maze-bed
 RBD_POLICY_SHA256=$PIN
 RBD_POLICY_DIGEST=$PDIG
 EOF
@@ -112,10 +113,10 @@ mkbaseline() { # baseline.json: every service at a fake production digest, the f
   local fitdir=$THOME/captures/prod/fit
   mkdir -p "$fitdir"
   cp "$HERE/fixtures/fit.json" "$fitdir/fit.json"
-  python3 -I - "$THOME/baseline.json" "$fitdir" "$KIT/repo/kshop/spec.json" "$T/stub/k8s" << 'PY'
+  python3 -I - "$THOME/baseline.json" "$fitdir" "$REPO0/maze/spec.json" "$T/stub/k8s" << 'PY'
 import hashlib, json, os, sys
 path, fitdir, spec, k8s = sys.argv[1:5]
-ecr = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop"
+ecr = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze"
 svcs = {s: "sha256:" + hashlib.sha256(("prod-" + s).encode()).hexdigest() for s in json.load(open(spec))["services"]}
 fd = "sha256:" + hashlib.sha256(open(os.path.join(fitdir, "fit.json"), "rb").read()).hexdigest()
 json.dump({"schema": "rbd.baseline/v1", "services": svcs, "image_ref": ecr, "fit": {"dir": fitdir, "digest": fd},
@@ -170,8 +171,8 @@ PY
 }
 
 goimage_dockerfile() { # the test kit's Dockerfile with ARG GO_IMAGE (its default: the FROM image) and FROM ${GO_IMAGE}, when the
-  # kit's own does not have them yet (another part adds them to tools1/kshop/Dockerfile)
-  python3 -I - "$TROOT/kshop/Dockerfile" << 'PY'
+  # kit's own does not have them yet (another part adds them to tools1/maze/Dockerfile)
+  python3 -I - "$TROOT/maze/Dockerfile" << 'PY'
 import re, sys
 p = sys.argv[1]
 t = open(p).read()
@@ -192,7 +193,7 @@ export -f v2req
 
 # hostile_git REPO MARKS: what a PR's own workflow (ghrunner owns the checkout) can put in the runner-owned .git/: every config
 # key, hook, include and attribute that names a command; each command touches MARKS/<name>. Set AFTER the test's own git work
-# in REPO (the test's git would run them too). Round-1 recheck PoCs: .tmp-bed/fix1/recheck1/prcheck/poc_*.sh, lazy/poc.sh.
+# in REPO (the test's git would run them too). Round-1 recheck PoCs: .tmp-demo/fix1/recheck1/prcheck/poc_*.sh, lazy/poc.sh.
 hostile_git() {
   local s=$1 m=$2 h
   mkdir -p "$m" "$s/.git/evil-hooks" "$s/.git/info"

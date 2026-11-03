@@ -1,0 +1,1 @@
+{"event": "Stop", "stdin": {"hook_event_name": "Stop", "session_id": "s-0001", "turn_id": "t-2", "cwd": "/path/to/repo", "transcript_path": null, "model": "muse-spark-1.3", "permission_mode": "ask-me", "model_provider": "meta", "stop_hook_active": true, "last_assistant_message": "Previewed."}}

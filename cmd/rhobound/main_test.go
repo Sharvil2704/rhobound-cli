@@ -15,6 +15,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Sharvil2704/rhobound-cli/internal/model"
 )
 
 const fixture = "../../testdata/capture-chain"
@@ -844,7 +846,8 @@ func TestPatchErrorListsServicesNotStageNodes(t *testing.T) {
 }
 
 // --plain reads the wait that the network time of a call is cut against with the basic model too: the hops differ from the
-// refined ones, a little where the callees are quiet, and only the hops.
+// refined ones, a little where the callees are quiet, and only the hops. A callee the refined model takes batches into
+// (frontend calls cart twice at once) has the batch's own queue in its refined wait: its hop may differ by up to 1%.
 func TestPlainReadsTheHopWaitWithTheBasicModel(t *testing.T) {
 	read := func(args ...string) []struct {
 		Name string  `json:"name"`
@@ -869,9 +872,19 @@ func TestPlainReadsTheHopWaitWithTheBasicModel(t *testing.T) {
 	if len(a) != len(b) {
 		t.Fatalf("%d and %d services", len(a), len(b))
 	}
+	out, _, _ := exec(t, "infer", shipped20s)
+	topo, err := model.ParseTopology([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fed := model.BatchFed(topo)
 	differ := 0
 	for i := range a {
-		if a[i].Name != b[i].Name || math.Abs(a[i].Hop-b[i].Hop) > 1e-3*math.Max(a[i].Hop, 0.01) {
+		tol := 1e-3
+		if j := topo.Index(a[i].Name); j >= 0 && fed[j] {
+			tol = 1e-2
+		}
+		if a[i].Name != b[i].Name || math.Abs(a[i].Hop-b[i].Hop) > tol*math.Max(a[i].Hop, 0.01) {
 			t.Errorf("%s: hop %v refined, %v plain, want the same to 0.1%% (quiet callees)", a[i].Name, a[i].Hop, b[i].Hop)
 		}
 		if a[i].Hop != b[i].Hop {

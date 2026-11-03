@@ -196,6 +196,22 @@ func (c *call) decode(v any) error {
 	return nil
 }
 
+// unknownEnv refuses an environment name the configuration does not hold, and names what it does hold: a model's
+// first guess is often a capture's name or a made-up one (5 of the 11 refused calls in the Muse experiment, 2026-11-03).
+func unknownEnv(c *config.Config) error {
+	msg := "unknown environment"
+	envs, caps := c.Names()
+	if len(envs) > 0 {
+		msg += "; environments: " + strings.Join(envs, ", ")
+	} else {
+		msg += "; this server has no environments"
+	}
+	if len(caps) > 0 {
+		msg += "; captures (pass as capture, not env): " + strings.Join(caps, ", ")
+	}
+	return invalidParams(msg)
+}
+
 func invalidParams(msg string) error {
 	return &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: msg}
 }

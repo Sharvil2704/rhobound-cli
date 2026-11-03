@@ -23,6 +23,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Sharvil2704/rhobound-cli/internal/model"
 )
 
 // goldenCase is one run of the sweep: the arguments (the capture as a path from the repository root, which the
@@ -184,6 +186,10 @@ func compareWith1a2df09(t *testing.T, args []string, wantExit int, want []byte, 
 	t.Helper()
 	var out, errw bytes.Buffer
 	code := run(args, &out, &errw)
+	if path, ok := batchPathOf(t, args); ok && code == 0 && wantExit == 0 {
+		compareBatch(t, args, path, out.Bytes(), want, errw.String(), wantErr)
+		return
+	}
 	if code != wantExit {
 		t.Fatalf("rhobound %s: exit %d, want %d (stderr %q)", strings.Join(args, " "), code, wantExit, errw.String())
 	}
@@ -205,5 +211,105 @@ func compareWith1a2df09(t *testing.T, args []string, wantExit int, want []byte, 
 	}
 	if errw.String() != wantErr {
 		t.Errorf("rhobound %s: standard error %q, want %q", strings.Join(args, " "), errw.String(), wantErr)
+	}
+}
+
+// batchPathOf returns, for a predict CAPTURE case whose topology the refined model takes calls made at once in as batch
+// arrivals (model.Config.Batch, after 1a2df09: the second planned change), the services the batch term can change
+// (model.BatchPath), by name.
+func batchPathOf(t *testing.T, args []string) (map[string]bool, bool) {
+	t.Helper()
+	if len(args) < 2 || args[0] != "predict" || slices.Contains(args, "--plain") || slices.Contains(args, "--fit") {
+		return nil, false
+	}
+	_, c := newFlags("predict")
+	inf, err := load(args[1], c)
+	if err != nil || !model.HasBatches(inf.Topology) {
+		return nil, false
+	}
+	on := map[string]bool{}
+	for i, b := range model.BatchPath(inf.Topology) {
+		if b {
+			on[inf.Topology.Services[i].Name] = true
+		}
+	}
+	return on, true
+}
+
+// compareBatch is the planned change for a capture with calls made at once (README.md there): the refined model takes
+// them as batch arrivals, so the rows of the services on a batch path (model.BatchPath) and the model line may differ
+// from 1a2df09's; every other row, every other line and field, the exit status and standard error are 1a2df09's, byte
+// for byte (as JSON values for --json).
+func compareBatch(t *testing.T, args []string, path map[string]bool, got, want []byte, gotErr, wantErr string) {
+	t.Helper()
+	if gotErr != wantErr {
+		t.Errorf("rhobound %s: standard error %q, want %q", strings.Join(args, " "), gotErr, wantErr)
+	}
+	onPath := func(line string) bool {
+		f := strings.Fields(line)
+		return len(f) > 0 && path[f[0]]
+	}
+	if !slices.Contains(args, "--json") {
+		g, w := strings.Split(string(got), "\n"), strings.Split(string(want), "\n")
+		if len(g) != len(w) {
+			t.Fatalf("rhobound %s: %d lines, 1a2df09 printed %d", strings.Join(args, " "), len(g), len(w))
+		}
+		for i := range g {
+			if g[i] != w[i] && !onPath(g[i]) && !strings.HasPrefix(strings.TrimSpace(g[i]), "model") &&
+				!(strings.Contains(g[i], " times at once ") && strings.Contains(w[i], " times at once ")) {
+				t.Errorf("rhobound %s: line %d is off every batch path and differs from 1a2df09's:\n  got:  %s\n  want: %s",
+					strings.Join(args, " "), i+1, g[i], w[i])
+			}
+		}
+		return
+	}
+	var g, w map[string]json.RawMessage
+	if err := json.Unmarshal(got, &g); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(want, &w); err != nil {
+		t.Fatal(err)
+	}
+	for k := range w {
+		if _, ok := g[k]; !ok {
+			t.Errorf("rhobound %s: %q is missing", strings.Join(args, " "), k)
+		}
+	}
+	for k, gv := range g {
+		wv, ok := w[k]
+		switch {
+		case !ok:
+			t.Errorf("rhobound %s: %q is new", strings.Join(args, " "), k)
+		case k == "model":
+		case k == "warnings": // a batch's warning says how the model takes it (infer's batchWarnings)
+			var gw, ww []string
+			if json.Unmarshal(gv, &gw) != nil || json.Unmarshal(wv, &ww) != nil || len(gw) != len(ww) {
+				t.Fatalf("rhobound %s: the warnings differ in shape", strings.Join(args, " "))
+			}
+			for i := range gw {
+				if gw[i] != ww[i] && !(strings.Contains(gw[i], " times at once ") && strings.Contains(ww[i], " times at once ")) {
+					t.Errorf("rhobound %s: warning %d differs from 1a2df09's: %q, want %q", strings.Join(args, " "), i, gw[i], ww[i])
+				}
+			}
+		case k == "services":
+			var gs, ws []map[string]json.RawMessage
+			if json.Unmarshal(gv, &gs) != nil || json.Unmarshal(wv, &ws) != nil || len(gs) != len(ws) {
+				t.Fatalf("rhobound %s: the services differ in shape", strings.Join(args, " "))
+			}
+			for i := range gs {
+				var name string
+				json.Unmarshal(ws[i]["name"], &name)
+				gb, _ := json.Marshal(gs[i])
+				wb, _ := json.Marshal(ws[i])
+				if !path[name] && !bytes.Equal(gb, wb) {
+					t.Errorf("rhobound %s: %s is on no batch path and its row differs from 1a2df09's:\n  got:  %s\n  want: %s",
+						strings.Join(args, " "), name, gb, wb)
+				}
+			}
+		default:
+			if !bytes.Equal(gv, wv) {
+				t.Errorf("rhobound %s: %q differs from 1a2df09's: %s, want %s", strings.Join(args, " "), k, gv, wv)
+			}
+		}
 	}
 }

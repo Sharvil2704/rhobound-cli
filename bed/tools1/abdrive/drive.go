@@ -102,14 +102,19 @@ type Config struct {
 	Host      string        // the Host header sent to both arms ("": each URL's own host)
 	Timeout   time.Duration // per request
 	Log       io.Writer
+	// LogBytes adds each response body's size to loadgen.csv as a 6th column, bytes (rhobound diff-fit then records
+	// each arm's mean response and raises ab.payload_changed on a change above 10%). Off by default: a CLI that reads
+	// only the 5-column log refuses the 6-column one.
+	LogBytes bool
 }
 
-// Row is one measured request to one arm. Done: an answer (any status) was read whole.
+// Row is one measured request to one arm. Done: an answer (any status) was read whole; Bytes its body's size.
 type Row struct {
 	Sent, Answered int64
 	Status         int
 	Done           bool
 	Err            string
+	Bytes          int64
 }
 
 // Counts are the warm-up's requests to one arm.
@@ -135,7 +140,7 @@ func newClient(fresh bool, timeout time.Duration) *http.Client {
 	tr := &http.Transport{
 		Proxy:                 nil,
 		DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		MaxIdleConns:          1024, // as kshop-svc's keep-alive callers
+		MaxIdleConns:          1024, // as maze-svc's keep-alive callers
 		MaxIdleConnsPerHost:   256,
 		IdleConnTimeout:       90 * time.Second,
 		DisableKeepAlives:     fresh,
@@ -144,9 +149,9 @@ func newClient(fresh bool, timeout time.Duration) *http.Client {
 	return &http.Client{Transport: tr, Timeout: timeout}
 }
 
-// A request carries only what kshop's own callers send (a GET from Go's net/http: Host, User-Agent
+// A request carries only what maze's own callers send (a GET from Go's net/http: Host, User-Agent
 // Go-http-client/1.1, Accept-Encoding gzip), so an arm cannot tell the A/B from production by its headers; the
-// arrival's index stays in abdrive's own records (loadgen.csv's seq). Not the traceparent kshop-svc's otelhttp transport
+// arrival's index stays in abdrive's own records (loadgen.csv's seq). Not the traceparent maze-svc's otelhttp transport
 // adds: the arm's SERVER span must stay its trace's root (splitarms.py, SPEC 0b rule 4). tagHeader, set by the tests
 // only, names a header that carries the index (the same on both arms, warm-up included).
 var tagHeader string
@@ -167,13 +172,13 @@ func fire(c *http.Client, url, host string, idx int, clk clock) Row {
 	if err != nil {
 		return Row{Sent: sent, Answered: clk.now(), Err: err.Error()}
 	}
-	_, err = io.Copy(io.Discard, resp.Body)
+	n, err := io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 	ans := clk.now()
 	if err != nil {
-		return Row{Sent: sent, Answered: ans, Status: resp.StatusCode, Err: "body: " + err.Error()}
+		return Row{Sent: sent, Answered: ans, Status: resp.StatusCode, Err: "body: " + err.Error(), Bytes: n}
 	}
-	return Row{Sent: sent, Answered: ans, Status: resp.StatusCode, Done: true}
+	return Row{Sent: sent, Answered: ans, Status: resp.StatusCode, Done: true, Bytes: n}
 }
 
 // Drive runs the schedule: the warm-up, then the measured run; every arrival goes to both arms at once, open loop (a

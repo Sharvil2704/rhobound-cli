@@ -1,0 +1,41 @@
+diff --git a/maze/app/internal/svc/catalog/catalog.go b/maze/app/internal/svc/catalog/catalog.go
+index 9f1d6f5..8083e80 100644
+--- a/maze/app/internal/svc/catalog/catalog.go
++++ b/maze/app/internal/svc/catalog/catalog.go
+@@ -71,7 +71,7 @@ func Search(terms []string, k int) []int {
+ 		for _, q := range terms {
+ 			tf := 0
+ 			for _, t := range toks {
+-				if t == q {
++				if t == q || near(t, q) {
+ 					tf++
+ 				}
+ 			}
+@@ -101,6 +101,27 @@ func Search(terms []string, k int) []int {
+ 	return ids
+ }
+ 
++// near reports whether a and b are one edit apart (a typo: one letter changed, added or dropped).
++func near(a, b string) bool {
++	prev := make([]int, len(b)+1)
++	cur := make([]int, len(b)+1)
++	for j := range prev {
++		prev[j] = j
++	}
++	for i := 1; i <= len(a); i++ {
++		cur[0] = i
++		for j := 1; j <= len(b); j++ {
++			c := prev[j-1]
++			if a[i-1] != b[j-1] {
++				c++
++			}
++			cur[j] = min(c, prev[j]+1, cur[j-1]+1)
++		}
++		prev, cur = cur, prev
++	}
++	return prev[len(b)] == 1
++}
++
+ func init() {
+ 	rt.Register("catalog.item", func(r *rt.Req) error {
+ 		p := products[int(seq.Add(1))%len(products)]

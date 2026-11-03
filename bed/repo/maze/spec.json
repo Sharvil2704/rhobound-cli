@@ -1,0 +1,741 @@
+{
+ "_doc": "maze on the bed: 32 services, 28 images (services[*].image names cmd/<image>). GROUND TRUTH for the harness; rhobound never reads it. render.py writes the manifests from it (MAZE_CONFIG = service, workers, routes).",
+ "namespace": "maze",
+ "services": {
+  "web": {
+   "image": "web",
+   "workers": 64,
+   "routes": {
+    "/browse": {
+     "work": {
+      "mean_ms": 1.0,
+      "cs2": 1.0
+     },
+     "steps": [
+      {
+       "call": {
+        "to": "auth",
+        "path": "/verify"
+       }
+      },
+      {
+       "par": [
+        {
+         "to": "catalog",
+         "path": "/item"
+        },
+        {
+         "to": "profile",
+         "path": "/get"
+        },
+        {
+         "to": "recs",
+         "path": "/top",
+         "p": 0.5
+        }
+       ]
+      },
+      {
+       "call": {
+        "to": "layout",
+        "path": "/render"
+       }
+      }
+     ]
+    }
+   }
+  },
+  "mobile": {
+   "image": "mobile",
+   "workers": 64,
+   "routes": {
+    "/feed": {
+     "work": {
+      "mean_ms": 1.5,
+      "cs2": 1.0
+     },
+     "steps": [
+      {
+       "call": {
+        "to": "auth",
+        "path": "/verify"
+       }
+      },
+      {
+       "call": {
+        "to": "feed",
+        "path": "/build"
+       }
+      }
+     ]
+    }
+   }
+  },
+  "search-api": {
+   "image": "search-api",
+   "workers": 32,
+   "routes": {
+    "/q": {
+     "work": {
+      "mean_ms": 1.0,
+      "cs2": 1.0
+     },
+     "steps": [
+      {
+       "call": {
+        "to": "auth",
+        "path": "/verify"
+       }
+      },
+      {
+       "call": {
+        "to": "catalog",
+        "path": "/search"
+       }
+      },
+      {
+       "call": {
+        "to": "rank",
+        "path": "/rerank"
+       }
+      }
+     ]
+    }
+   }
+  },
+  "checkout": {
+   "image": "checkout",
+   "workers": 32,
+   "routes": {
+    "/buy": {
+     "work": {
+      "mean_ms": 2.0,
+      "cs2": 0.5
+     },
+     "steps": [
+      {
+       "call": {
+        "to": "auth",
+        "path": "/verify"
+       }
+      },
+      {
+       "call": {
+        "to": "cart",
+        "path": "/get"
+       }
+      },
+      {
+       "call": {
+        "to": "pricing",
+        "path": "/quote"
+       }
+      },
+      {
+       "call": {
+        "to": "order",
+        "path": "/create"
+       }
+      }
+     ]
+    }
+   }
+  },
+  "partner": {
+   "image": "partner",
+   "workers": 32,
+   "routes": {
+    "/bulk": {
+     "work": {
+      "mean_ms": 1.0,
+      "cs2": 1.0
+     },
+     "steps": [
+      {
+       "call": {
+        "to": "auth",
+        "path": "/verify"
+       }
+      },
+      {
+       "batch": {
+        "to": "pricing",
+        "path": "/quote",
+        "n": [
+         4,
+         12
+        ]
+       }
+      }
+     ],
+     "after": [
+      {
+       "to": "ledger",
+       "path": "/log"
+      }
+     ]
+    }
+   }
+  },
+  "auth": {
+   "image": "auth",
+   "workers": 3,
+   "routes": {
+    "/verify": {
+     "work": {
+      "mean_ms": 5.5,
+      "cs2": 0.5
+     },
+     "code": "auth.verify"
+    }
+   }
+  },
+  "catalog": {
+   "image": "catalog",
+   "workers": 3,
+   "routes": {
+    "/item": {
+     "work": {
+      "mean_ms": 2.0,
+      "cs2": 1.0
+     },
+     "code": "catalog.item",
+     "steps": [
+      {
+       "call": {
+        "to": "inventory",
+        "path": "/stock",
+        "p": 0.3
+       }
+      }
+     ]
+    },
+    "/search": {
+     "work": {
+      "mean_ms": 9.0,
+      "cs2": 1.5
+     },
+     "code": "catalog.search",
+     "steps": [
+      {
+       "par": [
+        {
+         "to": "index-a",
+         "path": "/shard"
+        },
+        {
+         "to": "index-b",
+         "path": "/shard"
+        },
+        {
+         "to": "index-c",
+         "path": "/shard"
+        },
+        {
+         "to": "index-d",
+         "path": "/shard"
+        }
+       ]
+      }
+     ],
+     "post": "catalog.merge"
+    }
+   }
+  },
+  "index-a": {
+   "image": "index",
+   "workers": 2,
+   "routes": {
+    "/shard": {
+     "work": {
+      "mean_ms": 8.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "index-b": {
+   "image": "index",
+   "workers": 2,
+   "routes": {
+    "/shard": {
+     "work": {
+      "mean_ms": 8.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "index-c": {
+   "image": "index",
+   "workers": 2,
+   "routes": {
+    "/shard": {
+     "work": {
+      "mean_ms": 8.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "index-d": {
+   "image": "index",
+   "workers": 2,
+   "routes": {
+    "/shard": {
+     "work": {
+      "mean_ms": 14.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "profile": {
+   "image": "profile",
+   "workers": 3,
+   "routes": {
+    "/get": {
+     "work": {
+      "mean_ms": 5.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "recs": {
+   "image": "recs",
+   "workers": 4,
+   "routes": {
+    "/top": {
+     "work": {
+      "mean_ms": 8.0,
+      "cs2": 1.0
+     },
+     "code": "recs.top",
+     "steps": [
+      {
+       "call": {
+        "to": "profile",
+        "path": "/get",
+        "p": 0.6
+       }
+      },
+      {
+       "call": {
+        "to": "features",
+        "path": "/vec"
+       }
+      },
+      {
+       "call": {
+        "to": "model-score",
+        "path": "/score"
+       }
+      }
+     ]
+    }
+   }
+  },
+  "features": {
+   "image": "features",
+   "workers": 3,
+   "routes": {
+    "/vec": {
+     "work": {
+      "mean_ms": 3.0,
+      "cs2": 1.0
+     },
+     "steps": [
+      {
+       "batch": {
+        "to": "feature-store",
+        "path": "/get",
+        "n": [
+         3,
+         6
+        ]
+       }
+      }
+     ]
+    }
+   }
+  },
+  "feature-store": {
+   "image": "feature-store",
+   "workers": 2,
+   "routes": {
+    "/get": {
+     "work": {
+      "mean_ms": 4.0,
+      "cs2": 0.5
+     }
+    }
+   }
+  },
+  "model-score": {
+   "image": "model-score",
+   "workers": 2,
+   "routes": {
+    "/score": {
+     "work": {
+      "mean_ms": 18.0,
+      "cs2": 0.3
+     }
+    }
+   }
+  },
+  "layout": {
+   "image": "layout",
+   "workers": 6,
+   "routes": {
+    "/render": {
+     "work": {
+      "mean_ms": 3.0,
+      "cs2": 1.0
+     },
+     "code": "layout.render",
+     "steps": [
+      {
+       "batch": {
+        "to": "media",
+        "path": "/thumb",
+        "n": [
+         3,
+         8
+        ]
+       }
+      }
+     ],
+     "post": "layout.decode"
+    }
+   }
+  },
+  "media": {
+   "image": "media",
+   "workers": 4,
+   "routes": {
+    "/thumb": {
+     "work": {
+      "mean_ms": 3.5,
+      "cs2": 2.0
+     },
+     "code": "media.thumb"
+    }
+   }
+  },
+  "feed": {
+   "image": "feed",
+   "workers": 8,
+   "routes": {
+    "/build": {
+     "work": {
+      "mean_ms": 3.0,
+      "cs2": 1.0
+     },
+     "steps": [
+      {
+       "call": {
+        "to": "profile",
+        "path": "/get"
+       }
+      },
+      {
+       "call": {
+        "to": "graph",
+        "path": "/follows"
+       }
+      },
+      {
+       "batch": {
+        "to": "media",
+        "path": "/thumb",
+        "n": [
+         4,
+         12
+        ]
+       }
+      },
+      {
+       "call": {
+        "to": "rank",
+        "path": "/rerank"
+       }
+      }
+     ],
+     "post": "feed.decode"
+    }
+   }
+  },
+  "graph": {
+   "image": "graph",
+   "workers": 3,
+   "routes": {
+    "/follows": {
+     "work": {
+      "mean_ms": 6.0,
+      "cs2": 1.0
+     },
+     "steps": [
+      {
+       "call": {
+        "to": "graph-store",
+        "path": "/q",
+        "count": [
+         1,
+         3
+        ]
+       }
+      }
+     ]
+    }
+   }
+  },
+  "graph-store": {
+   "image": "graph-store",
+   "workers": 2,
+   "routes": {
+    "/q": {
+     "work": {
+      "mean_ms": 4.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "rank": {
+   "image": "rank",
+   "workers": 1,
+   "routes": {
+    "/rerank": {
+     "work": {
+      "mean_ms": 9.0,
+      "cs2": 1.0
+     },
+     "code": "rank.rerank"
+    }
+   }
+  },
+  "cart": {
+   "image": "cart",
+   "workers": 2,
+   "routes": {
+    "/get": {
+     "work": {
+      "mean_ms": 5.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "pricing": {
+   "image": "pricing",
+   "workers": 2,
+   "routes": {
+    "/quote": {
+     "work": {
+      "mean_ms": 5.0,
+      "cs2": 0.5
+     },
+     "code": "pricing.quote",
+     "steps": [
+      {
+       "call": {
+        "to": "tax",
+        "path": "/rate",
+        "p": 0.5
+       }
+      }
+     ]
+    }
+   }
+  },
+  "tax": {
+   "image": "tax",
+   "workers": 2,
+   "routes": {
+    "/rate": {
+     "work": {
+      "mean_ms": 3.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "order": {
+   "image": "order",
+   "workers": 4,
+   "routes": {
+    "/create": {
+     "work": {
+      "mean_ms": 6.0,
+      "cs2": 1.0
+     },
+     "steps": [
+      {
+       "call": {
+        "to": "inventory",
+        "path": "/reserve"
+       }
+      },
+      {
+       "call": {
+        "to": "payment",
+        "path": "/charge"
+       }
+      }
+     ],
+     "after": [
+      {
+       "to": "events",
+       "path": "/emit"
+      },
+      {
+       "to": "audit",
+       "path": "/log"
+      }
+     ]
+    }
+   }
+  },
+  "inventory": {
+   "image": "inventory",
+   "workers": 2,
+   "routes": {
+    "/reserve": {
+     "work": {
+      "mean_ms": 8.0,
+      "cs2": 0.25
+     }
+    },
+    "/stock": {
+     "work": {
+      "mean_ms": 1.5,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "payment": {
+   "image": "payment",
+   "workers": 2,
+   "routes": {
+    "/charge": {
+     "work": {
+      "mean_ms": 5.0,
+      "cs2": 1.0
+     },
+     "steps": [
+      {
+       "call": {
+        "to": "fraud",
+        "path": "/score"
+       }
+      },
+      {
+       "call": {
+        "to": "ledger",
+        "path": "/write"
+       }
+      }
+     ]
+    }
+   }
+  },
+  "fraud": {
+   "image": "fraud",
+   "workers": 1,
+   "routes": {
+    "/score": {
+     "work": {
+      "mean_ms": 18.0,
+      "cs2": 2.0
+     },
+     "code": "fraud.score"
+    }
+   }
+  },
+  "ledger": {
+   "image": "ledger",
+   "workers": 1,
+   "routes": {
+    "/write": {
+     "work": {
+      "mean_ms": 4.0,
+      "cs2": 0.5
+     }
+    },
+    "/log": {
+     "work": {
+      "mean_ms": 3.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  },
+  "events": {
+   "image": "notify",
+   "workers": 2,
+   "routes": {
+    "/emit": {
+     "work": {
+      "mean_ms": 3.0,
+      "cs2": 1.0
+     },
+     "after": [
+      {
+       "to": "ledger",
+       "path": "/log"
+      }
+     ]
+    }
+   }
+  },
+  "audit": {
+   "image": "notify",
+   "workers": 2,
+   "routes": {
+    "/log": {
+     "work": {
+      "mean_ms": 2.0,
+      "cs2": 1.0
+     }
+    }
+   }
+  }
+ },
+ "load": {
+  "rps": 120,
+  "mix": [
+   {
+    "service": "web",
+    "path": "/browse",
+    "w": 50,
+    "url": "http://web:8080/browse"
+   },
+   {
+    "service": "mobile",
+    "path": "/feed",
+    "w": 30,
+    "url": "http://mobile:8080/feed"
+   },
+   {
+    "service": "search-api",
+    "path": "/q",
+    "w": 15,
+    "url": "http://search-api:8080/q"
+   },
+   {
+    "service": "checkout",
+    "path": "/buy",
+    "w": 15,
+    "url": "http://checkout:8080/buy"
+   },
+   {
+    "service": "partner",
+    "path": "/bulk",
+    "w": 10,
+    "url": "http://partner:8080/bulk"
+   }
+  ]
+ }
+}

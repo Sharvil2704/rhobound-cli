@@ -1,0 +1,90 @@
+diff --git a/maze/app/internal/svc/rank/rank.go b/maze/app/internal/svc/rank/rank.go
+index 0fa633a..d975801 100644
+--- a/maze/app/internal/svc/rank/rank.go
++++ b/maze/app/internal/svc/rank/rank.go
+@@ -3,6 +3,7 @@ package rank
+ 
+ import (
+ 	"fmt"
++	"math"
+ 	"sort"
+ 	"sync/atomic"
+ 
+@@ -39,9 +40,76 @@ func Rerank(seed uint64) []int {
+ 	return idx
+ }
+ 
++// Features returns candidate c's 32 features for request seed (the values Rerank scores).
++func Features(seed uint64, c int) []float64 {
++	f := make([]float64, dims)
++	for d := range f {
++		f[d] = float64((seed+uint64(c*dims+d)*40503)%997) / 997
++	}
++	return f
++}
++
++// Diversify returns k of the 64 candidates chosen greedily by maximal marginal relevance.
++func Diversify(seed uint64, k int, lambda float64) []int {
++	k = min(max(k, 0), cands)
++	var feat [cands][]float64
++	var norm, rel [cands]float64
++	mx := 0.0
++	for c := range cands {
++		feat[c] = Features(seed, c)
++		s, nn := 0.0, 0.0
++		for d, x := range feat[c] {
++			s += weights[d] * x
++			nn += x * x
++		}
++		rel[c], norm[c] = s, math.Sqrt(nn)
++		mx = math.Max(mx, s)
++	}
++	for c := range rel {
++		rel[c] /= mx
++	}
++	var sim [cands]float64
++	var used [cands]bool
++	out := make([]int, 0, k)
++	for len(out) < k {
++		best, bv := -1, math.Inf(-1)
++		for c := range cands {
++			if used[c] {
++				continue
++			}
++			v := rel[c]
++			if len(out) > 0 {
++				v = lambda*rel[c] - (1-lambda)*sim[c]
++			}
++			if v > bv {
++				best, bv = c, v
++			}
++		}
++		used[best] = true
++		out = append(out, best)
++		for c := range cands {
++			if used[c] {
++				continue
++			}
++			dot := 0.0
++			for d := range dims {
++				dot += feat[c][d] * feat[best][d]
++			}
++			cs := 0.0
++			if norm[c] > 0 && norm[best] > 0 {
++				cs = dot / (norm[c] * norm[best])
++			}
++			if len(out) == 1 || cs > sim[c] {
++				sim[c] = cs
++			}
++		}
++	}
++	return out
++}
++
+ func init() {
+ 	rt.Register("rank.rerank", func(r *rt.Req) error {
+-		r.Out = fmt.Appendf(nil, "%v", Rerank(n.Add(1))[:10])
++		r.Out = fmt.Appendf(nil, "%v", Diversify(n.Add(1), 10, 0.7))
+ 		return nil
+ 	})
+ }

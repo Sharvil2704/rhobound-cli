@@ -65,6 +65,7 @@ const (
 	RuleUtilizationUpperBound = "utilization_after_upper_bound"
 	RuleMeanChange            = "mean_change" // rule 10
 	RuleRangeStraddles        = "range_straddles"
+	RuleRangeInverted         = "range_inverted" // rule 10: an entry's change range with lo above hi
 	RuleChangeUpperBound      = "change_upper_bound"
 	RuleUnmeasuredDelta       = "unmeasured_delta" // rule 11
 	RuleTransferUnvalidated   = "transfer_unvalidated"
@@ -81,8 +82,8 @@ const VariantBlockBandModel = "block_band_model"
 // and RuleThresholdUnderFloor.
 var RuleTokens = []string{RuleInputRefused, RuleBaseOutOfScope, RuleFitStale, RuleBaselineMoved, RuleModelMisfit,
 	RuleDoubtHolds, RuleBeyondValidated, RuleExtrapolatedLoad, RuleSaturates, RuleSaturationUpperBound,
-	RuleUtilizationAfter, RuleUtilizationUpperBound, RuleMeanChange, RuleRangeStraddles, RuleChangeUpperBound,
-	RuleUnmeasuredDelta, RuleTransferUnvalidated, RuleThresholdUnderFloor, RuleAdvisory}
+	RuleUtilizationAfter, RuleUtilizationUpperBound, RuleMeanChange, RuleRangeStraddles, RuleRangeInverted,
+	RuleChangeUpperBound, RuleUnmeasuredDelta, RuleTransferUnvalidated, RuleThresholdUnderFloor, RuleAdvisory}
 
 // ruleNumbers are the rows of every result, in order; ruleNames their names when they do not fire.
 var (
@@ -174,6 +175,10 @@ type Result struct {
 	// Rules are the 14 rows, 1 to 13 with 8b, in order.
 	Rules      []Rule
 	DecideWith []string
+	// ABScale is rule 10's measurement-limited straddle: how many times the A/B's visits would put the decisive entry's
+	// band at or under its threshold if the measured change holds (abScale); 0 when more measurement cannot decide it
+	// or the change is not measured by A/B alone. CI may run one longer A/B before it predicts (ab.sh preview).
+	ABScale float64
 	// Entries are rule 10's evaluation of each entry, in the report's order; nil for a refusal.
 	Entries []Entry
 	// Findings are the gate's own findings, sorted: fit.stale, load.beyond_validated, load.busiest_unknown,
@@ -597,6 +602,13 @@ func moved(row report.Row) bool {
 	return math.Abs(u.Lo-row.Util) > tol || math.Abs(u.Hi-row.Util) > tol
 }
 
+// raised reports whether the change raises the service's utilization (its after range's high end above it): the
+// engine takes such a service unbounded by the same test (report.Raises).
+func raised(row report.Row) bool {
+	u := row.UtilizationAfter
+	return u != nil && report.Raises(row.Util, u.Hi)
+}
+
 // saturated returns the services the change pushes past the utilization limit or to saturation.
 func (e *evaluator) saturated() []report.Row {
 	var out []report.Row
@@ -720,9 +732,14 @@ func bias(en report.Entry, rb report.ModelBand) (lo, hi float64) {
 	if en.ChangeMs == nil || en.BandMs == nil {
 		return 0, 0
 	}
-	lo = (en.ChangeMs.Lo - rb.Ms(en.ChangeMs.Lo, en.BeforeMs)) - en.BandMs.Lo
-	hi = en.BandMs.Hi - (en.ChangeMs.Hi + rb.Ms(en.ChangeMs.Hi, en.BeforeMs))
-	tol := 1e-12 * math.Max(1, en.BeforeMs)
+	return biasOf(*en.ChangeMs, *en.BandMs, en.BeforeMs, rb)
+}
+
+// biasOf is bias for a change range and the band the report widened it to: an entry's, or its workers_unbounded.
+func biasOf(ch, band change.Range, beforeMs float64, rb report.ModelBand) (lo, hi float64) {
+	lo = (ch.Lo - rb.Ms(ch.Lo, beforeMs)) - band.Lo
+	hi = band.Hi - (ch.Hi + rb.Ms(ch.Hi, beforeMs))
+	tol := 1e-12 * math.Max(1, beforeMs)
 	if !(lo > tol) {
 		lo = 0
 	}
@@ -735,7 +752,9 @@ func bias(en report.Entry, rb report.ModelBand) (lo, hi float64) {
 // meanChange is rule 10: the band of each entry's change against its threshold (ARCHITECTURE.md 6.4). The row names
 // the decisive entry: the worst outcome, then the band's highest end above its threshold. Under the policy's
 // block_band "model" the pass test still reads the full band, and the block test the band without the biased
-// constructs' widening (Entry.BlockBandMs); the row names the variant.
+// constructs' widening (Entry.BlockBandMs); the row names the variant. When the change raises a service whose workers
+// are a trusted lower bound, a block is inconclusive (change_upper_bound) at each entry whose change with that
+// queueing at its least would not block (unboundedBlocks); an entry whose change would still block keeps it.
 func (e *evaluator) meanChange() {
 	model := e.p.BlockBand == BlockBandModel
 	if model {
@@ -765,6 +784,10 @@ func (e *evaluator) meanChange() {
 			if e.row("8").Effect != Block && e.row("8b").Effect == Inconclusive {
 				ev.Effect = Inconclusive
 			}
+		} else if !(ch.Lo <= ch.Hi) {
+			// an inverted range: the pass test would read its high end alone and pass a change whose low end is over
+			// the threshold (lean/Rbproofs/Gate.lean, inverted_range_passes). Nothing upstream refuses one.
+			ev.ChangeMs, ev.Effect = ch, Inconclusive
 		} else {
 			bl, bh := bias(en, rb)
 			band, m := BandOf(mb, *ch, en.BeforeMs, bl, bh)
@@ -805,40 +828,148 @@ func (e *evaluator) meanChange() {
 	case Pass:
 		r.Value = num(ev.BandMs.Hi)
 	case Block:
+		if held := e.lowerBoundMoved(); len(held) > 0 && ev.BandMs != nil {
+			// the blocks may rest on lower-bound workers: an entry keeps its block only when its change with their
+			// queueing at its least blocks too, and the row names the decisive entry of those that keep it
+			keep, keepMargin := -1, 0.0
+			for i := range e.res.Entries {
+				x := &e.res.Entries[i]
+				if x.Effect != Block || x.BandMs == nil {
+					continue
+				}
+				if !unboundedBlocks(e.r.Entries[i], held, mb, rb, model, x.ThresholdMs) {
+					x.Effect = Inconclusive
+				} else if m := x.BandMs.Hi - x.ThresholdMs; keep < 0 || m > keepMargin {
+					keep, keepMargin = i, m
+				}
+			}
+			if keep < 0 {
+				r.Rule, r.Effect = RuleChangeUpperBound, Inconclusive
+				e.decide("workers:" + e.safe(held[0]))
+			} else {
+				ev = e.res.Entries[keep]
+				r.Entry, r.Threshold = e.safe(ev.Name), num(ev.ThresholdMs)
+			}
+		}
 		if ev.BlockBandMs != nil {
 			r.Value = num(ev.BlockBandMs.Lo)
 		} else if ev.BandMs != nil {
 			r.Value = num(ev.BandMs.Lo)
 		}
-		if svc, ok := e.lowerBoundMoved(); ok && ev.BandMs != nil {
-			r.Rule, r.Effect = RuleChangeUpperBound, Inconclusive
-			for i := range e.res.Entries {
-				if e.res.Entries[i].Effect == Block && e.res.Entries[i].BandMs != nil {
-					e.res.Entries[i].Effect = Inconclusive
-				}
-			}
-			e.decide("workers:" + e.safe(svc))
-		}
 	case Inconclusive:
+		if ev.BandMs == nil && ev.ChangeMs != nil && !(ev.ChangeMs.Lo <= ev.ChangeMs.Hi) {
+			// no band was formed: there is nothing to straddle, and no measurement line would decide it
+			r.Rule, r.Value = RuleRangeInverted, num(ev.ChangeMs.Lo)
+			return
+		}
 		r.Rule = RuleRangeStraddles
 		if ev.BandMs != nil {
 			r.Value = num(ev.BandMs.Hi)
 		}
+		k, ok := 0.0, false
+		if ev.ChangeMs != nil && e.measuredOnly() {
+			bl, bh := bias(e.r.Entries[worst], rb)
+			k, ok = abScale(*ev.ChangeMs, mb, ev.BeforeMs, bl, bh, ev.ThresholdMs)
+		}
+		if ok {
+			e.res.ABScale = math.Ceil(k*10) / 10
+		}
 		for _, svc := range e.changedServices() {
+			if ok {
+				// the change is measured, and its band straddles only because the A/B's standard errors are wide: the
+				// measurement that decides it is a longer A/B, not another change (experiment 2's T7: four clean changes held)
+				e.decide(fmt.Sprintf("a longer A/B of %s: about %s times this one's visits (a standard error falls with the "+
+					"square root of the visits) puts the band at %s at or under %s ms if the measured change holds",
+					e.safe(svc), strconv.FormatFloat(e.res.ABScale, 'f', 1, 64), e.safe(ev.Name), fmtMs(ev.ThresholdMs)))
+				continue
+			}
 			e.decide(e.measureLine(svc, ev))
 		}
 	}
 }
 
-// lowerBoundMoved returns a service the change moves whose worker count is a trusted lower bound: the predicted
-// change is then an over-estimate, and a block at rule 10 is inconclusive instead.
-func (e *evaluator) lowerBoundMoved() (string, bool) {
-	for _, row := range e.services() {
-		if moved(row) && e.lowerBound(row) {
-			return row.Name, true
+// measuredOnly reports whether every change item is measured by an A/B (measured-ab, or derived from its record):
+// each item's range is then its delta +-2 standard errors, which a longer A/B narrows.
+func (e *evaluator) measuredOnly() bool {
+	if len(e.r.Items) == 0 {
+		return false
+	}
+	for _, it := range e.r.Items {
+		if it.Label != change.LabelMeasuredAB && it.Label != change.LabelDerived {
+			return false
 		}
 	}
-	return "", false
+	return true
+}
+
+// abScale returns how many times the A/B's visits would put an entry's band at or under t if the measured change
+// holds: the change range's half-width falls with the square root of the visits (each measured item is its delta
+// +-2 standard errors), around the same centre, and the model band and bias widen it as BandOf does. ok is false for
+// a range without width, and when even a zero-width range would not pass: the centre and the model band are then over
+// t, and more measurement cannot decide it.
+func abScale(ch change.Range, mb report.ModelBand, beforeMs, bl, bh, t float64) (float64, bool) {
+	c, h := (ch.Lo+ch.Hi)/2, (ch.Hi-ch.Lo)/2
+	pass := func(w float64) bool {
+		b, _ := BandOf(mb, change.Range{Lo: c - w, Hi: c + w}, beforeMs, bl, bh)
+		return b.Hi <= t
+	}
+	if !(h > 0) || !pass(0) {
+		return 0, false
+	}
+	lo, hi := 0.0, h
+	for range 64 {
+		m := (lo + hi) / 2
+		if pass(m) {
+			lo = m
+		} else {
+			hi = m
+		}
+	}
+	if !(lo > 0) {
+		return 0, false
+	}
+	return (h / lo) * (h / lo), true
+}
+
+// lowerBoundMoved returns the services the change raises whose worker count is a trusted lower bound, in the rows'
+// order: the predicted change is then an over-estimate, and a block at rule 10 that rests on their queueing is
+// inconclusive instead (unboundedBlocks). A service the change only lowers does not count: at a lower bound its
+// improvement is over-stated, so the entry's true change is at or above the predicted one and the block stands
+// (ARCHITECTURE.md 6.3: never for a claimed improvement; lean/Rbproofs/Lanes/GateRules.lean, improvement_keeps_block).
+func (e *evaluator) lowerBoundMoved() []string {
+	var out []string
+	for _, row := range e.services() {
+		if raised(row) && e.lowerBound(row) {
+			out = append(out, row.Name)
+		}
+	}
+	return out
+}
+
+// unboundedBlocks reports whether an entry's block stands with the queueing of the lower-bound services the change
+// raises at its least: the entry's workers_unbounded change range (report.Unbounded), widened as the block test widens
+// its change range (by the model band at the low end, then, under the default block_band, by the biased constructs'
+// widening on that side), still above the threshold. The block then does not rest on them: however many workers they
+// have, the entry's change is over the threshold (GateRules.lean, GR-1: a negligible raise of a lower-bound service
+// no longer turns a block that rests elsewhere into inconclusive). It is false for an entry without that range, and
+// for one whose range leaves out a service of held: its block may rest on that service's queueing, and is
+// inconclusive as before.
+func unboundedBlocks(en report.Entry, held []string, mb, rb report.ModelBand, model bool, t float64) bool {
+	u := en.Unbounded
+	if u == nil || !(u.ChangeMs.Lo <= u.ChangeMs.Hi) {
+		return false
+	}
+	for _, svc := range held {
+		if !slices.Contains(u.Services, svc) {
+			return false
+		}
+	}
+	bl := 0.0
+	if !model {
+		bl, _ = biasOf(u.ChangeMs, u.BandMs, en.BeforeMs, rb)
+	}
+	band, _ := BandOf(mb, u.ChangeMs, en.BeforeMs, bl, 0)
+	return band.Lo > t
 }
 
 // changedServices are the services the change items name, in item order, without repeats.

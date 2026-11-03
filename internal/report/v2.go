@@ -156,6 +156,35 @@ type Entry struct {
 	// Biased are the constructs with a documented, directional error on the path to this entry (ARCHITECTURE.md
 	// 4.5, item 3). Never nil.
 	Biased []Biased `json:"biased"`
+	// Unbounded is the entry's change with the queueing of the lower-bound services the change raises at its least
+	// (ARCHITECTURE.md 6.3, rule 10). It is nil (omitted) when the change raises no service whose worker count is a
+	// lower bound, when ChangeMs is nil, and when the solve with those services unbounded has no finite mean.
+	Unbounded *Unbounded `json:"workers_unbounded,omitempty"`
+}
+
+// Unbounded is an entry's change with every service whose worker count is a lower bound (Row.WorkersLower) and whose
+// utilization a corner raises (Raises) given more workers: unbounded (a pure delay, its service time kept and its queue
+// gone) and at each count of a ladder above the bound (the bound plus 1 to 4, and 2, 4 and 8 times it). At each corner
+// ChangeMs takes the least of the predicted change and the changes so taken, and is the range of that over the
+// corners. The least over more workers, not the unbounded change alone: under the default model a raise also smooths
+// the service's departures, which shortens its busy children's queues, so the change is not monotone in the workers
+// and its least can lie at a finite count. The ladder is a finite search; the least between its counts is assumed
+// not far below. A corner that lowers such a service keeps its predicted queueing: there the improvement is
+// over-stated, the least change. The gate reads it to keep a block that does not rest on lower-bound workers (rule 10).
+type Unbounded struct {
+	// Services are the services some corner takes unbounded, in the rows' order.
+	Services []string `json:"services"`
+	// ChangeMs is never above the entry's ChangeMs, at either end.
+	ChangeMs change.Range `json:"change_ms"`
+	// BandMs is ChangeMs widened as Entry.BandMs widens Entry.ChangeMs: by the model band at each end's change, then
+	// by each biased construct on its side.
+	BandMs change.Range `json:"band_ms"`
+}
+
+// Raises reports whether a utilization after a change is above the one before it, beyond rounding: the test by which
+// the gate holds a service against the change (rules 9 and 10) and the engine takes a lower-bound service unbounded.
+func Raises(before, after float64) bool {
+	return after > before+1e-9*math.Max(1, math.Abs(before))
 }
 
 // Biased is one construct with a documented, directional model error on an entry's path.

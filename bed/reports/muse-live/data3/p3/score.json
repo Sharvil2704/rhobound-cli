@@ -1,0 +1,1196 @@
+{
+ "schema": "rbd.p3-score/v1",
+ "threshold_ms": 4.0,
+ "rows": [
+  {
+   "row": "T6-R",
+   "services": [
+    "rank"
+   ],
+   "n": 1,
+   "verdict": "pass",
+   "gate_verdicts": [
+    "pass"
+   ],
+   "verdict_true": true,
+   "truth": {
+    "regressed": false,
+    "production_ok": true,
+    "worst_entry": "partner",
+    "worst_ms": 0.96,
+    "entries": {
+     "checkout": 0.24,
+     "mobile": 0.51,
+     "partner": 0.96,
+     "search-api": 0.57,
+     "web": -0.11
+    }
+   },
+   "magnitude": {
+    "inside": 5,
+    "of": 5,
+    "entries": [
+     {
+      "entry": "checkout",
+      "truth_ms": 0.24,
+      "centre_ms": 0.0,
+      "band": [
+       -2.19,
+       2.19
+      ],
+      "inside": true
+     },
+     {
+      "entry": "mobile",
+      "truth_ms": 0.51,
+      "centre_ms": 0.12,
+      "band": [
+       -2.6,
+       2.92
+      ],
+      "inside": true
+     },
+     {
+      "entry": "partner",
+      "truth_ms": 0.96,
+      "centre_ms": 0.0,
+      "band": [
+       -1.4,
+       1.4
+      ],
+      "inside": true
+     },
+     {
+      "entry": "search-api",
+      "truth_ms": 0.57,
+      "centre_ms": 0.12,
+      "band": [
+       -2.33,
+       2.67
+      ],
+      "inside": true
+     },
+     {
+      "entry": "web",
+      "truth_ms": -0.11,
+      "centre_ms": 0.0,
+      "band": [
+       -1.3,
+       1.3
+      ],
+      "inside": true
+     }
+    ]
+   },
+   "R": {
+    "ci_steps": [
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 446,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 2,
+      "conclusion": "success"
+     }
+    ],
+    "ci_s": 448,
+    "lead_s": 449,
+    "occupancy_s": 1,
+    "note": "deployed on the gate's pass",
+    "attribution": null
+   },
+   "B": {
+    "phases_s": {
+     "b0": 371,
+     "rollout": 1,
+     "warm": 181,
+     "c": 372
+    },
+    "lead_s": 925,
+    "lead_s_without_b0": 554,
+    "occupancy_s": 925,
+    "exposure": null,
+    "attribution": null
+   },
+   "S": {
+    "measured": false,
+    "lead_s": 925,
+    "stop_stage": null,
+    "note": "computed: B0 + n stages of this change's B phases",
+    "occupancy_s": 925
+   },
+   "saving_s": {
+    "vs_B": 476,
+    "vs_B_without_b0": 105,
+    "vs_S": 476,
+    "occupancy_vs_B": 924
+   }
+  },
+  {
+   "row": "T8-R",
+   "services": [
+    "pricing"
+   ],
+   "n": 1,
+   "verdict": "pass",
+   "gate_verdicts": [
+    "pass"
+   ],
+   "verdict_true": true,
+   "truth": {
+    "regressed": false,
+    "production_ok": true,
+    "worst_entry": "web",
+    "worst_ms": 0.4,
+    "entries": {
+     "checkout": -11.05,
+     "mobile": 0.4,
+     "partner": -22.35,
+     "search-api": -0.39,
+     "web": 0.4
+    }
+   },
+   "magnitude": {
+    "inside": 5,
+    "of": 5,
+    "entries": [
+     {
+      "entry": "checkout",
+      "truth_ms": -11.05,
+      "centre_ms": -9.62,
+      "band": [
+       -16.56,
+       -3.91
+      ],
+      "inside": true
+     },
+     {
+      "entry": "mobile",
+      "truth_ms": 0.4,
+      "centre_ms": 0.0,
+      "band": [
+       -1.65,
+       1.65
+      ],
+      "inside": true
+     },
+     {
+      "entry": "partner",
+      "truth_ms": -22.35,
+      "centre_ms": -18.19,
+      "band": [
+       -28.72,
+       -8.55
+      ],
+      "inside": true
+     },
+     {
+      "entry": "search-api",
+      "truth_ms": -0.39,
+      "centre_ms": 0.0,
+      "band": [
+       -1.32,
+       1.32
+      ],
+      "inside": true
+     },
+     {
+      "entry": "web",
+      "truth_ms": 0.4,
+      "centre_ms": 0.0,
+      "band": [
+       -1.3,
+       1.3
+      ],
+      "inside": true
+     }
+    ]
+   },
+   "R": {
+    "ci_steps": [
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 452,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 2,
+      "conclusion": "success"
+     }
+    ],
+    "ci_s": 454,
+    "lead_s": 455,
+    "occupancy_s": 1,
+    "note": "deployed on the gate's pass",
+    "attribution": null
+   },
+   "B": {
+    "phases_s": {
+     "b0": 374,
+     "rollout": 1,
+     "warm": 180,
+     "c": 372
+    },
+    "lead_s": 927,
+    "lead_s_without_b0": 553,
+    "occupancy_s": 927,
+    "exposure": null,
+    "attribution": null
+   },
+   "S": {
+    "measured": false,
+    "lead_s": 927,
+    "stop_stage": null,
+    "note": "computed: B0 + n stages of this change's B phases",
+    "occupancy_s": 927
+   },
+   "saving_s": {
+    "vs_B": 472,
+    "vs_B_without_b0": 98,
+    "vs_S": 472,
+    "occupancy_vs_B": 926
+   }
+  },
+  {
+   "row": "T7-R-r3",
+   "services": [
+    "fraud"
+   ],
+   "n": 1,
+   "verdict": "pass",
+   "gate_verdicts": [
+    "pass"
+   ],
+   "verdict_true": true,
+   "truth": {
+    "regressed": false,
+    "production_ok": true,
+    "worst_entry": "partner",
+    "worst_ms": 1.38,
+    "entries": {
+     "checkout": 1.11,
+     "mobile": 0.51,
+     "partner": 1.38,
+     "search-api": 0.17,
+     "web": 0.85
+    }
+   },
+   "magnitude": {
+    "inside": 5,
+    "of": 5,
+    "entries": [
+     {
+      "entry": "checkout",
+      "truth_ms": 1.11,
+      "centre_ms": -0.54,
+      "band": [
+       -4.86,
+       3.37
+      ],
+      "inside": true
+     },
+     {
+      "entry": "mobile",
+      "truth_ms": 0.51,
+      "centre_ms": 0.0,
+      "band": [
+       -1.65,
+       1.65
+      ],
+      "inside": true
+     },
+     {
+      "entry": "partner",
+      "truth_ms": 1.38,
+      "centre_ms": 0.0,
+      "band": [
+       -1.4,
+       1.4
+      ],
+      "inside": true
+     },
+     {
+      "entry": "search-api",
+      "truth_ms": 0.17,
+      "centre_ms": 0.0,
+      "band": [
+       -1.32,
+       1.32
+      ],
+      "inside": true
+     },
+     {
+      "entry": "web",
+      "truth_ms": 0.85,
+      "centre_ms": 0.0,
+      "band": [
+       -1.3,
+       1.3
+      ],
+      "inside": true
+     }
+    ]
+   },
+   "R": {
+    "ci_steps": [
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 454,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1491,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 3,
+      "conclusion": "success"
+     }
+    ],
+    "ci_s": 1948,
+    "lead_s": 1950,
+    "occupancy_s": 2,
+    "note": "deployed on the gate's pass",
+    "attribution": null
+   },
+   "B": {
+    "phases_s": {
+     "b0": 373,
+     "rollout": 2,
+     "warm": 180,
+     "c": 372
+    },
+    "lead_s": 927,
+    "lead_s_without_b0": 554,
+    "occupancy_s": 927,
+    "exposure": null,
+    "attribution": null
+   },
+   "S": {
+    "measured": false,
+    "lead_s": 927,
+    "stop_stage": null,
+    "note": "computed: B0 + n stages of this change's B phases",
+    "occupancy_s": 927
+   },
+   "saving_s": {
+    "vs_B": -1023,
+    "vs_B_without_b0": -1396,
+    "vs_S": -1023,
+    "occupancy_vs_B": 925
+   }
+  },
+  {
+   "row": "T9-R",
+   "services": [
+    "media"
+   ],
+   "n": 1,
+   "verdict": "pass",
+   "gate_verdicts": [
+    "pass"
+   ],
+   "verdict_true": true,
+   "truth": {
+    "regressed": false,
+    "production_ok": true,
+    "worst_entry": "checkout",
+    "worst_ms": 2.05,
+    "entries": {
+     "checkout": 2.05,
+     "mobile": 0.78,
+     "partner": 0.22,
+     "search-api": 0.25,
+     "web": 0.37
+    }
+   },
+   "magnitude": {
+    "inside": 5,
+    "of": 5,
+    "entries": [
+     {
+      "entry": "checkout",
+      "truth_ms": 2.05,
+      "centre_ms": 0.0,
+      "band": [
+       -2.19,
+       2.19
+      ],
+      "inside": true
+     },
+     {
+      "entry": "mobile",
+      "truth_ms": 0.78,
+      "centre_ms": 0.34,
+      "band": [
+       -1.65,
+       2.57
+      ],
+      "inside": true
+     },
+     {
+      "entry": "partner",
+      "truth_ms": 0.22,
+      "centre_ms": 0.0,
+      "band": [
+       -1.4,
+       1.4
+      ],
+      "inside": true
+     },
+     {
+      "entry": "search-api",
+      "truth_ms": 0.25,
+      "centre_ms": 0.0,
+      "band": [
+       -1.32,
+       1.32
+      ],
+      "inside": true
+     },
+     {
+      "entry": "web",
+      "truth_ms": 0.37,
+      "centre_ms": 0.31,
+      "band": [
+       -1.3,
+       2.12
+      ],
+      "inside": true
+     }
+    ]
+   },
+   "R": {
+    "ci_steps": [
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 473,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 2,
+      "conclusion": "success"
+     }
+    ],
+    "ci_s": 476,
+    "lead_s": 477,
+    "occupancy_s": 1,
+    "note": "deployed on the gate's pass",
+    "attribution": null
+   },
+   "B": {
+    "phases_s": {
+     "b0": 373,
+     "rollout": 1,
+     "warm": 180,
+     "c": 374
+    },
+    "lead_s": 928,
+    "lead_s_without_b0": 555,
+    "occupancy_s": 928,
+    "exposure": null,
+    "attribution": null
+   },
+   "S": {
+    "measured": false,
+    "lead_s": 928,
+    "stop_stage": null,
+    "note": "computed: B0 + n stages of this change's B phases",
+    "occupancy_s": 928
+   },
+   "saving_s": {
+    "vs_B": 451,
+    "vs_B_without_b0": 78,
+    "vs_S": 451,
+    "occupancy_vs_B": 927
+   }
+  },
+  {
+   "row": "m3",
+   "services": [
+    "rank",
+    "pricing",
+    "media"
+   ],
+   "n": 3,
+   "verdict": "pass",
+   "gate_verdicts": [
+    "pass",
+    "pass",
+    "pass"
+   ],
+   "verdict_true": true,
+   "truth": {
+    "regressed": false,
+    "production_ok": true,
+    "worst_entry": "mobile",
+    "worst_ms": 1.35,
+    "entries": {
+     "checkout": -9.15,
+     "mobile": 1.35,
+     "partner": -17.54,
+     "search-api": -0.51,
+     "web": -0.2
+    }
+   },
+   "magnitude": {
+    "inside": 5,
+    "of": 5,
+    "entries": [
+     {
+      "entry": "checkout",
+      "truth_ms": -9.15,
+      "centre_ms": -9.91,
+      "band": [
+       -21.31,
+       0.24
+      ],
+      "inside": true
+     },
+     {
+      "entry": "mobile",
+      "truth_ms": 1.35,
+      "centre_ms": 1.59,
+      "band": [
+       -4.92,
+       8.7
+      ],
+      "inside": true
+     },
+     {
+      "entry": "partner",
+      "truth_ms": -17.54,
+      "centre_ms": -18.78,
+      "band": [
+       -32.34,
+       -6.11
+      ],
+      "inside": true
+     },
+     {
+      "entry": "search-api",
+      "truth_ms": -0.51,
+      "centre_ms": 0.72,
+      "band": [
+       -4.06,
+       6.18
+      ],
+      "inside": true
+     },
+     {
+      "entry": "web",
+      "truth_ms": -0.2,
+      "centre_ms": 0.78,
+      "band": [
+       -3.78,
+       5.38
+      ],
+      "inside": true
+     }
+    ]
+   },
+   "R": {
+    "ci_steps": [
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 459,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 3,
+      "conclusion": "success"
+     },
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 467,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 2,
+      "conclusion": "success"
+     },
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 474,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 2,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 2,
+      "conclusion": "success"
+     }
+    ],
+    "ci_s": 1412,
+    "lead_s": 1415,
+    "occupancy_s": 3,
+    "note": "deployed on the gate's pass",
+    "attribution": null
+   },
+   "B": {
+    "phases_s": {
+     "b0": 375,
+     "rollout": 3,
+     "warm": 181,
+     "c": 373
+    },
+    "lead_s": 932,
+    "lead_s_without_b0": 557,
+    "occupancy_s": 932,
+    "exposure": null,
+    "attribution": null
+   },
+   "S": {
+    "measured": true,
+    "lead_s": 2041,
+    "b0_s": 372,
+    "stages": [
+     {
+      "k": 1,
+      "service": "rank",
+      "rollout": 2,
+      "warm": 180,
+      "c": 375,
+      "regressed": false,
+      "worst": [
+       "checkout",
+       1.7026
+      ]
+     },
+     {
+      "k": 2,
+      "service": "pricing",
+      "rollout": 2,
+      "warm": 180,
+      "c": 373,
+      "regressed": false,
+      "worst": [
+       "search-api",
+       1.738
+      ]
+     },
+     {
+      "k": 3,
+      "service": "media",
+      "rollout": 2,
+      "warm": 180,
+      "c": 375,
+      "regressed": false,
+      "worst": [
+       "mobile",
+       2.1575
+      ]
+     }
+    ],
+    "stop_stage": null,
+    "culprit": null,
+    "order": [
+     "rank",
+     "pricing",
+     "media"
+    ],
+    "occupancy_s": 2041
+   },
+   "saving_s": {
+    "vs_B": -483,
+    "vs_B_without_b0": -858,
+    "vs_S": 626,
+    "occupancy_vs_B": 929
+   }
+  },
+  {
+   "row": "m3n",
+   "services": [
+    "rank",
+    "pricing",
+    "media"
+   ],
+   "n": 3,
+   "verdict": "block",
+   "gate_verdicts": [
+    "pass",
+    "pass",
+    "block"
+   ],
+   "verdict_true": true,
+   "truth": {
+    "regressed": true,
+    "production_ok": false,
+    "worst_entry": "web",
+    "worst_ms": 38.36,
+    "entries": {
+     "checkout": -8.31,
+     "mobile": 38.01,
+     "partner": -17.54,
+     "search-api": -0.33,
+     "web": 38.36
+    }
+   },
+   "magnitude": {
+    "inside": 4,
+    "of": 5,
+    "entries": [
+     {
+      "entry": "checkout",
+      "truth_ms": -8.31,
+      "centre_ms": -9.91,
+      "band": [
+       -21.31,
+       0.24
+      ],
+      "inside": true
+     },
+     {
+      "entry": "mobile",
+      "truth_ms": 38.01,
+      "centre_ms": 23.84,
+      "band": [
+       6.83,
+       42.72
+      ],
+      "inside": true
+     },
+     {
+      "entry": "partner",
+      "truth_ms": -17.54,
+      "centre_ms": -18.78,
+      "band": [
+       -32.34,
+       -6.11
+      ],
+      "inside": true
+     },
+     {
+      "entry": "search-api",
+      "truth_ms": -0.33,
+      "centre_ms": 0.72,
+      "band": [
+       -4.06,
+       6.18
+      ],
+      "inside": true
+     },
+     {
+      "entry": "web",
+      "truth_ms": 38.36,
+      "centre_ms": 21.99,
+      "band": [
+       7.1,
+       38.13
+      ],
+      "inside": false
+     }
+    ]
+   },
+   "R": {
+    "ci_steps": [
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 459,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 3,
+      "conclusion": "success"
+     },
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 467,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 2,
+      "conclusion": "success"
+     },
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 487,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 2,
+      "conclusion": "success"
+     }
+    ],
+    "ci_s": 1424,
+    "lead_s": 1424,
+    "occupancy_s": 0,
+    "note": "rejected before production",
+    "attribution": "per service A/B"
+   },
+   "B": {
+    "phases_s": {
+     "b0": 373,
+     "rollout": 2,
+     "warm": 180,
+     "c": 375
+    },
+    "lead_s": 930,
+    "lead_s_without_b0": 557,
+    "occupancy_s": 930,
+    "exposure": {
+     "minutes": 9.2,
+     "worst_entry": "web",
+     "worst_ms": 38.36,
+     "over_ms": 34.36
+    },
+    "attribution": "none (the services were deployed together)"
+   },
+   "S": {
+    "measured": true,
+    "lead_s": 2044,
+    "b0_s": 373,
+    "stages": [
+     {
+      "k": 1,
+      "service": "rank",
+      "rollout": 1,
+      "warm": 180,
+      "c": 374,
+      "regressed": false,
+      "worst": [
+       "mobile",
+       1.1827
+      ]
+     },
+     {
+      "k": 2,
+      "service": "pricing",
+      "rollout": 1,
+      "warm": 181,
+      "c": 375,
+      "regressed": false,
+      "worst": [
+       "mobile",
+       1.4248
+      ]
+     },
+     {
+      "k": 3,
+      "service": "media",
+      "rollout": 1,
+      "warm": 181,
+      "c": 377,
+      "regressed": true,
+      "worst": [
+       "web",
+       35.2023
+      ]
+     }
+    ],
+    "stop_stage": 3,
+    "culprit": "media",
+    "order": [
+     "rank",
+     "pricing",
+     "media"
+    ],
+    "exposure": {
+     "minutes": 9.3,
+     "worst_entry": "web",
+     "worst_ms": 35.2,
+     "over_ms": 31.2
+    },
+    "occupancy_s": 2044
+   },
+   "saving_s": {
+    "vs_B": -494,
+    "vs_B_without_b0": -867,
+    "vs_S": 620,
+    "occupancy_vs_B": 930
+   }
+  },
+  {
+   "row": "m4",
+   "services": [
+    "rank",
+    "pricing",
+    "media",
+    "fraud"
+   ],
+   "n": 4,
+   "verdict": "inconclusive",
+   "gate_verdicts": [
+    "pass",
+    "pass",
+    "pass",
+    "inconclusive"
+   ],
+   "verdict_true": null,
+   "truth": {
+    "regressed": false,
+    "production_ok": true,
+    "worst_entry": "mobile",
+    "worst_ms": 1.56,
+    "entries": {
+     "checkout": -10.26,
+     "mobile": 1.56,
+     "partner": -17.77,
+     "search-api": -1.01,
+     "web": 1.16
+    }
+   },
+   "magnitude": {
+    "inside": 5,
+    "of": 5,
+    "entries": [
+     {
+      "entry": "checkout",
+      "truth_ms": -10.26,
+      "centre_ms": -9.25,
+      "band": [
+       -26.45,
+       7.21
+      ],
+      "inside": true
+     },
+     {
+      "entry": "mobile",
+      "truth_ms": 1.56,
+      "centre_ms": 1.59,
+      "band": [
+       -6.57,
+       10.35
+      ],
+      "inside": true
+     },
+     {
+      "entry": "partner",
+      "truth_ms": -17.77,
+      "centre_ms": -18.78,
+      "band": [
+       -33.74,
+       -4.7
+      ],
+      "inside": true
+     },
+     {
+      "entry": "search-api",
+      "truth_ms": -1.01,
+      "centre_ms": 0.72,
+      "band": [
+       -5.39,
+       7.5
+      ],
+      "inside": true
+     },
+     {
+      "entry": "web",
+      "truth_ms": 1.16,
+      "centre_ms": 0.78,
+      "band": [
+       -5.08,
+       6.69
+      ],
+      "inside": true
+     }
+    ]
+   },
+   "R": {
+    "ci_steps": [
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 459,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 3,
+      "conclusion": "success"
+     },
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 467,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 2,
+      "conclusion": "success"
+     },
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 474,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 2,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 2,
+      "conclusion": "success"
+     },
+     {
+      "name": "A/B in the cluster, one per listed service (production image vs candidate)",
+      "seconds": 446,
+      "conclusion": "success"
+     },
+     {
+      "name": "a longer A/B when the gate's preview says more measurement would decide it (rule 10's ab_scale)",
+      "seconds": 1,
+      "conclusion": "success"
+     },
+     {
+      "name": "predict and gate",
+      "seconds": 0,
+      "conclusion": "success"
+     },
+     {
+      "name": "sign the verdict (cosign + KMS) and write the ledger",
+      "seconds": 3,
+      "conclusion": "success"
+     }
+    ],
+    "ci_s": 1862,
+    "lead_s": 2792,
+    "occupancy_s": 930,
+    "note": "inconclusive: the gate, then B",
+    "attribution": null
+   },
+   "B": {
+    "phases_s": {
+     "b0": 374,
+     "rollout": 1,
+     "warm": 180,
+     "c": 375
+    },
+    "lead_s": 930,
+    "lead_s_without_b0": 556,
+    "occupancy_s": 930,
+    "exposure": null,
+    "attribution": null
+   },
+   "S": {
+    "measured": false,
+    "lead_s": 2598,
+    "stop_stage": null,
+    "note": "computed: B0 + n stages of this change's B phases",
+    "occupancy_s": 2598
+   },
+   "saving_s": null
+  }
+ ]
+}

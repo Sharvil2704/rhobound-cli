@@ -62,14 +62,26 @@ type wireService struct {
 	Glue       Float      `json:"glue"`
 	GlueCS2    Float      `json:"glue_cs2"`
 	Shares     []Float    `json:"shares"`
+	// Routes and RouteQ are omitted when empty, as wireStats.Routes: a topology without routed services keeps its
+	// bytes.
+	Routes []wireTopoRoute `json:"routes,omitempty"`
+}
+
+type wireTopoRoute struct {
+	Name  string  `json:"name"`
+	Share Float   `json:"share"`
+	S     Float   `json:"s"`
+	CS2   Float   `json:"cs2"`
+	P     []Float `json:"p"`
 }
 
 type wireCall struct {
-	Child  int   `json:"child"`
-	P      Float `json:"p"`
-	Async  bool  `json:"async"`
-	Hop    Float `json:"hop"`
-	HasHop bool  `json:"has_hop"`
+	Child  int     `json:"child"`
+	P      Float   `json:"p"`
+	Async  bool    `json:"async"`
+	Hop    Float   `json:"hop"`
+	HasHop bool    `json:"has_hop"`
+	RouteQ []Float `json:"route_q,omitempty"`
 }
 
 type wireStats struct {
@@ -109,6 +121,23 @@ type wireStats struct {
 	PodShares           []wirePodShare     `json:"pod_shares"`
 	SplitP              *Float             `json:"split_p"`
 	UnevenSplit         bool               `json:"uneven_split"`
+	// Routes is the one key the mirror omits when it is empty: a service with one route has none, and a record of a
+	// capture whose services each have one route keeps the bytes (and the digest) it had before routes were read.
+	Routes []wireRoute `json:"routes,omitempty"`
+}
+
+type wireRoute struct {
+	Route   string            `json:"route"`
+	Visits  int64             `json:"visits"`
+	Share   Float             `json:"share"`
+	OwnMs   Float             `json:"own_ms"`
+	OwnCS2  Float             `json:"own_cs2"`
+	Callers []wireRouteCaller `json:"callers"`
+}
+
+type wireRouteCaller struct {
+	Caller   string `json:"caller"`
+	PerVisit Float  `json:"per_visit"`
 }
 
 type wireVariableCall struct {
@@ -172,8 +201,13 @@ func toWire(inf *infer.Inferred) *wireInferred {
 		if s.Calls != nil {
 			ws.Calls = make([]wireCall, len(s.Calls))
 			for j, c := range s.Calls {
-				ws.Calls[j] = wireCall{Child: c.Child, P: Float(c.P), Async: c.Async, Hop: Float(c.Hop), HasHop: c.HasHop}
+				ws.Calls[j] = wireCall{Child: c.Child, P: Float(c.P), Async: c.Async, Hop: Float(c.Hop), HasHop: c.HasHop,
+					RouteQ: floats(c.RouteQ)}
 			}
+		}
+		for _, r := range s.Routes {
+			ws.Routes = append(ws.Routes, wireTopoRoute{Name: r.Name, Share: Float(r.Share), S: Float(r.S), CS2: Float(r.CS2),
+				P: floats(r.P)})
 		}
 		wt.Services[i] = ws
 	}
@@ -223,6 +257,14 @@ func toWire(inf *infer.Inferred) *wireInferred {
 		if st.SplitP != nil {
 			p := Float(*st.SplitP)
 			ws.SplitP = &p
+		}
+		for _, r := range st.Routes {
+			wr := wireRoute{Route: r.Route, Visits: r.Visits, Share: Float(r.Share), OwnMs: Float(r.OwnMs),
+				OwnCS2: Float(r.OwnCS2), Callers: make([]wireRouteCaller, len(r.Callers))}
+			for j, c := range r.Callers {
+				wr.Callers[j] = wireRouteCaller{Caller: c.Caller, PerVisit: Float(c.PerVisit)}
+			}
+			ws.Routes = append(ws.Routes, wr)
 		}
 		w.Stats[i] = ws
 	}
@@ -382,8 +424,13 @@ func fromWire(w *wireInferred) (*infer.Inferred, error) {
 		if ws.Calls != nil {
 			s.Calls = make([]model.Call, len(ws.Calls))
 			for j, c := range ws.Calls {
-				s.Calls[j] = model.Call{Child: c.Child, P: float64(c.P), Async: c.Async, Hop: float64(c.Hop), HasHop: c.HasHop}
+				s.Calls[j] = model.Call{Child: c.Child, P: float64(c.P), Async: c.Async, Hop: float64(c.Hop), HasHop: c.HasHop,
+					RouteQ: unfloats(c.RouteQ)}
 			}
+		}
+		for _, r := range ws.Routes {
+			s.Routes = append(s.Routes, model.Route{Name: r.Name, Share: float64(r.Share), S: float64(r.S), CS2: float64(r.CS2),
+				P: unfloats(r.P)})
 		}
 		t.Services[i] = s
 	}
@@ -437,6 +484,14 @@ func fromWire(w *wireInferred) (*infer.Inferred, error) {
 		if ws.SplitP != nil {
 			p := float64(*ws.SplitP)
 			st.SplitP = &p
+		}
+		for _, wr := range ws.Routes {
+			r := infer.RouteStats{Route: wr.Route, Visits: wr.Visits, Share: float64(wr.Share), OwnMs: float64(wr.OwnMs),
+				OwnCS2: float64(wr.OwnCS2), Callers: make([]infer.RouteCaller, len(wr.Callers))}
+			for j, c := range wr.Callers {
+				r.Callers[j] = infer.RouteCaller{Caller: c.Caller, PerVisit: float64(c.PerVisit)}
+			}
+			st.Routes = append(st.Routes, r)
 		}
 		inf.Stats[i] = st
 	}

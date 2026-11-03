@@ -1,0 +1,190 @@
+diff --git a/maze/app/internal/svc/rank/rank.go b/maze/app/internal/svc/rank/rank.go
+index 0fa633a..b723803 100644
+--- a/maze/app/internal/svc/rank/rank.go
++++ b/maze/app/internal/svc/rank/rank.go
+@@ -3,6 +3,7 @@ package rank
+ 
+ import (
+ 	"fmt"
++	"math"
+ 	"sort"
+ 	"sync/atomic"
+ 
+@@ -39,9 +40,105 @@ func Rerank(seed uint64) []int {
+ 	return idx
+ }
+ 
++// Features returns candidate c's 32 features for request seed.
++func Features(seed uint64, c int) []float64 {
++	f := make([]float64, dims)
++	for d := range dims {
++		f[d] = float64((seed+uint64(c*dims+d)*40503)%997) / 997
++	}
++	return f
++}
++
++// Diversify chooses k of the 64 candidates greedily by maximal marginal relevance.
++func Diversify(seed uint64, k int, lambda float64) []int {
++	if k < 0 {
++		k = 0
++	}
++	if k > cands {
++		k = cands
++	}
++	if k == 0 {
++		return []int{}
++	}
++	feats := make([]float64, cands*dims)
++	for c := range cands {
++		for d := range dims {
++			feats[c*dims+d] = float64((seed+uint64(c*dims+d)*40503)%997) / 997
++		}
++	}
++	scores := make([]float64, cands)
++	for c := range cands {
++		s := 0.0
++		for d := range dims {
++			s += weights[d] * feats[c*dims+d]
++		}
++		scores[c] = s
++	}
++	maxScore := scores[0]
++	for _, s := range scores[1:] {
++		if s > maxScore {
++			maxScore = s
++		}
++	}
++	rel := make([]float64, cands)
++	if maxScore != 0 {
++		for c := range cands {
++			rel[c] = scores[c] / maxScore
++		}
++	}
++	norms := make([]float64, cands)
++	for c := range cands {
++		s := 0.0
++		for d := range dims {
++			v := feats[c*dims+d]
++			s += v * v
++		}
++		norms[c] = math.Sqrt(s)
++	}
++	chosen := make([]bool, cands)
++	out := make([]int, 0, k)
++	for len(out) < k {
++		best := -1
++		var bestVal float64
++		for c := range cands {
++			if chosen[c] {
++				continue
++			}
++			var v float64
++			if len(out) == 0 {
++				v = rel[c]
++			} else {
++				s := 0.0
++				for _, j := range out {
++					dot := 0.0
++					for d := range dims {
++						dot += feats[c*dims+d] * feats[j*dims+d]
++					}
++					den := norms[c] * norms[j]
++					var cos float64
++					if den != 0 {
++						cos = dot / den
++					}
++					if j == out[0] || cos > s {
++						s = cos
++					}
++				}
++				v = lambda*rel[c] - (1-lambda)*s
++			}
++			if best == -1 || v > bestVal {
++				best = c
++				bestVal = v
++			}
++		}
++		chosen[best] = true
++		out = append(out, best)
++	}
++	return out
++}
++
+ func init() {
+ 	rt.Register("rank.rerank", func(r *rt.Req) error {
+-		r.Out = fmt.Appendf(nil, "%v", Rerank(n.Add(1))[:10])
++		r.Out = fmt.Appendf(nil, "%v", Diversify(n.Add(1), 10, 0.7))
+ 		return nil
+ 	})
+ }
+diff --git a/maze/app/internal/svc/rank/rank_diversify_test.go b/maze/app/internal/svc/rank/rank_diversify_test.go
+new file mode 100644
+index 0000000..bd1327a
+--- /dev/null
++++ b/maze/app/internal/svc/rank/rank_diversify_test.go
+@@ -0,0 +1,65 @@
++package rank
++
++import (
++	"sort"
++	"testing"
++)
++
++func TestDiversifyLambdaOneMatchesScoreOrder(t *testing.T) {
++	for _, seed := range []uint64{0, 1, 7, 12345} {
++		for _, k := range []int{0, 1, 10, 64} {
++			got := Diversify(seed, k, 1)
++			if len(got) != k {
++				t.Fatalf("seed %d k %d: len %d", seed, k, len(got))
++			}
++			// Reference: k highest Rerank scores, ties to lower index.
++			scores := make([]float64, cands)
++			for c := range cands {
++				f := Features(seed, c)
++				if len(f) != dims {
++					t.Fatalf("features len %d", len(f))
++				}
++				s := 0.0
++				for d := range dims {
++					s += weights[d] * f[d]
++				}
++				scores[c] = s
++			}
++			want := make([]int, cands)
++			for i := range want {
++				want[i] = i
++			}
++			sort.Slice(want, func(a, b int) bool {
++				if scores[want[a]] != scores[want[b]] {
++					return scores[want[a]] > scores[want[b]]
++				}
++				return want[a] < want[b]
++			})
++			want = want[:k]
++			for i := range want {
++				if got[i] != want[i] {
++					t.Fatalf("seed %d k %d: got %v want %v", seed, k, got, want)
++				}
++			}
++		}
++	}
++}
++
++func TestDiversifyClamp(t *testing.T) {
++	if got := Diversify(7, -1, 0.7); len(got) != 0 {
++		t.Fatalf("negative k: %v", got)
++	}
++	if got := Diversify(7, 100, 0.7); len(got) != 64 {
++		t.Fatalf("large k: len %d", len(got))
++	}
++}
++
++func TestFeaturesValues(t *testing.T) {
++	f := Features(7, 3)
++	for d := range dims {
++		want := float64((uint64(7)+uint64(3*32+d)*40503)%997) / 997
++		if f[d] != want {
++			t.Fatalf("d %d: got %v want %v", d, f[d], want)
++		}
++	}
++}

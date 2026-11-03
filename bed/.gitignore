@@ -1,0 +1,10 @@
+# real IPs, account id, pasted inventory: never committed
+/state/
+# built binaries (rebuilt by orch/rbd_bootstrap.sh build and tools1/abdrive/build.sh)
+/build/
+# the offline proof (real capture symlink, ~90 MB)
+/testdata/
+/verify/out/
+/verify/data/
+__pycache__/
+*.pyc

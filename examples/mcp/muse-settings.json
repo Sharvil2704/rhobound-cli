@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "mcp_servers": {
+    "rhobound": {
+      "transport": "stdio",
+      "command": "/ABSOLUTE/PATH/TO/rhobound-mcp",
+      "args": ["stdio", "--config", "/ABSOLUTE/PATH/TO/rhobound-mcp/config.json"],
+      "enabled": true,
+      "mode": "optional"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+ "schema": "rbd.muse-ticket/v1",
+ "id": "T6",
+ "ticket": "RANK-41",
+ "title": "Reranked results should be diverse",
+ "source": "Muse experiment 2 (2026-11-03): written for real work on a hot path, not around a planted cost; its latency effect was not measured before the runs",
+ "prompt": "task.md",
+ "services": ["rank"],
+ "image": "rank",
+ "routes": ["rank GET /rerank"],
+ "entries_touched": ["mobile (feed -> rank)", "search-api (-> rank)"],
+ "user_facing_entries": ["web /browse", "mobile /feed", "search-api /q", "checkout /buy", "partner /bulk"],
+ "slo_ms": 4.0,
+ "writable": ["maze/app/internal/svc/rank/"],
+ "test_tags": "hidden",
+ "notes": "rank has 1 worker and about 54 calls/s at 9 ms of work (spec.json), so added work per call queues"
+}

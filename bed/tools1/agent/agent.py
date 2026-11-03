@@ -1,10 +1,10 @@
-"""agent.py: the model-written change of demo1 (SPEC 9, the owner's 2026-10-30 order). On rbd-tools1, as rbd:
+"""agent.py: the model-written change of demo1 (2026-10-30). On rbd-tools1, as rbd:
 
-    python3 -I /opt/rbd/agent/agent.py --out /var/lib/rbd/agent/RUN [--task /opt/rbd/agent/task-auth.md] [--feedback FILE]
+    python3 -I /opt/rbd/agent/agent.py --out /var/lib/rbd/agent/RUN [--task /opt/rbd/agent/task-prc77.md] [--feedback FILE]
 
 A model gets one ticket and these tools, nothing else:
-  list_files, read_file    the source of main as images.sh uploaded it (/var/lib/rbd/src/main): kshop/app/** and kshop/spec.json
-  write_file               a .go file under kshop/app/, held in memory (nothing is compiled, run or written outside OUT)
+  list_files, read_file    the source of main as images.sh uploaded it (/var/lib/rbd/src/main): maze/app/** and maze/spec.json
+  write_file               a .go file under maze/app/, held in memory (nothing is compiled, run or written outside OUT)
   rhobound_context, rhobound_budget, rhobound_predict, rhobound_explain
                            rhobound-mcp on 127.0.0.1:8765 with /var/lib/rbd/mcp/token (rhobound:read; fit_start/job_status
                            are not offered: the CI measures)
@@ -13,10 +13,10 @@ Providers (RBD_AGENT_PROVIDER):
   meta (default)  Meta Model API, Chat Completions: POST https://api.meta.ai/v1/chat/completions, Authorization: Bearer,
                   model muse-spark-1.3, OpenAI-style function tools, reasoning_effort (dev.meta.ai/docs, read 2026-10-30)
   anthropic       Claude Messages API: claude-opus-5-5, anthropic-version 2026-10-21, fallbacks "default"
-The API key: AWS Secrets Manager RBD_AGENT_SECRET [rhobound-demo/anthropic-key: the name the owner stored the Meta key under]
+The API key: AWS Secrets Manager RBD_AGENT_SECRET [rhobound-demo/anthropic-key: a historical name; it holds the Meta key]
 (the tools role), read with the aws CLI into memory only: never written, never printed, never passed to a child. OUT (new or
 empty): files/<path> for each changed file, manifest.json (rbd.agent-change/v1), rhobound-change.json (rbd.change-request/v1),
-change.patch (for reading; the orchestrator rebuilds it), transcript.jsonl, result.json. Last stdout line:
+change.patch (for reading; the workstation rebuilds it), transcript.jsonl, result.json. Last stdout line:
 {"step":"agent","ok":...}. Exit 0 submitted, 1 not, 2 usage.
 Env: RBD_AGENT_PROVIDER RBD_AGENT_MODEL RBD_AGENT_EFFORT [high] RBD_AGENT_MAX_TURNS [40] RBD_AGENT_SECRET RBD_REGION RBD_REPO
      RBD_AGENT_BRANCH [rbd/c5-model] RBD_MCP_URL RBD_MCP_TOKEN_FILE RBD_AGENT_API_URL (tests) RBD_AGENT_KEY_CMD (tests: a
@@ -65,48 +65,48 @@ MAX_TURNS = int(os.environ.get("RBD_AGENT_MAX_TURNS", "40"))
 MAX_OUTPUT_TOTAL = 400_000          # output tokens over the whole run: a runaway stops here
 SECRET_ID = os.environ.get("RBD_AGENT_SECRET", "rhobound-demo/anthropic-key")
 REGION = os.environ.get("RBD_REGION", "ap-south-1")
-REPO = os.environ.get("RBD_REPO", "Sharvil2704/rhobound-demo")
+REPO = os.environ.get("RBD_REPO", "Sharvil2704/rhobound-maze-bed")
 BRANCH = os.environ.get("RBD_AGENT_BRANCH", "rbd/c5-model")
 MCP_URL = os.environ.get("RBD_MCP_URL", "http://127.0.0.1:8765/mcp")
 MCP_TOKEN_FILE = os.environ.get("RBD_MCP_TOKEN_FILE", "/var/lib/rbd/mcp/token")
 MCP_TOOLS = ("context", "budget", "predict", "explain")
 PROTOCOL = "2025-06-18"
-WRITABLE = re.compile(r"kshop/app/(?:[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}/){0,6}[A-Za-z0-9_][A-Za-z0-9_.-]{0,60}\.go")   # fullmatch
+WRITABLE = re.compile(r"maze/app/(?:[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}/){0,6}[A-Za-z0-9_][A-Za-z0-9_.-]{0,60}\.go")   # fullmatch
 MAX_FILE = 100_000
 MAX_CHANGED = 8
 RESULT_CHARS = 24_000
 MCP_PER_TURN, MCP_PER_RUN = 6, 40   # engine runs on the box the CI shares
 EFFORT_DOWN = {"max": "xhigh", "xhigh": "high", "high": "medium", "medium": "low", "low": "minimal"}
 
-SYSTEM = """You are a senior Go engineer on kshop, a small shop of ten Go services that share one binary (kshop/app; \
-kshop/spec.json says which service calls which and runs which shared code paths). You work through tools only: \
-list_files, read_file and write_file for the source (write_file takes a whole .go file under kshop/app/; nothing is \
+SYSTEM = """You are a senior Go engineer on maze, a shop of 32 Go services built into 28 images (maze/app; \
+maze/app/cmd/<image> is each image, maze/spec.json says which service runs which image, its routes, workers and calls). You work through tools only: \
+list_files, read_file and write_file for the source (write_file takes a whole .go file under maze/app/; nothing is \
 compiled or run here: the CI builds the image), the rhobound_* tools, and submit_change, which ends the task.
 
 The rhobound_* tools model production's mean latency per entry from a recent capture of live traces (a queueing model per \
-service: utilization, own time per visit, workers, leverage). After you submit, the CI builds the one service you name, \
-runs it beside production in a 10-minute A/B, and the rhobound gate passes the change only when no entry's mean latency \
+service: utilization, own time per visit, workers, leverage). After you submit, the CI builds the image of the service you name, \
+runs it beside production in an A/B, and the rhobound gate passes the change only when no entry's mean latency \
 rises by the policy threshold or more. rhobound_predict with numbers you declare (own_ms, own_pct, ...) is an advisory \
 preview: by design it answers block or inconclusive, never pass. That is expected, not a failure: use it to size the \
 effect and put the expected number in your summary.
 
 Rules: keep security behaviour identical (same algorithms, parameters and accept/reject result for every input); no new \
 dependencies (go.mod and go.sum are fixed; the standard library is fine); one service's behaviour; bounded memory; gofmt \
-style; the production image is built with the build tag kshop_v11. Write complete, compilable files."""
+style. Write complete, compilable files."""
 
 LOCAL_TOOLS = [
-    {"name": "list_files", "description": "List the files you can read (kshop/app/** and kshop/spec.json) with their sizes; "
+    {"name": "list_files", "description": "List the files you can read (maze/app/** and maze/spec.json) with their sizes; "
      "files you changed are marked.", "strict": True,
      "schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}},
     {"name": "read_file", "description": "Read one file (your edited version if you changed it).", "strict": True,
-     "schema": {"type": "object", "properties": {"path": {"type": "string", "description": "e.g. kshop/app/internal/work/lib_v11.go"}},
+     "schema": {"type": "object", "properties": {"path": {"type": "string", "description": "e.g. maze/app/internal/svc/pricing/pricing.go"}},
                 "required": ["path"], "additionalProperties": False}},
-    {"name": "write_file", "description": "Replace (or create) one .go file under kshop/app/ with the complete new content. "
+    {"name": "write_file", "description": "Replace (or create) one .go file under maze/app/ with the complete new content. "
      "Held in memory until you submit; at most 8 files changed.", "strict": True,
      "schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
                 "required": ["path", "content"], "additionalProperties": False}},
     {"name": "submit_change", "description": "Finish: the ONE service whose image the CI must build and measure (a name in "
-     "kshop/spec.json), a one-line title (at most 72 characters) and a summary for the pull request (at most 1000 "
+     "maze/spec.json), a one-line title (at most 72 characters) and a summary for the pull request (at most 1000 "
      "characters: what changed, why it is safe, and the latency effect you expect with the rhobound numbers).", "strict": True,
      "schema": {"type": "object", "properties": {"service": {"type": "string"}, "title": {"type": "string"},
                                                  "summary": {"type": "string"}},
@@ -131,8 +131,8 @@ PLAN_TOOL = {"name": "submit_plan", "description": "Finish: exactly K distinct s
                  "type": "object", "properties": {"tag": {"type": "string"}, "line": {"type": "string"}},
                  "required": ["tag", "line"], "additionalProperties": False}}},
                  "required": ["strategies"], "additionalProperties": False}}
-SYSTEM_BENCH = """You are a senior Go engineer on kshop, a small shop of ten Go services that share one binary (kshop/app; \
-kshop/spec.json says which service calls which and runs which shared code paths). This ticket is one task of a benchmark: \
+SYSTEM_BENCH = """You are a senior Go engineer on maze, a shop of 32 Go services built into 28 images (maze/app; \
+maze/app/cmd/<image> is each image, maze/spec.json says which service runs which image, its routes, workers and calls). This ticket is one task of a benchmark: \
 several engineers try different approaches to it in parallel, and you follow the approach you are given. You work through \
 tools only: list_files and read_file for the source; write_file takes a whole .go file and only under the folders the \
 task makes writable; run_tests runs the package's visible tests and run_bench the task's microbenchmarks (main's code \
@@ -146,8 +146,8 @@ preview turns that into production latency, and a reviewer reads the diff; each 
 Rules: identical results for every input unless the ticket says otherwise; standard library only (go.mod and go.sum are \
 fixed); bounded memory; no goroutine outlives a call; never special-case the tests, the benchmarks or their inputs; gofmt \
 style; write complete, compilable files."""
-SYSTEM_PLAN = """You are the lead Go engineer on kshop, a small shop of ten Go services that share one binary (kshop/app; \
-kshop/spec.json says which service calls which and runs which shared code paths). You plan one task of a benchmark: \
+SYSTEM_PLAN = """You are the lead Go engineer on maze, a shop of 32 Go services built into 28 images (maze/app; \
+maze/app/cmd/<image> is each image, maze/spec.json says which service runs which image, its routes, workers and calls). You plan one task of a benchmark: \
 several engineers will each implement ONE of your strategies in parallel, and the best measured one ships.
 
 First call rhobound_context (where production's mean latency is tight: utilization, own time per visit, leverage) and \
@@ -200,7 +200,7 @@ def read_key() -> str:
         raise Fail(f"cannot run the secret read ({argv[0]}): {type(e).__name__}")
     if r.returncode != 0:
         raise Fail(f"cannot read the secret {SECRET_ID} (exit {r.returncode}): {r.stderr.strip()[-400:]} "
-                   f"(the owner stores it in CloudShell: bash spawn_demo.sh secret {SECRET_ID.split('/', 1)[-1]})")
+                   f"(store it from CloudShell: BED=1 bash spawn_two.sh secret {SECRET_ID.split('/', 1)[-1]})")
     key = r.stdout.strip()
     if not key or any(c.isspace() for c in key):
         raise Fail(f"the secret {SECRET_ID} is empty or holds more than one word")
@@ -452,7 +452,7 @@ class Meta:
 class Workspace:
     def __init__(self, src: Path):
         self.src, self.orig, self.files, self.writable = src, {}, {}, None   # writable: folder prefixes (bench) or None
-        app = src / "kshop" / "app"
+        app = src / "maze" / "app"
         if not app.is_dir() or app.is_symlink():
             raise Fail(f"no {app}")
         for root, dirs, names in os.walk(app, followlinks=False):
@@ -466,9 +466,9 @@ class Workspace:
                     self.orig[rel] = p.read_bytes().decode("utf-8")
                 except UnicodeDecodeError:
                     continue
-        spec = src / "kshop" / "spec.json"
-        self.orig["kshop/spec.json"] = spec.read_text("utf-8")
-        self.services = sorted(json.loads(self.orig["kshop/spec.json"])["services"])
+        spec = src / "maze" / "spec.json"
+        self.orig["maze/spec.json"] = spec.read_text("utf-8")
+        self.services = sorted(json.loads(self.orig["maze/spec.json"])["services"])
         self.files = dict(self.orig)
 
     def changed(self) -> list:
@@ -488,7 +488,7 @@ class Workspace:
     def write_file(self, a):
         p, c = a.get("path", ""), a.get("content", "")
         if not isinstance(p, str) or not WRITABLE.fullmatch(p) or "/../" in f"/{p}/" or "/./" in f"/{p}/":
-            return f"refused: {p!r} is not a .go file path under kshop/app/", True
+            return f"refused: {p!r} is not a .go file path under maze/app/", True
         if self.writable is not None and not any(p.startswith(w) and "/" not in p[len(w):] for w in self.writable):
             return f"refused: {p!r}: this task lets you write only directly in {', '.join(self.writable)}", True
         if not isinstance(c, str) or not c.strip():
@@ -528,7 +528,7 @@ def load_bench_task(d: Path) -> dict:
         t = json.loads((d / "task.json").read_text("utf-8"))
     except (OSError, ValueError) as e:
         raise Fail(f"cannot read {d}/task.json: {type(e).__name__}")
-    folder = re.compile(r"kshop/app/(?:[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}/){1,6}")
+    folder = re.compile(r"maze/app/(?:[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}/){1,6}")
     svcs, wr = t.get("services"), t.get("writable")
     if not (isinstance(t.get("id"), str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", t["id"])
             and isinstance(t.get("prompt"), str) and t["prompt"].strip()
@@ -536,7 +536,7 @@ def load_bench_task(d: Path) -> dict:
             and len(set(svcs)) == len(svcs) and isinstance(wr, list) and wr
             and all(isinstance(w, str) and folder.fullmatch(w) and "/../" not in "/" + w and "/./" not in "/" + w for w in wr)
             and (t.get("base") is None or isinstance(t.get("base"), str))):
-        raise Fail(f"{d}/task.json: id, prompt, services (1..3 distinct) and writable (folders under kshop/app/ ending in /) "
+        raise Fail(f"{d}/task.json: id, prompt, services (1..3 distinct) and writable (folders under maze/app/ ending in /) "
                    "are required; base is null or a name")
     return t
 
@@ -584,7 +584,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--src", default="/var/lib/rbd/src/main")
-    ap.add_argument("--task", default=str(Path(__file__).resolve().parent / "task-auth.md"))
+    ap.add_argument("--task", default=str(Path(__file__).resolve().parent / "task-prc77.md"))
     ap.add_argument("--feedback", help="text from a failed earlier attempt (the compiler's errors)")
     ap.add_argument("--plan", type=int, help="bench S0: plan K strategies (needs --bench-task)")
     ap.add_argument("--approach", help="bench S1: the strategy to implement (needs --bench-task)")
@@ -678,7 +678,7 @@ def main() -> int:
             work = Path(tempfile.mkdtemp(prefix="sbx-", dir=os.environ.get("RBD_SBX_TMP") or str(out.parent)))
             try:
                 for p, c in ws.files.items():
-                    if p.startswith("kshop/app/"):
+                    if p.startswith("maze/app/"):
                         q = work / "tree" / p
                         q.parent.mkdir(parents=True, exist_ok=True)
                         q.write_text(c, "utf-8")

@@ -281,6 +281,10 @@ type mixtureResult struct {
 	tail     float64         // share of the calling visits in the shapes left out
 	expected map[int]float64 // callee (topology index) -> calls per visit the calls make
 	nodes    []int           // the parallel nodes (groups of calls at once) and the share of visits calling each
+	// shapeKeys are the kept shapes' signatures and shapeCall the index in calls of each one's call (-1: none):
+	// how a route's visits split over the shapes becomes its chance of each call (routeCalls).
+	shapeKeys []string
+	shapeCall []int
 }
 
 // mixtureCalls represents a service whose visits take several call shapes as a
@@ -332,6 +336,8 @@ func (b *shapeBuilder) mixtureCalls(sigs map[string]int64) (res mixtureResult, o
 		q := float64(x.n) / float64(b.nsp)
 		sig := parseSig(x.key)
 		res.shapes = append(res.shapes, CallShape{describeShape(sig, *b.stats, b.idx), q})
+		res.shapeKeys = append(res.shapeKeys, x.key)
+		res.shapeCall = append(res.shapeCall, -1)
 		var inner []model.Call
 		for s, g := range sig {
 			if ix, ok := group(g, fmt.Sprintf("stage:%s:%d.%d", b.name, j+1, s+1), q); ok {
@@ -341,12 +347,14 @@ func (b *shapeBuilder) mixtureCalls(sigs map[string]int64) (res mixtureResult, o
 		switch len(inner) {
 		case 0:
 		case 1:
+			res.shapeCall[j] = len(res.calls)
 			res.calls = append(res.calls, model.Call{Child: inner[0].Child, P: q})
 		default:
 			lbl := fmt.Sprintf("shape:%s:%d", b.name, j+1)
 			ix := b.node(model.Service{Name: lbl, CS2: 1, Delay: true, Calls: inner, Servers: 1, Workers: 1, Routing: model.Pooled},
 				ServiceStats{Name: lbl, Stage: true, Visits: int64(math.Round(float64(vis) * q)), RateRPS: rate * q, Pods: 1,
 					WorkersPerPod: 1, Stages: len(inner)})
+			res.shapeCall[j] = len(res.calls)
 			res.calls = append(res.calls, model.Call{Child: ix, P: q})
 		}
 	}
@@ -421,7 +429,11 @@ func topUp(observed []callTotals) (calls []model.Call, big []callTotals) {
 // of that service's visits that make the calls (several nodes of one service that
 // call one callee the same number of times at once are one warning, with their
 // shares added; groups under batchMinShare are left out).
-func batchWarnings(topo *model.Topology, stats []ServiceStats, nodes []int, owner map[int]string, warn func(f string, a ...any)) {
+//
+// When modelled(callee) holds, the model takes the group as batch arrivals (model.Config.Batch): the warning is then a
+// note of how it does, and coded is false; otherwise coded is true (model.batch_arrivals).
+func batchWarnings(topo *model.Topology, stats []ServiceStats, nodes []int, owner map[int]string, modelled func(callee int) bool,
+	warn func(coded bool, f string, a ...any)) {
 	type group struct {
 		owner string
 		ci, n int
@@ -479,7 +491,14 @@ func batchWarnings(topo *model.Topology, stats []ServiceStats, nodes []int, owne
 		if float64(g.n) > c {
 			extra = "; a group larger than the workers waits for itself at any load"
 		}
-		warn("%s calls %s %d times at once (on %.0f%% of its visits); %s has %s and is %.0f%% busy. The model takes the %d calls "+
+		if modelled(g.ci) {
+			warn(false, "%s calls %s %d times at once (on %.0f%% of its visits); %s has %s and is %.0f%% busy. The model takes "+
+				"the %d calls as one batch: %s's arrivals as batches at Poisson epochs (an M^X/G/c queue, calls that arrive "+
+				"alone as batches of 1), and the wait for them as the time until the last of them is served", g.owner, ch.Name,
+				g.n, 100*math.Min(g.share, 1), ch.Name, workers, 100*rho, g.n, ch.Name)
+			continue
+		}
+		warn(true, "%s calls %s %d times at once (on %.0f%% of its visits); %s has %s and is %.0f%% busy. The model takes the %d calls "+
 			"as independent arrivals, but they reach %s together and queue behind each other, so %s's wait, and the latency of "+
 			"whoever waits for it, is understated (in simulations by up to 60%% of %s's latency: the more the fewer its workers "+
 			"and the busier it is%s)", g.owner, ch.Name, g.n, 100*math.Min(g.share, 1), ch.Name, workers, 100*rho, g.n, ch.Name, ch.Name,

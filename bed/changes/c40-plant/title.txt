@@ -1,1 +1,0 @@
-Shared library 1.1.1: security hardening in every service's image (5 services)

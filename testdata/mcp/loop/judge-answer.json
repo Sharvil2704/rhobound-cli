@@ -1,6 +1,6 @@
 {
   "schema": "rhobound-mcp.judge-answer/v1",
-  "packet": "sha256:9e72618625fcd9d14824ad6497513646e666cfb13fab66bd28eb2eac52069de0",
+  "packet": "sha256:2deec4179d5dee2d96d4c3f56bb792addef01afdeb4774b56806e18c8e2806ce",
   "decision": "revise",
   "reasons": [{"refs": ["prediction.entries[0]", "budgets[0]"], "code": "over_budget"}],
   "suggestions": [{"rank": 1, "expected_ops": [{"op": "scale_count", "service": "b", "callee": "c", "value": 0.5,

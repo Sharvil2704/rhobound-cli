@@ -1,0 +1,17 @@
+{
+ "schema": "rbd.muse-ticket/v1",
+ "id": "T7",
+ "ticket": "FRAUD-12",
+ "title": "Fraud scoring should catch card velocity",
+ "source": "Muse experiment 2 (2026-11-03): written for real work on a hot path, not around a planted cost; its latency effect was not measured before the runs",
+ "prompt": "task.md",
+ "services": ["fraud"],
+ "image": "fraud",
+ "routes": ["fraud GET /score"],
+ "entries_touched": ["checkout (checkout -> order -> payment -> fraud)"],
+ "user_facing_entries": ["web /browse", "mobile /feed", "search-api /q", "checkout /buy", "partner /bulk"],
+ "slo_ms": 4.0,
+ "writable": ["maze/app/internal/svc/fraud/"],
+ "test_tags": "hidden",
+ "notes": "fraud has 1 worker and about 18 calls/s at 18 ms of work (spec.json); its state lives for the whole process, so its cost can grow with time under load"
+}

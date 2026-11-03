@@ -1,6 +1,6 @@
 # The four prepared changes (SPEC 6)
 
-| change | edit (in `kshop/app/internal/work/lib_v11.go`) | service | source |
+| change | edit (in `maze/app/internal/work/lib_v11.go`) | service | source |
 |---|---|---|---|
 | `c1-noop` | a comment reworded (the control: the A/B should read ~0) | auth | - |
 | `c2-auth-small` | `verify_token` PBKDF2 iterations 2500 -> 6927 | auth | rs2 `images/variants/1.1-n6927.diff` |
@@ -10,12 +10,12 @@
 Each folder: `change.patch` (against `repo/` main: the code edit plus a new `rhobound-change.json`, made with git, applies
 with `git apply`) and `rhobound-change.json` (the same request on its own).
 
-`make_prs.sh NAME...` (on the orchestrator, `gh` logged in) opens one PR per change from the CURRENT main: branch
+`make_prs.sh NAME...` (on your workstation, `gh` logged in) opens one PR per change from the CURRENT main: branch
 `rbd/NAME`, the patch's code part applied, `rhobound-change.json` written fresh, pushed (never forced), `gh pr create`.
 It refuses a repo that is not private or that allows squash/rebase merges, and a change that touches anything but
-`kshop/app/**` and `rhobound-change.json` against main (so no patch, prepared or model-written, reaches `.github/` or
+`maze/app/**` and `rhobound-change.json` against main (so no patch, prepared or model-written, reaches `.github/` or
 `policy/`). Every PR writes `rhobound-change.json`, so of several open PRs only one can be merged: the day keeps c1..c4
-open, merges exactly one and closes the rest (`orch/RUNBOOK.md` step 7); a second change is re-cut from the new main with
+open, merges exactly one and closes the rest (step 7 of cluster test 2's runbook); a second change is re-cut from the new main with
 `make_prs.sh` (a new gate run).
 `DRYRUN=1` applies and commits in a temp clone without pushing.
 
@@ -30,11 +30,11 @@ frozen main). The hold is the FIRST statement of the service's hooked function, 
 
 | service | hook | file |
 |---|---|---|
-| auth | `VerifyToken` | `kshop/app/internal/work/lib_v11.go` (library 1.1, production's `LIB=kshop_v11`) |
+| auth | `VerifyToken` | `maze/app/internal/work/lib_v11.go` (library 1.1, production's `LIB=maze_v11`) |
 | payments | `RiskCheck` | same |
 | inventory | `StockCheck` | same |
-| catalog | `Rank` | `kshop/app/internal/hot/rank.go` |
-| pricing | `Quote` | `kshop/app/internal/hot/price.go` |
+| catalog | `Rank` | `maze/app/internal/hot/rank.go` |
+| pricing | `Quote` | `maze/app/internal/hot/price.go` |
 
 | mechanism | `--dose` | what it plants |
 |---|---|---|
@@ -48,7 +48,7 @@ frozen main). The hold is the FIRST statement of the service's hooked function, 
 | `improve` | payments: ms; auth: iterations | the card hold 6 -> D ms, or PBKDF2 2500 -> D iterations (a speed-up) |
 
 The helper lives in a new `plant.go` in the hook's package; the patch must apply to a fresh copy of `repo/` and compile with
-`orch/gocheck.sh` (agent_take.sh's capped, offline go build under the default tags and kshop_v11 and go vet). `manifest.json`
+`orch/gocheck.sh` (agent_take.sh's capped, offline go build under the default tags and maze_v11 and go vet). `manifest.json`
 (`rbd.plant-change/v1`) records the mechanism, the knob, the placement, the intended effect and the dose rule: **the
 registered dose is the A/B-measured own-time delta of the service, never the knob** (`dose.value_ms`, filled from the A/B
 record). `--no-compile` is for tests: make_prs.sh refuses a plant whose manifest says `compiled: false`, and any plant whose

@@ -90,7 +90,7 @@ func (s *Server) fitStartTool(ctx context.Context, c *call) (*mcp.CallToolResult
 	switch {
 	case in.Env != "":
 		if _, err := s.opt.Config.Env(in.Env); err != nil {
-			return nil, invalidParams("unknown environment")
+			return nil, unknownEnv(s.opt.Config)
 		}
 		// not a server fault: no retry can succeed until the fetcher is wired (ARCHITECTURE.md 5.3)
 		return nil, invalidParams("fitting an environment window needs the trace-store fetcher, which this build does not wire")

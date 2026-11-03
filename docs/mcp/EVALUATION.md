@@ -69,7 +69,9 @@ and earlier) share its base but change on the server.
   **tool-calling smoke test, fixed in advance**, therefore decides whether the model is included (section 4.2).
 - MCP is not mentioned on any Meta page read [V]. It is not needed on Meta's side: OpenHands and Inspect turn MCP tools
   into the model's function calls. Bash-only harnesses (mini-swe-agent) use the `rhobound` CLI twins, which print the
-  same JSON. Whether Muse Code speaks MCP is [U].
+  same JSON. Muse Code speaks MCP: its settings take `mcp_servers` with `transport` `stdio` or `streamable_http`, and
+  `mode` `required` or `optional` [V: https://dev.meta.ai/docs/muse-code/extending]; `integrations/muse-code` is the
+  rhobound plugin for it.
 - Settings from the model card: reasoning effort `low | medium | high | xhigh`, default xhigh; temperature 1.0,
   top_p 1.0. Temperature 1.0 makes runs vary: at least 3 seeds per cell.
 

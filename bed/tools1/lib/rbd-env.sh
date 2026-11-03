@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # rbd-env.sh: sourced by every step on rbd-tools1:   . /opt/rbd/lib/rbd-env.sh
 # Exports /opt/rbd/etc/rbd.env (RBD_REGION RBD_ACCOUNT RBD_BUCKET RBD_ECR RBD_KMS KUBECONFIG RHOBOUND_STATE RBD_HOME RBD_REPO
-# RBD_POLICY_SHA256 RBD_POLICY_DIGEST AB_LOCK_WAIT), then the optional /opt/rbd/etc/rbd.env.local (the owner's knobs: AB_SECONDS,
+# RBD_POLICY_SHA256 RBD_POLICY_DIGEST AB_LOCK_WAIT), then the optional /opt/rbd/etc/rbd.env.local (your knobs: AB_SECONDS,
 # JUDGE_CMD, ...; written by hand, never by the bootstrap; its values win over rbd.env's). The .local must be root-owned and not
 # group/other-writable, and must leave the pins and paths below (_rbd_pinned) as rbd.env set them: refused (exit 1) otherwise.
 # Defines: log, die, rbd_result, json_last_line, ecr_login, sha256_of, atomic_write, now_utc, need_cmd, images_get.
@@ -46,7 +46,7 @@ export RBD_OPT=${RBD_OPT:-/opt/rbd}
 export RBD_CLI=${RBD_CLI:-$RBD_OPT/bin/rhobound}
 export AWS_REGION=${AWS_REGION:-$RBD_REGION} AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-$RBD_REGION}
 case ":$PATH:" in *":$RBD_OPT/bin:"*) ;; *) export PATH="$RBD_OPT/bin:$PATH" ;; esac
-export RBD_NS=${RBD_NS:-kshop} RBD_OBS_NS=${RBD_OBS_NS:-kshop-obs} RBD_AB_NS=${RBD_AB_NS:-rbd-ab}
+export RBD_NS=${RBD_NS:-maze} RBD_OBS_NS=${RBD_OBS_NS:-maze-obs} RBD_AB_NS=${RBD_AB_NS:-rbd-ab}
 
 now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 log() { echo "[$(date -u +%H:%M:%S)] ${RBD_STEP:-$(basename "$0")}: $*" >&2; }

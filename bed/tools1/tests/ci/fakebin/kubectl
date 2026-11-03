@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# test stand-in for kubectl (namespace kshop): get deployment -o jsonpath (the container image), set image, rollout
+# test stand-in for kubectl (namespace maze): get deployment -o jsonpath (the container image), set image, rollout
 # status (STUB_ROLLOUT_RC; STUB_ROLLOUT_FAIL=D: only deployment D's fails), rollout undo, get pods -l app=D (the imageIDs;
 # k8s/<D>.terminating = polls an old pod is still listed). Images live in $STUB_DIR/k8s/<deployment>.image.
 set -euo pipefail
 echo "kubectl $*" >> "$STUB_DIR/calls.log"
-[[ ${1:-} == -n && ${2:-} == kshop ]] || { echo "kubectl stub: expected -n kshop first" >&2; exit 2; }
+# ab.sh --all: the A/B pool's nodes ($STUB_DIR/nodes.json, none when absent) and deletes in rbd-ab (logged only)
+case "$*" in
+  "get nodes -l rhobound.io/pool=ab -o json") cat "$STUB_DIR/nodes.json" 2> /dev/null || echo '{"items": []}'; exit 0 ;;
+  "-n rbd-ab delete "*) exit 0 ;;
+esac
+[[ ${1:-} == -n && ${2:-} == maze ]] || { echo "kubectl stub: expected -n maze first" >&2; exit 2; }
 shift 2
 K=$STUB_DIR/k8s
 case "${1:-} ${2:-}" in

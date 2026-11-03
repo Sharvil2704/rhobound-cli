@@ -5,6 +5,11 @@
 #                                             cN-bench (SPEC2 S6: the bench funnel's selected approach, via orch/agent_take.sh;
 #                                             title from title.txt; the PR gets the label rbd-bench, created when missing,
 #                                             which orch/automerge.sh watches)
+#                                             cN-muse (the Muse Code experiment, orch/muse_arm.sh: one iteration's change via
+#                                             orch/agent_take.sh; title from title.txt; the PR gets the label rbd-muse, created
+#                                             when missing: NEVER merged, orch/automerge.sh merges only rbd-bench PRs; arm R
+#                                             deploys a gate pass and arm C its built image through the truth bracket, out of
+#                                             band, and production returns to baseline after every measurement)
 #                                             cN-plant (SPEC3 F9: a planted change written by changes/plant.py; title from
 #                                             title.txt; manifest.json must be rbd.plant-change/v1 with never_merge true,
 #                                             patch_sha256 = sha256 of change.patch (an edit after plant.py is refused) and
@@ -15,25 +20,25 @@
 #                                             reused name never measures an old patch against a new manifest)
 #   DRYRUN=1 bash changes/make_prs.sh NAME    apply and commit in a temp clone; no push, no PR (it says the label and
 #                                             draft state the PR would get)
-# Runs on the orchestrator with gh (logged in) and git over https. Never pushes main, never force-pushes; refuses unless the
+# Runs on your workstation with gh (logged in) and git over https. Never pushes main, never force-pushes; refuses unless the
 # repo is private and allows merge commits only. An open PR for rbd/<name> is reported, not re-created (cN-plant: only
 # when its head holds exactly the folder's change; another change there is refused, exit 1).
-# A PR = change.patch's kshop/app part applied to main + rhobound-change.json written fresh (main may hold an older one from a
-# merged PR). Refused unless every path it changes against main is under kshop/app/ or is rhobound-change.json (a patch,
+# A PR = change.patch's maze/app part applied to main + rhobound-change.json written fresh (main may hold an older one from a
+# merged PR). Refused unless every path it changes against main is under maze/app/ or is rhobound-change.json (a patch,
 # prepared or model-written, never reaches .github/ or policy/). Every PR writes rhobound-change.json, so of several open
-# PRs only one can be merged: the day keeps c1..c4 open, merges exactly one and closes the rest (orch/RUNBOOK.md step 7);
+# PRs only one can be merged: the day keeps c1..c4 open, merges exactly one and closes the rest (step 7 of cluster test 2's runbook);
 # a second change is re-cut from the new main with make_prs.sh (a new gate run).
 # rhobound-change.json is copied as given: v1 {schema, services: [1 name], summary} or v2 (rbd.change-request/v2: services
 # 1..5 names, summary, base?); only its shape is checked here (pr-check.sh validates it against the kit). A change whose patch
 # has no code part (a base-image change: only rhobound-change.json) is a commit of the request alone.
-# Env: REPO [Sharvil2704/rhobound-demo]  WORK [$HOME/rbd-dev/tmp/make_prs]  DRYRUN [0]  PLANT_UNCOMPILED [0: tests]
+# Env: REPO [Sharvil2704/rhobound-maze-bed]  WORK [$RBD_SCRATCH/make_prs]  DRYRUN [0]  PLANT_UNCOMPILED [0: tests]
 #      URL [https://github.com/REPO.git: tests point it at a local bare repo]
 set -euo pipefail
 say() { echo "[make_prs $(date -u +%H:%M:%S)] $*" >&2; }
 die() { echo "make_prs: error: $*" >&2; exit 1; }
-[[ $# -ge 1 ]] || die "usage: make_prs.sh NAME... (c1-noop c2-auth-small c3-auth-mid c4-pay-wait cN-model cN-bench cN-plant)"
-REPO=${REPO:-Sharvil2704/rhobound-demo}
-WORK=${WORK:-$HOME/rbd-dev/tmp/make_prs}
+[[ $# -ge 1 ]] || die "usage: make_prs.sh NAME... (c1-noop c2-auth-small c3-auth-mid c4-pay-wait cN-model cN-bench cN-muse cN-plant)"
+REPO=${REPO:-Sharvil2704/rhobound-maze-bed}
+WORK=${WORK:-${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}/make_prs}
 DRYRUN=${DRYRUN:-0}
 URL=${URL:-https://github.com/$REPO.git}
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -53,8 +58,8 @@ title() {
     c2-auth-small) echo "c2-auth-small: auth verify_token PBKDF2 iterations 2500 -> 6927" ;;
     c3-auth-mid) echo "c3-auth-mid: auth verify_token PBKDF2 iterations 2500 -> 20780" ;;
     c4-pay-wait) echo "c4-pay-wait: payments card risk_check hold 6 ms -> 15 ms" ;;
-    c[0-9]-model | c[0-9][0-9]-model | c[0-9]-bench | c[0-9][0-9]-bench | c[0-9]-plant | c[0-9][0-9]-plant)
-      # orch/agent_take.sh (model, bench), changes/plant.py (plant)
+    c[0-9]-model | c[0-9][0-9]-model | c[0-9]-bench | c[0-9][0-9]-bench | c[0-9]-muse | c[0-9][0-9]-muse | c[0-9]-plant | c[0-9][0-9]-plant)
+      # orch/agent_take.sh (model, bench, muse), changes/plant.py (plant)
       [[ -r $HERE/$1/title.txt ]] && printf '%s: %s\n' "$1" "$(head -n 1 "$HERE/$1/title.txt")" ;;
     *) return 1 ;;
   esac
@@ -62,10 +67,11 @@ title() {
 labelof() { # the label of change NAME's PR (none for the prepared and model changes)
   case $1 in
     *-bench) echo rbd-bench ;;
+    *-muse) echo rbd-muse ;;
     *-plant) echo rbd-plant ;;
   esac
 }
-BENCH=0 PLANT=0
+BENCH=0 MUSE=0 PLANT=0
 for n in "$@"; do
   if ! title "$n" > /dev/null || [[ ! -r $HERE/$n/change.patch || ! -r $HERE/$n/rhobound-change.json ]]; then
     die "unknown change '$n'"
@@ -87,6 +93,7 @@ sys.exit(0 if ok else 1)
 ' "$HERE/$n/rhobound-change.json" 2> /dev/null ||
     die "$n: rhobound-change.json is not a v1 (one service) or v2 (1..5 services, base?) change request"
   [[ $n != *-bench ]] || BENCH=1
+  [[ $n != *-muse ]] || MUSE=1
   if [[ $n == *-plant ]]; then
     python3 -I -c '
 import json, sys
@@ -121,7 +128,8 @@ if not d.get("mergeCommitAllowed") or d.get("squashMergeAllowed") or d.get("reba
              "gh repo edit %s --enable-merge-commit --enable-squash-merge=false --enable-rebase-merge=false" % (sys.argv[2], sys.argv[2]))
 ' "$info" "$REPO"
 
-# the labels: rbd-bench (orch/automerge.sh watches it) and rbd-plant (orch/automerge.sh refuses it), created when missing
+# the labels: rbd-bench (orch/automerge.sh watches it), rbd-muse (never merged: automerge.sh merges only rbd-bench) and
+# rbd-plant (orch/automerge.sh refuses it), created when missing
 # (never under DRYRUN)
 ensure_label() { # NAME COLOR DESCRIPTION
   local labels
@@ -135,6 +143,9 @@ ensure_label() { # NAME COLOR DESCRIPTION
 if [[ $BENCH == 1 && $DRYRUN != 1 ]]; then
   ensure_label rbd-bench 5319e7 "rbd bench: orch/automerge.sh merges it on a rhobound/verdict success"
 fi
+if [[ $MUSE == 1 && $DRYRUN != 1 ]]; then
+  ensure_label rbd-muse 0e8a16 "rbd muse experiment (orch/muse_arm.sh): NEVER merged; orch/automerge.sh merges only rbd-bench"
+fi
 if [[ $PLANT == 1 && $DRYRUN != 1 ]]; then
   ensure_label rbd-plant b60205 "rbd planted change (SPEC3 F9): NEVER merged; orch/automerge.sh refuses it"
 fi
@@ -146,7 +157,7 @@ gitc clone -q "$URL" "$CL" || die "clone of $REPO failed"
 cd "$CL"
 git rev-parse -q --verify origin/main > /dev/null || die "$REPO has no main branch"
 # same_change NAME BRANCH: 0 when origin/BRANCH (an open PR's head) holds exactly what changes/NAME makes on that PR's base
-# (its merge base with origin/main): change.patch's kshop/app part applied + rhobound-change.json, compared as git trees. Built
+# (its merge base with origin/main): change.patch's maze/app part applied + rhobound-change.json, compared as git trees. Built
 # in a scratch index (git apply --cached): the work tree and the real index are never touched. 1 otherwise (no such branch,
 # the patch does not apply there, or another tree: plant.py --force rewrote the folder after the PR was opened).
 same_change() {
@@ -186,12 +197,11 @@ for n in "$@"; do
   fi
   cp "$HERE/$n/rhobound-change.json" rhobound-change.json
   git add rhobound-change.json
-  outside=$(git diff --cached --name-only origin/main | grep -Ev '^(kshop/app/.+|rhobound-change\.json)$' || true)
-  [[ -z $outside ]] || die "$n: the change touches paths outside kshop/app/ and rhobound-change.json: $(tr '\n' ' ' <<< "$outside")"
+  outside=$(git diff --cached --name-only origin/main | grep -Ev '^(maze/app/.+|rhobound-change\.json)$' || true)
+  [[ -z $outside ]] || die "$n: the change touches paths outside maze/app/ and rhobound-change.json: $(tr '\n' ' ' <<< "$outside")"
   summary=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["summary"])' rhobound-change.json)
   t=$(title "$n")
-  git -c user.name="$NAME" -c user.email="$EMAIL" commit -q -m "$t" -m "$summary" \
-    -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+  git -c user.name="$NAME" -c user.email="$EMAIL" commit -q -m "$t" -m "$summary"
   git --no-pager show --stat --format='%h %s' HEAD >&2
   lab=()
   label=$(labelof "$n")
@@ -202,11 +212,11 @@ for n in "$@"; do
     continue
   fi
   gitc push -q origin "refs/heads/$br:refs/heads/$br" || die "$n: push of $br failed"
-  body=$(printf '%s\n\n%s\n\n%s\n' "$summary" \
+  body=$(printf '%s\n\n%s\n' "$summary" \
     "$(if [[ $n == *-bench ]]; then echo "Bench change \`changes/$n\` (SPEC2: the rbd-bench funnel's selected approach, tools1/bench/run_task.py). orch/automerge.sh merges it only on a rhobound/verdict success for this head.";
+       elif [[ $n == *-muse ]]; then echo "Muse Code experiment change \`changes/$n\` (orch/muse_arm.sh, one iteration of one arm; written by $(python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1])); print(", ".join(m.get("served_by") or [m.get("model") or "the agent"]))' "$HERE/$n/manifest.json" 2> /dev/null || echo "the agent"), checked by orch/agent_take.sh). NEVER merge it: labelled rbd-muse, which orch/automerge.sh does not merge (it merges only rbd-bench). Arm R deploys a gate pass and arm C its built image, both through the truth bracket out of band; production returns to baseline after every measurement.";
        elif [[ $n == *-plant ]]; then echo "Planted change \`changes/$n\` (SPEC3 F9, changes/plant.py: $(python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1])); print("%s at %s %s, %s" % (m["mechanism"], m["service"], m["function"], m["placement"]))' "$HERE/$n/manifest.json")). NEVER merge it: a draft labelled rbd-plant, which orch/automerge.sh refuses whatever its verdict. Its registered dose is the A/B-measured own-time delta, not the knob.";
-       elif [[ $n == *-model ]]; then echo "Model-written change (tools1/agent/agent.py: $(python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1])); print(", ".join(m.get("served_by") or [m["model"]]), "with the rhobound MCP tools:", ", ".join(c["tool"] for c in m.get("mcp_calls") or []) or "none")' "$HERE/$n/manifest.json"))."; else echo "Prepared change \`changes/$n\` of the rhobound demo."; fi) The gate job decides (commit status \`rhobound/verdict\`); deploy.sh deploys only an image whose signed verdict is pass." \
-    "🤖 Generated with [Claude Code](https://claude.com/claude-code)")
+       elif [[ $n == *-model ]]; then echo "Model-written change (tools1/agent/agent.py: $(python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1])); print(", ".join(m.get("served_by") or [m["model"]]), "with the rhobound MCP tools:", ", ".join(c["tool"] for c in m.get("mcp_calls") or []) or "none")' "$HERE/$n/manifest.json"))."; else echo "Prepared change \`changes/$n\` of the rhobound demo."; fi) The gate job decides (commit status \`rhobound/verdict\`); deploy.sh deploys only an image whose signed verdict is pass.")
   url=$(gh pr create --repo "$REPO" --base main --head "$br" --title "$t" --body "$body" "${lab[@]}") || die "$n: gh pr create failed"
   say "$n: $url"
 done

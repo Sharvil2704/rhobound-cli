@@ -677,7 +677,11 @@ Findings: `ab.not_concurrent`, `ab.hardware_differs`, `ab.sampled` (refuse); `ab
 more than 1 point [D] apart); `profile.structure_changed` (calls per visit differ: the change is structural; the
 own-time difference is never applied alone); `profile.variance_changed` (the own time's variance differs beyond 2
 standard errors: inconclusive until the engine has a variance patch. `diff-fit` tests the variance, not the `cs2`: a
-pure shift of own time keeps the variance and lowers the `cs2`, and is no variance change); `profile.self_report_mismatch` (the client-side latency
+pure shift of own time keeps the variance and lowers the `cs2`, and is no variance change; for a service with routes it
+tests against the variance the routes' own shifts predict, as shifting one route of a mixture moves the blended
+variance); `profile.route_heterogeneous` (doubt: the record's `routes[]` hold each route's own-time difference, and some
+route moved apart from the blend by more than 3 of its standard errors: apply the change by route, one `own_ms` item
+per route, not the blend; a set that does so does not list it); `profile.self_report_mismatch` (the client-side latency
 difference disagrees with the span-derived one beyond a band [D]); `ab.too_few_visits` (fewer visits than the sizing
 rule of 10.2 needs for the gate's margin); `ab.count_conflict` (doubt: the load generator's log admits an arm whose own
 request count gives a kept share other than 1, as one count shared by both arms does; the record is minted on the log,
@@ -872,7 +876,8 @@ svc=N` sets workers per pod for both the base and the change; **an unknown servi
 | `glue_ms` | [later] | +ms after the first call out, holding no worker | a small engine change |
 | `cs2` | [later] | the variance of own time | a variance patch; until it exists a measured variance change is inconclusive |
 | `add_call`, `remove_call`, `set_p`, `scale_count`, `set_async`, `make_parallel` | [later] | structural changes in the topology's own vocabulary | a structural patch on the fit's topology. Each carries `callee_cost: assumed-mean-visit` (the callee's mean visit, which may differ for the endpoint the new call hits) and the label `assumed` for that cost, and raises `change.callee_cost_assumed` (doubt; it joins the policy's default `doubts_that_hold` in the release that ships these operations); in-loop or parallel added calls raise `model.batch_arrivals` |
-| any op restricted to a route | [later] | needs route shares in the fit | refused: `change.route_scope_unsupported` (convert to a per-visit mean: ms times the route's share of visits) |
+| `own_ms` with `route` | [new] | +ms per visit of one route of the service | the fit keeps a service's routes (`routes[]`: up to 8 routes of at least 5% of its visits each, the rest as `other`; none for a service with one route) with each route's own time and who reaches it. The queue moves by the route's share of the change; each caller's calls move by the routes it reaches. A `measured-ab` item cites the record's `routes[].own_ms.delta`. |
+| any other op restricted to a route | [later] | | refused: `change.route_scope_unsupported` (convert to a per-visit mean: ms times the route's share of visits) |
 
 **Ranges** `{lo, hi}` are evaluated at their corners, oriented by the sign of each operation (ARCHITECTURE.md, 4.5:
 `workers` lowers the mean as it grows, the other v1 operations raise it). A point is `lo == hi`.
@@ -1105,6 +1110,7 @@ Finding codes and the gate's rule tokens are separate namespaces (ARCHITECTURE.m
 | `ab.errors_differ` | D | input | error shares more than 1 point [D] apart | fix the errors in the failing arm | 8 | [new] |
 | `ab.too_few_visits` | D | input | fewer visits than the sizing rule needs for the gate's margin | run each arm longer | 8, 9.3 | [new] |
 | `ab.count_conflict` | D | input | an A/B arm whose own request count gives a kept share other than 1, while the load generator's log, which admits the arm, says its traces hold every request (the subject is the arm) | give each arm its own request count, or none: the log alone proves an arm's kept share | 8 | [new] |
+| `ab.payload_changed` | D | input | the mean response body the load generator read differs between the arms by more than 10% [D] (the subject is the driven service; a prediction names the fit's callers of it as examples): the callers' cost of reading and decoding it is in no arm's spans | measure the callers with the candidate (an A/B of the callers, or a canary), or describe their cost as a change | 8 | [new] |
 | `change.label_not_minted` | R | input | a label other than declared without a record the CLI can find and recompute | cite an A/B record the CLI computed, or label it declared | 11.2 | [new] |
 | `change.unknown_service` | R | input | a change or --workers names a service the fit does not have | name a service of the fit | 11.2 | [new] |
 | `change.ambiguous_service` | R | input | a change or --workers names a service by a name the views show for more than one service, none of them named so as the traces wrote it (a collision of hashes) | name the service as the traces wrote it, as the services of the fit record list it | 11.2 | [new] |
@@ -1116,7 +1122,7 @@ Finding codes and the gate's rule tokens are separate namespaces (ARCHITECTURE.m
 | `change.cpu_profile_not_own_time` | R | input | a CPU profile offered as own time | measure own time per visit (an A/B run) | 11.2 | [new] |
 | `change.includes_queueing` | R | input | a latency that already contains the queue offered as own time | measure own time per visit (an A/B run) | 11.2 | [new] |
 | `change.microbench_unvalidated` | R | input | a microbenchmark delta outside research use | measure own time per visit (an A/B run) | 11.2 | [new] |
-| `change.route_scope_unsupported` | R | input | an operation restricted to a route | convert to a per-visit mean: ms times the route's share of visits | 11.2 | [new] |
+| `change.route_scope_unsupported` | R | input | an operation other than own_ms restricted to a route, or an own_ms item on a route the fit does not keep | give own_ms on a route the fit's routes[] names, or convert to a per-visit mean: ms times the route's share of visits | 11.2 | [new] |
 | `change.callee_cost_assumed` | D | input | a structural operation that assumes the callee's mean visit | measure the callee's visit for that endpoint | 11.2 | [later] |
 | `load.busiest_unknown` | N | runtime | no busiest-window pointer yet: evaluated at the fit's window | none needed | ARCHITECTURE.md 4.2 | [new] |
 | `budget.no_policy` | D | input | a budget under no policy: no entry threshold applies, only the utilization limits bind | name a policy (budget --policy P, or the budget tool's policy argument), so that its entry threshold binds | ARCHITECTURE.md 4.7 | [new] |
@@ -1142,8 +1148,9 @@ Finding codes and the gate's rule tokens are separate namespaces (ARCHITECTURE.m
 | `profile.digest_unresolvable` | R | input | a digest that cannot be resolved to the node's platform manifest | push a platform manifest for the node's architecture | 9.5 #1 | [new] |
 | `profile.media_type_parameter` | R | input | a manifest media type with parameters (;version=) | push media types without parameters | 9.2 | [new] |
 | `profile.bad_signature` | R | input | the signature does not verify (the first build refuses every signature) | sign with a key on the trust list | 9.5 #3 | [new] |
-| `profile.variance_changed` | D | input | the own time's variance (diff-fit) or cs2 (a profile) differs beyond 2 standard errors | none in this version: inconclusive until a variance patch exists | 8, 9.5 #15 | [new] |
+| `profile.variance_changed` | D | input | the own time's variance (diff-fit: var_delta, var_se in ms^2) or cs2 (a profile) differs beyond 2 standard errors | none: a prediction applies the measured variance difference (own_var_ms2), and its uncertainty stays a doubt | 8, 9.5 #15 | [new] |
 | `profile.structure_changed` | D | input | calls per visit differ between arms (also from diff-fit) | describe the change structurally | 8, 9.5 #14 | [new] |
+| `profile.route_heterogeneous` | D | input | a route's own-time difference differs from the service's blended difference beyond 3 standard errors (diff-fit) | give the change as one own_ms item per route (route: the record's routes[].route, value: its own_ms delta), not the blend | 8 | [new] |
 | `profile.self_report_mismatch` | D | input | the outside measurement disagrees with the spans (also from diff-fit) | check the candidate's instrumentation | 8, 9.5 #16 | [new] |
 | `profile.untrusted_signer` | R | input | the signer is not the harness identity | sign with the harness identity | 9.5 #4 | [later] |
 | `profile.predicate_type` | R | input | another predicate type or version | use the frozen predicate type | 9.5 #5 | [later] |

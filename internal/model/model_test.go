@@ -4,6 +4,7 @@ package model
 
 import (
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -196,5 +197,48 @@ func TestNaNIsNeverStable(t *testing.T) {
 	}
 	if !math.IsNaN(ErlangC(4, math.NaN())) {
 		t.Error("ErlangC of a NaN load should be NaN")
+	}
+}
+
+// An edge change adds its ms to the calls on that edge only, inside a parallel maximum as in a sequence; none (nil or
+// empty) gives AnalyticWith's result bit for bit.
+func TestAnalyticEdge(t *testing.T) {
+	topo := &Topology{Name: "edge", Entry: map[int]float64{0: 1, 1: 1}, Services: []Service{
+		{Name: "a", S: 1, CS2: 1, Servers: 4, Routing: Pooled, Workers: 1, Calls: []Call{{Child: 2, P: 1}}},
+		{Name: "b", S: 1, CS2: 1, Servers: 4, Routing: Pooled, Workers: 1, Parallel: true, Calls: []Call{{Child: 2, P: 1}, {Child: 3, P: 1}}},
+		{Name: "x", S: 3, CS2: 2, Servers: 2, Routing: Pooled, Workers: 1},
+		{Name: "y", S: 2, CS2: 1, Servers: 2, Routing: Pooled, Workers: 1},
+	}}
+	if err := topo.Finish(); err != nil {
+		t.Fatal(err)
+	}
+	for _, cfg := range []Config{Plain, Default} {
+		r0, err := AnalyticWith(topo, 0.1, nil, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range []map[Edge]float64{nil, {}} {
+			r1, err := AnalyticEdgeWith(topo, 0.1, nil, e, cfg)
+			if err != nil || !reflect.DeepEqual(r0, r1) {
+				t.Errorf("no edge change: %v, %+v vs %+v", err, r1, r0)
+			}
+		}
+		r2, err := AnalyticEdgeWith(topo, 0.1, nil, map[Edge]float64{{Caller: 0, Child: 2}: 1.5}, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if math.Abs(r2.L[0]-r0.L[0]-1.5) > 1e-12 || r2.L[1] != r0.L[1] || r2.L[2] != r0.L[2] || !reflect.DeepEqual(r2.Rho, r0.Rho) {
+			t.Errorf("a's edge to x: a %v -> %v, b %v -> %v", r0.L[0], r2.L[0], r0.L[1], r2.L[1])
+		}
+		r3, err := AnalyticEdgeWith(topo, 0.1, nil, map[Edge]float64{{Caller: 1, Child: 2}: 1.5}, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !(r3.L[1] > r0.L[1] && r3.L[1]-r0.L[1] < 1.5) || r3.L[0] != r0.L[0] {
+			t.Errorf("b's parallel edge to x: b %v -> %v", r0.L[1], r3.L[1])
+		}
+	}
+	if _, err := AnalyticEdgeWith(topo, 0.1, nil, map[Edge]float64{{Caller: 0, Child: 9}: 1}, Plain); err == nil {
+		t.Error("an edge off the topology is solved")
 	}
 }

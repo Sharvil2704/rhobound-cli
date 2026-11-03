@@ -137,7 +137,12 @@ func lambdaArgs(getenv func(string) string) []string {
 	return nil
 }
 
-// run dispatches to a mode: exit 0, 1 when the mode fails, 2 for a usage error.
+// exitStatus is an error a mode returns to exit with that status and print nothing (muse-hook's 10).
+type exitStatus int
+
+func (e exitStatus) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+
+// run dispatches to a mode: exit 0, 1 when the mode fails, 2 for a usage error, or the mode's own exitStatus.
 func run(ctx context.Context, args []string, stderr io.Writer) int {
 	if len(args) == 0 {
 		usage(stderr)
@@ -149,6 +154,10 @@ func run(ctx context.Context, args []string, stderr io.Writer) int {
 		return 2
 	}
 	if err := m(ctx, args[1:]); err != nil {
+		var st exitStatus
+		if errors.As(err, &st) {
+			return int(st)
+		}
 		fmt.Fprintf(stderr, "rhobound-mcp: %v\n", err)
 		return 1
 	}
@@ -164,7 +173,9 @@ func usage(w io.Writer) {
 	fmt.Fprintf(w, "usage: rhobound-mcp MODE [flags]\nmodes: %s\n"+
 		"  rhobound-mcp stdio --config FILE                 serve one local agent on standard input and output\n"+
 		"  rhobound-mcp http  --config FILE [--listen ADDR] serve over HTTP (127.0.0.1:8000 by default)\n"+
-		"  rhobound-mcp version [--json]                    the version, and with --json the build information\n",
+		"  rhobound-mcp version [--json]                    the version, and with --json the build information\n"+
+		"  rhobound-mcp init [--engine FILE ...] [--write]  check, write and register a configuration with Muse Code\n"+
+		"  rhobound-mcp muse-hook api|session-start|stop    the Muse Code plugin's hooks (exit 0, or 10 to remind)\n",
 		strings.Join(names, ", "))
 }
 

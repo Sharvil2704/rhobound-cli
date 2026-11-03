@@ -10,7 +10,7 @@ set -uo pipefail
 # shellcheck source=lib.sh
 . "$(dirname "$(readlink -f "$0")")/lib.sh"
 mk_env
-ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop
+ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze
 REG=$T/registry; mkdir -p "$REG"; export FAKE_REG=$REG
 cat > "$T/bin/aws" << 'EOF'
 #!/usr/bin/env bash
@@ -36,7 +36,7 @@ esac
 EOF
 chmod +x "$T/bin/aws" "$T/bin/docker"
 O=$T/opt; mkdir -p "$O/ci" "$O/abdrive" "$O/bin"
-for d in lib kshop k8s setup mcp; do ln -s "$DEMO/tools1/$d" "$O/$d"; done
+for d in lib maze k8s setup mcp; do ln -s "$DEMO/tools1/$d" "$O/$d"; done
 cat > "$O/ci/build.sh" << 'EOF'
 #!/usr/bin/env bash
 # fake part D build.sh CHECKOUT SHA SERVICE: "pushes" RBD_ECR:SERVICE-<SHA> (all 40 hex), prints its JSON line
@@ -49,23 +49,23 @@ EOF
 chmod +x "$O/ci/build.sh"
 echo "FROM scratch" > "$O/abdrive/Dockerfile"; head -c 1000 /dev/urandom > "$O/bin/abdrive"; chmod +x "$O/bin/abdrive"
 export RBD_OPT=$O
-mkdir -p "$T/main/kshop/app"
+mkdir -p "$T/main/maze/app"
 SHA=0123456789abcdef0123456789abcdef01234567
 
 echo "-- images.sh"
 out=$(bash "$DEMO/tools1/setup/images.sh" "$T/main" "$SHA" 2> "$T/i1.err"); rc=$?
 check "images.sh exit 0 (rc $rc)" [ $rc = 0 ] || tail -5 "$T/i1.err"
-check "build.sh ran for the 10 services and kshop-load" [ "$(grep -c '^build.sh ' "$STUB_LOG")" = 11 ]
-check "...each with MAIN SHA SERVICE" grep -qx "build.sh $T/main $SHA kshop-load" "$STUB_LOG"
+check "build.sh ran for the 32 services and maze-load" [ "$(grep -c '^build.sh ' "$STUB_LOG")" = 33 ]
+check "...each with MAIN SHA SERVICE" grep -qx "build.sh $T/main $SHA maze-load" "$STUB_LOG"
 I=$T/home/images.json
 check "images.json: load, collector, busybox, abdrive by digest in RBD_ECR" [ "$(jq -r '[.load, .collector, .busybox, .abdrive] | map(test("^'"$ECR"'@sha256:[0-9a-f]{64}$")) | all' "$I")" = true ]
-check "images.json: load = kshop-load-<sha>'s digest (the full 40-hex tag build.sh pushes)" [ "$(jq -r .load "$I")" = "$ECR@$(cat "$REG/kshop-load-$SHA")" ]
+check "images.json: load = maze-load-<sha>'s digest (the full 40-hex tag build.sh pushes)" [ "$(jq -r .load "$I")" = "$ECR@$(cat "$REG/maze-load-$SHA")" ]
 check "the Collector mirrored from its pinned digest" grep -q "docker pull -q docker.io/otel/opentelemetry-collector-contrib@sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6" "$STUB_LOG"
 check "...pushed as otelcol-contrib-0.162.0, digest read back from ECR" [ "$(jq -r .collector "$I")" = "$ECR@$(cat "$REG/otelcol-contrib-0.162.0")" ]
 check "busybox mirrored as busybox-1.37.0" [ "$(jq -r .busybox "$I")" = "$ECR@$(cat "$REG/busybox-1.37.0")" ]
 check "abdrive built from /opt/rbd/abdrive, tagged by its binary" grep -q "docker build -q -t $ECR:abdrive-$(sha256sum "$O/bin/abdrive" | cut -c1-12) $O/abdrive" "$STUB_LOG"
 B=$T/home/baseline.json
-check "baseline.json: rbd.baseline/v1, 10 services = main's digests, no fit yet" [ "$(jq -r '"\(.schema) \(.services | length) \(.fit) \(.image_ref)"' "$B")" = "rbd.baseline/v1 10 null $ECR" ]
+check "baseline.json: rbd.baseline/v1, 32 services = main's digests, no fit yet" [ "$(jq -r '"\(.schema) \(.services | length) \(.fit) \(.image_ref)"' "$B")" = "rbd.baseline/v1 32 null $ECR" ]
 check "baseline auth = auth-<sha> in ECR" [ "$(jq -r .services.auth "$B")" = "$(cat "$REG/auth-$SHA")" ]
 check "last line: step images ok" [ "$(tail -n 1 <<< "$out" | jq -r '"\(.step) \(.ok)"')" = "images true" ]
 check "logged in to ECR with the password on stdin" bash -c "grep -q 'docker login --username AWS --password-stdin 123456789012.dkr.ecr.ap-south-1.amazonaws.com' '$STUB_LOG' && ! grep -q s3cr3t '$STUB_LOG'"
@@ -101,7 +101,7 @@ bash "$DEMO/tools1/setup/ecr-secret.sh" 2> "$T/e.err"; rc=$?
 check "ecr-secret.sh exit 0 (rc $rc)" [ $rc = 0 ] || cat "$T/e.err"
 check "the password is in no command line" bash -c "! grep -q s3cr3t '$STUB_LOG'"
 sec=$(grep -l 'kind: Secret' "$STUB_DIR"/apply.* | head -n 1)
-check "3 Secrets named ecr (kshop, kshop-obs, rbd-ab)" [ "$(grep -l 'kind: Secret' "$STUB_DIR"/apply.* | xargs grep -h '  namespace:' | sort | tr -d ' ' | tr '\n' ' ')" = "namespace:kshop namespace:kshop-obs namespace:rbd-ab " ]
+check "3 Secrets named ecr (maze, maze-obs, rbd-ab)" [ "$(grep -l 'kind: Secret' "$STUB_DIR"/apply.* | xargs grep -h '  namespace:' | sort | tr -d ' ' | tr '\n' ' ')" = "namespace:maze namespace:maze-obs namespace:rbd-ab " ]
 cfg=$(sed -n 's/^  .dockerconfigjson: //p' "$sec" | base64 -d)
 check "the Secret's dockerconfigjson: AWS / the password for the registry host" [ "$(jq -r '.auths["123456789012.dkr.ecr.ap-south-1.amazonaws.com"] | "\(.username) \(.password) \(.auth | @base64d)"' <<< "$cfg")" = "AWS FAKE-ECR-PASSWORD-s3cr3t AWS:FAKE-ECR-PASSWORD-s3cr3t" ]
 check "default ServiceAccounts patched with ecr" [ "$(grep -c 'patch serviceaccount default' "$STUB_LOG")" = 3 ]
@@ -127,22 +127,22 @@ check "...nothing applied, the lock never taken" bash -c "! grep -q 'kubectl.* a
 STUB_COLLECTOR_ROLLOUT_FAIL=1 bash "$DEMO/tools1/k8s/collector.sh" 2> "$T/c3.err"; rc=$?
 check "a Collector that does not become ready: exit 1 (rc $rc) with its last log lines" bash -c "[ $rc = 1 ] && grep -q 'fake-otelcol: error decoding' '$T/c3.err' && grep -q 'did not become ready (its last log lines are above' '$T/c3.err' && grep -q 'logs deploy/otel-collector --tail=20' '$STUB_LOG'"
 : > "$STUB_LOG"; rm -f "$STUB_DIR"/apply.*
-bash "$DEMO/tools1/kshop/app.sh" 2> "$T/a.err"; rc=$?
+bash "$DEMO/tools1/maze/app.sh" 2> "$T/a.err"; rc=$?
 check "app.sh exit 0 (rc $rc)" [ $rc = 0 ] || cat "$T/a.err"
-app=$T/home/runs/.kshop-app.json
+app=$T/home/runs/.maze-app.json
 check "app.sh rendered auth at baseline.json's digest" grep -q "\"image\": \"$ECR@$(jq -r .services.auth "$B")\"" "$app"
-check "app.sh waited for 10 rollouts" [ "$(grep -c 'rollout status deploy/' "$STUB_LOG")" = 10 ]
+check "app.sh waited for 32 rollouts" [ "$(grep -c 'rollout status deploy/' "$STUB_LOG")" = 32 ]
 : > "$STUB_LOG"
 ( RBD_HOME=$T/home; . "$DEMO/tools1/lib/lock.sh"; rbd_lock 5 a-capture; sleep 3 ) & hp=$!; sleep 0.5
-STUB_BG_ACTIVE="" bash "$DEMO/tools1/kshop/bgload.sh" ensure 2> "$T/b1.err"
-check "ensure with the lock held: nothing touched" bash -c "! grep -q kshop-bgload '$STUB_LOG' && grep -q 'lock held' '$T/b1.err'"
+STUB_BG_ACTIVE="" bash "$DEMO/tools1/maze/bgload.sh" ensure 2> "$T/b1.err"
+check "ensure with the lock held: nothing touched" bash -c "! grep -q maze-bgload '$STUB_LOG' && grep -q 'lock held' '$T/b1.err'"
 wait $hp
-STUB_BG_ACTIVE="" bash "$DEMO/tools1/kshop/bgload.sh" ensure 2> /dev/null
-check "ensure with the lock free and no Job: started" grep -q "delete job kshop-bgload" "$STUB_LOG"
-: > "$STUB_LOG"; STUB_BG_ACTIVE=1 bash "$DEMO/tools1/kshop/bgload.sh" ensure 2> /dev/null
+STUB_BG_ACTIVE="" bash "$DEMO/tools1/maze/bgload.sh" ensure 2> /dev/null
+check "ensure with the lock free and no Job: started" grep -q "delete job maze-bgload" "$STUB_LOG"
+: > "$STUB_LOG"; STUB_BG_ACTIVE=1 bash "$DEMO/tools1/maze/bgload.sh" ensure 2> /dev/null
 check "ensure with the Job running: nothing done" bash -c "! grep -q 'delete job' '$STUB_LOG'"
 
-echo "-- rbd-env.sh: rbd.env, then the owner's rbd.env.local"
+echo "-- rbd-env.sh: rbd.env, then rbd.env.local"
 envq() { bash -c '. "$1/tools1/lib/rbd-env.sh" && echo "${AB_SECONDS:-unset}|${JUDGE_CMD:-unset}|${AB_LOCK_WAIT:-unset}|$RBD_REGION|$(bash -c "echo \${AB_SECONDS:-unset}")"' _ "$DEMO"; }
 export RBD_ENV_LOCAL_UID=$(id -u)   # the .local's owner here (root on rbd-tools1)
 printf 'AB_LOCK_WAIT=3000\n' >> "$T/rbd.env"

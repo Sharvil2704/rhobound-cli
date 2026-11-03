@@ -5,7 +5,7 @@
 set -uo pipefail
 H=$(cd "$(dirname "$0")" && pwd); DEMO=$(cd "$H/../../.." && pwd)
 REPO0=$DEMO/tools1/tests/ci/fixtures/repo-day1   # day-1 main: the fixtures below edit its lib_v11.go (repo/ follows GitHub main)
-mkdir -p "$DEMO/../.tmp-bed"; T=$(mktemp -d "$DEMO/../.tmp-bed/t_agent.XXXXXX")
+SCR=${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}; mkdir -p "$SCR"; T=$(mktemp -d "$SCR/t_agent.XXXXXX")
 PIDS=()
 [[ -n ${KEEP_T:-} ]] && echo "T=$T"
 trap 'for p in "${PIDS[@]}"; do kill "$p" 2> /dev/null; done; [[ -n ${KEEP_T:-} ]] || rm -rf "$T"' EXIT
@@ -14,14 +14,14 @@ check() { local d=$1; shift; if "$@" > /dev/null 2>&1; then pass=$((pass + 1)); 
 KEY=sk-ant-test-$RANDOM$RANDOM-secretvalue
 MTOK=mcp-token-$RANDOM$RANDOM
 
-mkdir -p "$T/src/main"; cp -r "$REPO0/kshop" "$T/src/main/kshop"; printf '%040d\n' 7 > "$T/src/main.sha"
+mkdir -p "$T/src/main"; cp -r "$REPO0/maze" "$T/src/main/maze"; printf '%040d\n' 7 > "$T/src/main.sha"
 printf '%s' "$MTOK" > "$T/mcp-token"
 python3 -I "$H/fakes.py" mcp "$MTOK" "$T/mcp.port" "$T/mcp.log" & PIDS+=($!)
 for _ in $(seq 1 50); do [[ -s $T/mcp.port ]] && break; sleep 0.1; done
 
 NEWLIB=$(sed -e 's/^func VerifyToken(token string) bool {$/var verified sync.Map\n\nfunc VerifyToken(token string) bool {\n\tif v, ok := verified.Load(token); ok {\n\t\treturn v.(bool)\n\t}/' \
   -e 's/^\treturn err == nil \&\& len(k) == 32 \&\& token != "x"$/\tok := err == nil \&\& len(k) == 32 \&\& token != "x"\n\tverified.Store(token, ok)\n\treturn ok/' \
-  -e 's/^\t"crypto\/sha256"$/\t"crypto\/sha256"\n\t"sync"/' "$REPO0/kshop/app/internal/work/lib_v11.go")
+  -e 's/^\t"crypto\/sha256"$/\t"crypto\/sha256"\n\t"sync"/' "$REPO0/maze/app/internal/work/lib_v11.go")
 mkscript() {   # $1 out file, $2 = "good" | "refusal" | "bad-paths" | "meta" | "redirect" | "echo" | "budget"
   python3 -I - "$1" "$2" "$NEWLIB" "http://127.0.0.1:$(cat "$T/mcp.port")/stolen" "$KEY" << 'PY'
 import json, sys
@@ -35,10 +35,10 @@ th = {"type": "thinking", "thinking": "", "signature": "sig-opaque"}
 if kind == "refusal":
     r = [dict(msg("refusal"), stop_details={"type": "refusal", "category": "cyber"})]
 elif kind == "bad-paths":
-    r = [msg("tool_use", use(1, "write_file", {"path": "kshop/app/../../.github/workflows/x.go", "content": "package x\n"}),
-             use(2, "write_file", {"path": "kshop/app/go.mod", "content": "module x\n"}),
-             use(3, "write_file", {"path": "kshop/spec.json", "content": "{}"}),
-             use(4, "write_file", {"path": "kshop/app/newdir/x.go", "content": "package x\n"})),
+    r = [msg("tool_use", use(1, "write_file", {"path": "maze/app/../../.github/workflows/x.go", "content": "package x\n"}),
+             use(2, "write_file", {"path": "maze/app/go.mod", "content": "module x\n"}),
+             use(3, "write_file", {"path": "maze/spec.json", "content": "{}"}),
+             use(4, "write_file", {"path": "maze/app/newdir/x.go", "content": "package x\n"})),
          msg("tool_use", use(5, "submit_change", {"service": "auth", "title": "t", "summary": "s"})),
          msg("end_turn", {"type": "text", "text": "I cannot."}),
          msg("end_turn", {"type": "text", "text": "Still no."})]
@@ -52,8 +52,8 @@ elif kind == "meta":
     r = [{"status": 504, "body": {"error": {"type": "server_error", "code": "gateway_timeout", "message": "too long", "param": None}}},
          {"status": 503, "body": {"error": {"type": "server_error", "code": "service_overloaded", "message": "busy", "param": None}}},
          cc("tool_calls", "Looking at production first.", [(1, "rhobound_context", {"env": "prod"})]),
-         cc("tool_calls", None, [(2, "rhobound_budget", {"fit_id": "fit_abc123", "service": "auth"}), (3, "read_file", {"path": "kshop/app/internal/work/lib_v11.go"}), (4, "list_files", {})]),
-         cc("tool_calls", None, [(5, "write_file", {"path": "kshop/app/internal/work/lib_v11.go", "content": newlib})]),
+         cc("tool_calls", None, [(2, "rhobound_budget", {"fit_id": "fit_abc123", "service": "auth"}), (3, "read_file", {"path": "maze/app/internal/work/lib_v11.go"}), (4, "list_files", {})]),
+         cc("tool_calls", None, [(5, "write_file", {"path": "maze/app/internal/work/lib_v11.go", "content": newlib})]),
          cc("tool_calls", None, [(6, "rhobound_predict", {"env": "prod", "changes": [{"op": "own_ms", "service": "auth", "value": -1}]}), (7, "read_file", "{not json")]),
          cc("stop", "Done, I think."),
          cc("tool_calls", None, [(9, "submit_change", {"service": "auth", "title": "auth: cache VerifyToken results (AUTH-142)",
@@ -67,7 +67,7 @@ elif kind in ("redirect", "echo", "budget"):
     if kind == "redirect":
         r = [{"status": 302, "body": {}, "headers": {"Location": sys.argv[4]}}]
     elif kind == "echo":
-        r = [cc("tool_calls", None, [(1, "write_file", {"path": "kshop/app/internal/work/lib_v11.go", "content": newlib + "\n// " + sys.argv[5] + "\n"})]),
+        r = [cc("tool_calls", None, [(1, "write_file", {"path": "maze/app/internal/work/lib_v11.go", "content": newlib + "\n// " + sys.argv[5] + "\n"})]),
              cc("tool_calls", None, [(2, "submit_change", {"service": "auth", "title": "t", "summary": "s"})])]
     else:
         r = [cc("tool_calls", None, [(i, "rhobound_predict", {"env": "prod", "changes": []}) for i in range(1, 8)]),
@@ -75,8 +75,8 @@ elif kind in ("redirect", "echo", "budget"):
 else:
     r = [{"status": 529, "body": {"type": "error", "error": {"type": "overloaded_error", "message": "busy"}}},
          msg("tool_use", th, {"type": "text", "text": "Looking at production first."}, use(1, "rhobound_context", {"env": "prod"})),
-         msg("tool_use", use(2, "rhobound_budget", {"fit_id": "fit_abc123", "service": "auth"}), use(3, "read_file", {"path": "kshop/app/internal/work/lib_v11.go"}), use(4, "list_files", {})),
-         msg("tool_use", use(5, "write_file", {"path": "kshop/app/internal/work/lib_v11.go", "content": newlib})),
+         msg("tool_use", use(2, "rhobound_budget", {"fit_id": "fit_abc123", "service": "auth"}), use(3, "read_file", {"path": "maze/app/internal/work/lib_v11.go"}), use(4, "list_files", {})),
+         msg("tool_use", use(5, "write_file", {"path": "maze/app/internal/work/lib_v11.go", "content": newlib})),
          msg("tool_use", use(6, "rhobound_predict", {"env": "prod", "changes": [{"service": "auth", "own_ms": -3}]}), use(7, "fit_start", {"env": "prod"})),
          msg("tool_use", use(8, "submit_change", {"service": "nosuch", "title": "x", "summary": "y"})),
          msg("tool_use", use(9, "submit_change", {"service": "auth", "title": "auth: cache VerifyToken results (AUTH-142)",
@@ -137,7 +137,7 @@ check "OUT: manifest lists lib_v11.go with its sha256; rhobound-change.json for 
 import json,sys,hashlib,os
 o=sys.argv[1]; m=json.load(open(o+"/manifest.json"))
 f=m["files"][0]; b=open(o+"/files/"+f["path"],"rb").read()
-assert f["path"]=="kshop/app/internal/work/lib_v11.go" and hashlib.sha256(b).hexdigest()==f["sha256"] and m["base_sha"]=="0"*39+"7"
+assert f["path"]=="maze/app/internal/work/lib_v11.go" and hashlib.sha256(b).hexdigest()==f["sha256"] and m["base_sha"]=="0"*39+"7"
 assert json.load(open(o+"/rhobound-change.json"))["services"]==["auth"]
 assert "+var verified sync.Map" in open(o+"/change.patch").read()
 assert [c["tool"] for c in m["mcp_calls"]]==["context","budget","predict"]' "$T/run-good"
@@ -197,31 +197,31 @@ assert [c["tool"] for c in m["mcp_calls"]]==["context","budget","predict"]' "$T/
 check "meta: the key appears in no output" bash -c '! grep -rqF "$1" "$2"/run-meta "$2"/out-meta.txt "$2"/err-meta.txt' _ "$KEY" "$T"
 
 # agent_take.sh in a copy of the kit (it writes changes/c5-model and state/ next to itself)
-K=$T/kit; mkdir -p "$K/orch" "$K/changes" "$K/state"; cp "$DEMO/orch/agent_take.sh" "$K/orch/"; cp -r "$REPO0" "$K/repo"
+K=$T/kit; mkdir -p "$K/orch" "$K/changes" "$K/state"; cp "$DEMO/orch/agent_take.sh" "$DEMO/orch/capped.sh" "$K/orch/"; cp -r "$REPO0" "$K/repo"
 printf '%040d\n' 7 > "$K/state/main.sha"
 RBD_AGENT_LOCAL="$T/run-good" bash "$K/orch/agent_take.sh" r1 > "$T/take.out" 2> "$T/take.err"; rc=$?
-check "agent_take: the good run compiles (go build default + kshop_v11, go vet) and is taken (exit 0)" test "$rc" -eq 0
+check "agent_take: the good run compiles (go build default + maze_v11, go vet) and is taken (exit 0)" test "$rc" -eq 0
 check "agent_take: changes/c5-model has change.patch (git apply --check on repo/), rhobound-change.json, title.txt" bash -c '
   c=$1/changes/c5-model; [ -s $c/change.patch ] && [ "$(cat $c/title.txt)" = "auth: cache VerifyToken results (AUTH-142)" ] &&
   d=$(mktemp -d) && cp -r $1/repo/. $d && git -C $d init -q && git -C $d apply --check $c/change.patch; r=$?; rm -rf $d; exit $r' _ "$K"
 cp -r "$T/run-good" "$T/run-broken"
-printf '//go:build kshop_v11\n\npackage work\n\nfunc broken( {\n' > "$T/run-broken/files/kshop/app/internal/work/lib_v11.go"
+printf '//go:build maze_v11\n\npackage work\n\nfunc broken( {\n' > "$T/run-broken/files/maze/app/internal/work/lib_v11.go"
 python3 -I -c '
 import json,sys,hashlib
-o=sys.argv[1]; m=json.load(open(o+"/manifest.json")); b=open(o+"/files/kshop/app/internal/work/lib_v11.go","rb").read()
+o=sys.argv[1]; m=json.load(open(o+"/manifest.json")); b=open(o+"/files/maze/app/internal/work/lib_v11.go","rb").read()
 m["files"][0].update(sha256=hashlib.sha256(b).hexdigest(), bytes=len(b)); json.dump(m,open(o+"/manifest.json","w"))' "$T/run-broken"
 RBD_AGENT_LOCAL="$T/run-broken" bash "$K/orch/agent_take.sh" r2 > /dev/null 2>&1; rc=$?
 check "agent_take: a change that does not compile exits 3 with compile.txt" bash -c "[ $rc -eq 3 ] && grep -q 'syntax error\|expected' '$K/state/agent/r2.compile.txt'"
-cp -r "$T/run-good" "$T/run-extra"; echo x > "$T/run-extra/files/kshop/app/extra.go"
+cp -r "$T/run-good" "$T/run-extra"; echo x > "$T/run-extra/files/maze/app/extra.go"
 RBD_AGENT_LOCAL="$T/run-extra" bash "$K/orch/agent_take.sh" r3 > /dev/null 2>&1; rc=$?
 check "agent_take: a file not in the manifest is refused (exit 1)" test "$rc" -eq 1
-cp -r "$T/run-good" "$T/run-link"; rm "$T/run-link/files/kshop/app/internal/work/lib_v11.go"; ln -s /etc/passwd "$T/run-link/files/kshop/app/internal/work/lib_v11.go"
+cp -r "$T/run-good" "$T/run-link"; rm "$T/run-link/files/maze/app/internal/work/lib_v11.go"; ln -s /etc/passwd "$T/run-link/files/maze/app/internal/work/lib_v11.go"
 RBD_AGENT_LOCAL="$T/run-link" bash "$K/orch/agent_take.sh" r4 > /dev/null 2>&1; rc=$?
 check "agent_take: a symlink in files/ is refused (exit 1)" test "$rc" -eq 1
 cp -r "$T/run-good" "$T/run-trav"
 python3 -I -c '
 import json,sys
-o=sys.argv[1]; m=json.load(open(o+"/manifest.json")); m["files"][0]["path"]="kshop/app/../../.github/x.go"; json.dump(m,open(o+"/manifest.json","w"))' "$T/run-trav"
+o=sys.argv[1]; m=json.load(open(o+"/manifest.json")); m["files"][0]["path"]="maze/app/../../.github/x.go"; json.dump(m,open(o+"/manifest.json","w"))' "$T/run-trav"
 RBD_AGENT_LOCAL="$T/run-trav" bash "$K/orch/agent_take.sh" r5 > /dev/null 2>&1; rc=$?
 check "agent_take: a traversal path in the manifest is refused (exit 1)" test "$rc" -eq 1
 cp -r "$T/run-good" "$T/run-leak"
@@ -253,10 +253,10 @@ mut base 'import json, sys
 o = sys.argv[1]; m = json.load(open(o + "/manifest.json")); m["base_sha"] = "1" * 40; json.dump(m, open(o + "/manifest.json", "w"))'
 check "agent_take: a run on another main (base_sha) is refused (exit 1)" bash -c "[ $? -eq 1 ] && grep -q 'worked on' '$T/take-base.txt'"
 mut tag 'import sys
-p = sys.argv[1] + "/files/kshop/app/internal/work/lib_v11.go"; s = open(p).read().replace("//go:build kshop_v11", "//go:build kshop_v11 && !go1.27"); open(p, "w").write(s)'
+p = sys.argv[1] + "/files/maze/app/internal/work/lib_v11.go"; s = open(p).read().replace("//go:build maze_v11", "//go:build maze_v11 && !go1.27"); open(p, "w").write(s)'
 check "agent_take: a changed build constraint (//go:build ... !go1.27) is refused (exit 1)" bash -c "[ $? -eq 1 ] && grep -q 'build constraints' '$T/take-tag.txt'"
 mut embed 'import sys
-p = sys.argv[1] + "/files/kshop/app/internal/work/lib_v11.go"; s = open(p).read().replace("package work", "package work\n\n//go:embed lib_v10.go\nvar x string"); open(p, "w").write(s)'
+p = sys.argv[1] + "/files/maze/app/internal/work/lib_v11.go"; s = open(p).read().replace("package work", "package work\n\n//go:embed lib_v10.go\nvar x string"); open(p, "w").write(s)'
 check "agent_take: //go:embed in the change is refused (exit 1)" bash -c "[ $? -eq 1 ] && grep -q 'not allowed' '$T/take-embed.txt'"
 rm -rf "$T/run-nores"; cp -r "$T/run-good" "$T/run-nores"; rm "$T/run-nores/result.json"
 RBD_AGENT_LOCAL="$T/run-nores" bash "$K/orch/agent_take.sh" r8 > "$T/take-nores.txt" 2>&1; rc=$?
@@ -266,8 +266,8 @@ check "agent.py: a write_file path with a trailing newline is refused" python3 -
 import importlib.util,sys,pathlib
 spec=importlib.util.spec_from_file_location("agent", sys.argv[1]); a=importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
 w=a.Workspace(pathlib.Path(sys.argv[2]))
-t,e=w.write_file({"path":"kshop/app/internal/work/x.go\n","content":"package work\n"}); assert e, t
-t,e=w.write_file({"path":"kshop/app/internal/work/x.go","content":"package work\n\ud800\n"}); assert e and "UTF-8" in t, t' "$DEMO/tools1/agent/agent.py" "$T/src/main"
+t,e=w.write_file({"path":"maze/app/internal/work/x.go\n","content":"package work\n"}); assert e, t
+t,e=w.write_file({"path":"maze/app/internal/work/x.go","content":"package work\n\ud800\n"}); assert e and "UTF-8" in t, t' "$DEMO/tools1/agent/agent.py" "$T/src/main"
 
 # round 2 of the review (wf_92dee97f-768): agent.py
 PROVIDER=meta runagent redirect "$T/run-redir"; rc=$?
@@ -284,11 +284,11 @@ check "agent.py: a 300-character file name is refused by write_file" python3 -I 
 import importlib.util,sys,pathlib
 spec=importlib.util.spec_from_file_location("agent", sys.argv[1]); a=importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
 w=a.Workspace(pathlib.Path(sys.argv[2]))
-t,e=w.write_file({"path":"kshop/app/internal/work/"+"a"*300+".go","content":"package work\n"}); assert e, t
+t,e=w.write_file({"path":"maze/app/internal/work/"+"a"*300+".go","content":"package work\n"}); assert e, t
 t,e=w.read_file({"path":["x"]}); assert e, t' "$DEMO/tools1/agent/agent.py" "$T/src/main"
 # round 2: agent_take
 mut bom 'import sys
-p = sys.argv[1] + "/files/kshop/app/internal/work/lib_v11.go"; s = open(p).read(); open(p, "w").write("\ufeff" + s)'
+p = sys.argv[1] + "/files/maze/app/internal/work/lib_v11.go"; s = open(p).read(); open(p, "w").write("\ufeff" + s)'
 check "agent_take: a byte-order mark in a changed file is refused (exit 1)" bash -c "[ $? -eq 1 ] && grep -q 'byte-order mark' '$T/take-bom.txt'"
 python3 -I - "$T" << 'PY'
 import io, json, os, sys, tarfile
@@ -316,13 +316,13 @@ check "agent_take: a run folder of mode 0100 with a symlink inside is refused (e
 check "agent_take: a hard link in the run is refused (exit 1)" bash -c "[ \$(cat '$T/take-thard.rc') -eq 1 ] && grep -q 'hard link' '$T/take-thard.txt'"
 check "agent_take: a tar stream over 6 MB is refused before unpacking (exit 1)" bash -c "[ \$(cat '$T/take-tbig.rc') -eq 1 ] && grep -q 'before unpacking' '$T/take-tbig.txt'"
 mut giant 'import sys
-p = sys.argv[1] + "/files/kshop/app/internal/work/lib_v11.go"; s = open(p).read(); open(p, "w").write(s + "\nvar giant = [300 << 20]byte{300<<20 - 1: 1}\n")'
-check "agent_take: a 300 MB array fails the capped compile (exit 3: the 256 MB file cap), the build cache stays small" bash -c "[ $? -eq 3 ] && [ \$(du -sm '$K/../.tmp-bed/agent-gocache' | cut -f1) -lt 1500 ]"
+p = sys.argv[1] + "/files/maze/app/internal/work/lib_v11.go"; s = open(p).read(); open(p, "w").write(s + "\nvar giant = [300 << 20]byte{300<<20 - 1: 1}\n")'
+check "agent_take: a 300 MB array fails the capped compile (exit 3: the 256 MB file cap), the build cache stays small" bash -c "[ $? -eq 3 ] && [ \$(du -sm '$SCR/agent-gocache' | cut -f1) -lt 1500 ]"
 mut esc 'import json, sys
 o = sys.argv[1]; r = json.load(open(o + "/result.json")); r["ok"] = False; r["error"] = "x\x1b]0;PWNED\x07\x1b[2J"; json.dump(r, open(o + "/result.json", "w"))'
 check "agent_take: control characters from result.json are printed escaped" bash -c "! grep -q \$'\\x1b' '$T/take-esc.txt' && grep -q 'x1b' '$T/take-esc.txt'"
 
-# SPEC2 4: rhobound-change.json v2 (the bench's runs: several services, an optional base key of tools1/kshop/bases.json)
+# SPEC2 4: rhobound-change.json v2 (the bench's runs: several services, an optional base key of tools1/maze/bases.json)
 v2() {   # $1 name, $2 a python dict literal merged into a v2 change request of the run (services/base/extra fields)
   mut "$1" "import json, sys
 o = sys.argv[1]; m = json.load(open(o + '/manifest.json'))
@@ -331,12 +331,12 @@ json.dump(dict({'schema': 'rbd.change-request/v2', 'services': ['auth', 'invento
 v2 v2good '{}'
 check "agent_take v2: services [auth, inventory] (the manifest's auth first) is taken (exit 0), the v2 file kept" bash -c "[ $? -eq 0 ] && grep -q 'change-request/v2' '$K/changes/c5-model/rhobound-change.json'"
 v2 v2nobases "{'base': 'go127'}"
-check "agent_take v2: a base key while the kit has no tools1/kshop/bases.json is refused (exit 1)" bash -c "[ $? -eq 1 ] && grep -q 'no tools1/kshop/bases.json' '$T/take-v2nobases.txt'"
-mkdir -p "$K/tools1/kshop"; printf '{"go1269": "golang:1.26.9-bookworm@sha256:%064d", "go127": "golang:1.27.2-bookworm@sha256:%064d"}\n' 1 2 > "$K/tools1/kshop/bases.json"
+check "agent_take v2: a base key while the kit has no tools1/maze/bases.json is refused (exit 1)" bash -c "[ $? -eq 1 ] && grep -q 'no tools1/maze/bases.json' '$T/take-v2nobases.txt'"
+mkdir -p "$K/tools1/maze"; printf '{"go1269": "golang:1.26.9-bookworm@sha256:%064d", "go127": "golang:1.27.2-bookworm@sha256:%064d"}\n' 1 2 > "$K/tools1/maze/bases.json"
 v2 v2base "{'base': 'go127'}"
 check "agent_take v2: base go127 (a key of bases.json) is taken (exit 0)" test $? -eq 0
 v2 v2badbase "{'base': 'go999'}"
-check "agent_take v2: an unknown base key is refused (exit 1)" bash -c "[ $? -eq 1 ] && grep -q 'not a key of tools1/kshop/bases.json' '$T/take-v2badbase.txt'"
+check "agent_take v2: an unknown base key is refused (exit 1)" bash -c "[ $? -eq 1 ] && grep -q 'not a key of tools1/maze/bases.json' '$T/take-v2badbase.txt'"
 v2 v2svc "{'services': ['inventory']}"
 check "agent_take v2: services without the manifest's service are refused (exit 1)" bash -c "[ $? -eq 1 ] && grep -q 'the first the manifest' '$T/take-v2svc.txt'"
 v2 v2many "{'services': ['auth', 'inventory', 'cart', 'pricing']}"

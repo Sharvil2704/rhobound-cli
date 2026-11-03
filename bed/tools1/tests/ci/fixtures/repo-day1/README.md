@@ -2,7 +2,7 @@
 
 A one-day live demo of **rhobound** gating code changes by their effect on **mean latency**, on a real cluster.
 
-`kshop`, a 10-service shop written in Go and instrumented with standard OpenTelemetry, is the client's production: it
+`maze`, a 10-service shop written in Go and instrumented with standard OpenTelemetry, is the client's production: it
 runs on a k3s cluster in AWS (one AZ) under steady Poisson load (100 rps: `/browse` on storefront, `/buy/card` and
 `/buy/wallet` on checkout). Every pull request to `main` is built, measured in the cluster, predicted and gated before it
 can reach production. Images live in ECR and are deployed by digest only.
@@ -13,8 +13,8 @@ Mean latency only: rhobound says nothing about tails.
 
 | step | what it does |
 |---|---|
-| `pr-check.sh` | the PR may change only `kshop/app/**` and `rhobound-change.json`, and must add or update a valid change request naming exactly one service |
-| `build.sh` | builds the changed service's image with the runner host's own Dockerfile (never the PR's), `LIB=kshop_v11`, pushes it to ECR, reads its digest back from the registry |
+| `pr-check.sh` | the PR may change only `maze/app/**` and `rhobound-change.json`, and must add or update a valid change request naming exactly one service |
+| `build.sh` | builds the changed service's image with the runner host's own Dockerfile (never the PR's), `LIB=maze_v11`, pushes it to ECR, reads its digest back from the registry |
 | `ab.sh` | an A/B in the cluster: the production image (arm a) and the candidate (arm b) side by side on a dedicated node, the same Poisson schedule sent to both, traces split per arm, `rhobound diff-fit` -> an A/B record (the service's own-time delta +- SE) |
 | `predict.sh` | the record's delta as a measured change on production's fit (`rhobound predict`), then `rhobound gate` with `policy/gate.json`: **pass**, **block** or **inconclusive** |
 | `sign.sh` | the verdict as a signed in-toto attestation on the candidate image (cosign, key in AWS KMS), and one write-once ledger row in S3 |
@@ -32,7 +32,7 @@ widened by the model's documented error); every other key is rhobound's default.
 {"schema": "rbd.change-request/v1", "services": ["auth"], "summary": "what the change does, in one or two sentences"}
 ```
 
-Exactly one service of `kshop/spec.json`'s ten. The summary is shown in the job summary.
+Exactly one service of `maze/spec.json`'s ten. The summary is shown in the job summary.
 
 ## Where it is enforced: `deploy.sh`, not branch protection
 
@@ -79,10 +79,10 @@ gate's prediction digest, `sha256` of `prediction.json` without its final newlin
 ## Layout
 
 ```
-kshop/app/          the shop's Go source (cmd/kshop-svc, cmd/kshop-load, internal/work: lib_v11.go is library 1.1)
-kshop/Dockerfile    one image per service (context kshop/); the golang base pinned by digest
-kshop/spec.json     the services, their workers and calls, the load mix (ground truth; rhobound never reads it)
-kshop/render.py     spec.json -> Kubernetes manifests
+maze/app/          the shop's Go source (cmd/maze-svc, cmd/maze-load, internal/work: lib_v11.go is library 1.1)
+maze/Dockerfile    one image per service (context maze/); the golang base pinned by digest
+maze/spec.json     the services, their workers and calls, the load mix (ground truth; rhobound never reads it)
+maze/render.py     spec.json -> Kubernetes manifests
 policy/gate.json    the gate's policy
 .github/workflows/  gate.yml (every PR), deploy.yml (every push to main)
 ```

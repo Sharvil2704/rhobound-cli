@@ -119,7 +119,9 @@ func biased(topo *model.Topology, stage []bool, base *model.Result, entry int, c
 			case !sv.Parallel && j > 0 && hasOtherChild(calls[:j], c.Child):
 				add(report.ConstructSecondSequentialCall, nodeService(sv.Name, stage[i]), report.DirectionBoth)
 			}
-			if stage[c.Child] && strings.HasPrefix(child, "stage:") {
+			// a stage node whose calls are one batch is composed by the batch term (model.Config.Batch), not as the
+			// maximum over its branches that item 5 measured
+			if stage[c.Child] && strings.HasPrefix(child, "stage:") && (plain || !model.IsBatchNode(topo, c.Child)) {
 				add(report.ConstructStagedCalls, nodeService(child, true), report.DirectionOver)
 			}
 			if !plain && isChanged(c.Child) && !sv.Delay && sv.CS2 < regularCS2 {
@@ -142,11 +144,14 @@ func hasOtherChild(earlier []model.Call, child int) bool {
 }
 
 // widening is how far the biased constructs widen a change range beyond the model band, on its low and its high side.
-// Over-prediction means the true change is nearer zero than predicted, so it widens the side toward zero;
-// under-prediction widens the side away from it.
+// Over-prediction means the true change is nearer zero than predicted, with the same sign, so it widens the side
+// toward zero, but never past zero; under-prediction widens the side away from it. A range that straddles zero has a
+// corner on each side: erring toward zero from either stays inside the range, and erring away widens each side by its
+// own corner's share (lean/Rbproofs/Lanes/ChangeBand.lean). The widening is then continuous in the range: it no longer
+// jumps by a construct's whole size, from one side to the other, as the range's midpoint crosses zero.
 func widening(bs []report.Biased, ch change.Range, beforeMs float64) (low, high float64) {
 	mag := math.Max(math.Abs(ch.Lo), math.Abs(ch.Hi))
-	var toward, away float64
+	var toward, awayFrac float64
 	seen := map[string]bool{}
 	for _, b := range bs {
 		if seen[b.Construct] {
@@ -156,17 +161,20 @@ func widening(bs []report.Biased, ch change.Range, beforeMs float64) (low, high 
 		switch b.Construct {
 		case report.ConstructSecondSequentialCall:
 			toward += seqOverFrac * mag
-			away += seqUnderFrac * mag
+			awayFrac += seqUnderFrac
 		case report.ConstructNonSlowestBranch:
 			toward += branchLatencyFrac * beforeMs
 		case report.ConstructStagedCalls:
 			toward += stagedFrac * mag
 		case report.ConstructRegularUpstream:
-			away += upstreamFrac * mag
+			awayFrac += upstreamFrac
 		}
 	}
-	if ch.Lo+ch.Hi >= 0 { // an increase: toward zero is the low side
-		return toward, away
+	switch {
+	case ch.Lo >= 0: // an increase (or none): toward zero is the low side
+		return math.Min(toward, ch.Lo), awayFrac * mag
+	case ch.Hi <= 0: // a decrease
+		return awayFrac * mag, math.Min(toward, -ch.Hi)
 	}
-	return away, toward
+	return awayFrac * -ch.Lo, awayFrac * ch.Hi
 }

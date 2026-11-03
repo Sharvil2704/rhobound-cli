@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# check_world.py WORLD.json AREA... : assertions on the fake's world after spawn_demo.sh ran (prints "ok ..." / "FAIL ..."; exit 1 on a FAIL).
+# check_world.py WORLD.json AREA... : assertions on the fake's world after spawn_two.sh ran (prints "ok ..." / "FAIL ..."; exit 1 on a FAIL).
 # AREAS: policies (IAM roles, trust, KMS key policy), machines, net ORCH_CIDR, ecr, kms, bucket-untouched
 import json, re, sys
 
 ACCOUNT, REGION, CAMPAIGN, PROJECT = "123456789012", "ap-south-1", "demo1", "rhobound-demo"
 BUCKET = "rhobound-research-%s-%s" % (ACCOUNT, REGION)
-REPO = "rhobound-demo/kshop"
+REPO = "rhobound-demo/maze"
 REPO_ARN = "arn:aws:ecr:%s:%s:repository/%s" % (REGION, ACCOUNT, REPO)
 SECRETS_ARN = "arn:aws:secretsmanager:%s:%s:secret:rhobound-demo/*" % (REGION, ACCOUNT)
 NODE, TOOLS = "rbd-demo1-node", "rbd-demo1-tools"
@@ -148,7 +148,7 @@ def machines():
         check("VolumeSize=%d,VolumeType=gp3,DeleteOnTermination=true,Encrypted=true" % disk in i["_bdm"], "%s: %d GB gp3 encrypted" % (n, disk))
         check(i["_profile"] == prof, "%s: instance profile %s (got %s)" % (n, prof, i["_profile"]))
         check(i["_meta"] == "HttpTokens=required,HttpEndpoint=enabled,HttpPutResponseHopLimit=%d" % hop, "%s: IMDSv2 required, hop limit %d" % (n, hop))
-        check(i["_shutdown"] == "terminate" and i["_public"] and i["_key"] == "rbd-demo1-orchestrator", "%s: shutdown=terminate, public IP, orchestrator key" % n)
+        check(i["_shutdown"] == "terminate" and i["_public"] and i["_key"] == "rbd-demo1-orchestrator", "%s: shutdown=terminate, public IP, workstation key" % n)
 
 
 def net(orch):

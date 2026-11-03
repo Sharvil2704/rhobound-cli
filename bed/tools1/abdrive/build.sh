@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Test abdrive, then cross-compile it for the machines (linux/amd64, static) into bin/abdrive; prints its sha256.
-# usage: bash tools1/abdrive/build.sh [--no-test]      (on the orchestrator; Go through capped.sh only)
+# usage: bash tools1/abdrive/build.sh [--no-test]      (on your workstation; Go through capped.sh only)
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-GO=${GO:-$(command -v go)}
-CAPPED=${CAPPED:-$HOME/rbd-dev/capped.sh}
-export GOTMPDIR=${GOTMPDIR:-$HOME/rbd-dev/tmp} GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-buildvcs=false
+GO=${GO:-$(command -v go || echo go)}
+CAPPED=${CAPPED:-$(cd "$(dirname "$0")/../.." && pwd)/orch/capped.sh}
+export GOTMPDIR=${GOTMPDIR:-${TMPDIR:-/tmp}} GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-buildvcs=false
 mkdir -p "$GOTMPDIR" "$HERE/bin"
 cd "$HERE"
 [[ -z $("$(dirname "$GO")/gofmt" -l .) ]] || { echo "build.sh: gofmt -l is not empty" >&2; exit 1; }

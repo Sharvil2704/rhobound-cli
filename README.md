@@ -7,6 +7,15 @@ busier service causes, not only for the added time. It is for engineers who alre
 answer before they deploy. It is one static Go binary with no dependencies beyond the standard library, under the
 Apache-2.0 license, and a port of an unpublished Python prototype (called "the reference implementation" in the docs).
 
+> **This branch, `rhobound-mcp`**, adds:
+> - an MCP server for coding agents;
+> - a signed deploy gate for CI: multi-image changes, with the A/Bs run in parallel;
+> - a Muse Code plugin;
+> - the AWS bed that measured all of it against production.
+>
+> **Judges: start with [JUDGES.md](JUDGES.md)** (an offline demo in about 10 minutes, then the gate live on AWS). The
+> results, with their limits, are in [docs/RESULTS.md](docs/RESULTS.md).
+
 ## What it does and does not do
 
 It does:
@@ -166,36 +175,22 @@ task by its id ([DATA.md](docs/mcp/DATA.md#34-resource-attributes), 3.4). It add
   `context`, `budget`, `predict` and `explain` return the JSON of a CLI command plus the server's handles, and its
   refusals carry codes from the same registry as the CLI's. `rhobound-mcp version --json` prints the same build
   information as `rhobound version --json`.
-- `bed/`: the whole loop on AWS, runnable: a Meta coding agent asks the MCP server, a CI gate measures each changed
-  image in an A/B, predicts every entry and signs the verdict with KMS, and only a signed pass deploys
-  ([bed/README.md](bed/README.md)).
 
-It ran on AWS on 2026-10-30/31 with every prediction sealed before production was measured: a shared library in five
-services, storefront +4.54..+6.55 ms predicted against +5.32 measured and checkout +12.80..+18.09 against +14.28; two
-images changed at once, storefront +10.55..+13.20 against +11.87; regressions blocked, no-ops and the agent's change
-passed ([RESULTS.md](docs/mcp/RESULTS.md)). What the branch adds to rhobound-cli, file by file and how to use it:
-[CHANGES.md](docs/mcp/CHANGES.md).
-
-Try the agent's loop on your machine in under a second, no AWS (Go 1.25 or later, python3):
-
-```
-$ bash examples/mcp/demo.sh
-1. fit_start  traces of a -> b -> c, 3,099 requests: fit_...
-2. context    entry a: model 45.22 ms, observed 43.74 ms
-3. budget     service b may add 1.07 ms per visit (limit reached at 1.95)
-4. fit_start  A/B of the candidate image of b: ab_...
-5. predict    the measured A/B: entry a -1.36 .. +2.18 ms (limit 2.26 ms) -> pass
-6. predict    b +3 ms, over the budget: entry a +2.48 .. +4.53 ms (limit 2.26 ms) -> block (mean_change, unmeasured_delta)
-```
-
-The design and the data contract are in [docs/mcp/](docs/mcp/ARCHITECTURE.md);
-[examples/mcp/](examples/mcp/README.md) runs the server locally, and [testdata/mcp/](testdata/mcp/README.md) walks the
-loop an agent follows. Scope: [Known limits](docs/mcp/ARCHITECTURE.md#512-known-limits).
+It has been run as a deploy gate on AWS and measured against production, every prediction sealed before the measurement
+([docs/RESULTS.md](docs/RESULTS.md); the bed is [bed/](bed/README.md), the Muse Code plugin
+[integrations/muse-code/](integrations/muse-code/README.md)). The design, the data contract and its status are in
+[docs/mcp/](docs/mcp/ARCHITECTURE.md); [examples/mcp/](examples/mcp/README.md) runs the server locally,
+and [testdata/mcp/](testdata/mcp/README.md) walks the loop an agent follows.
+What this release does not do or guarantee is listed in [Known limits](docs/mcp/ARCHITECTURE.md#512-known-limits).
 
 ## Documentation
 
 | document | contents |
 |---|---|
+| [JUDGES.md](JUDGES.md) | for judges: the offline demo, the gate live on AWS, the agent experiments |
+| [docs/RESULTS.md](docs/RESULTS.md) | every measured result: the gate's verdicts against production, deploy time, multi-image changes, the agent experiments |
+| [bed/](bed/README.md) | the AWS bed: spawn, bootstrap, the CI gate, the measurement scripts, the experiment harness and reports |
+| [integrations/muse-code/](integrations/muse-code/README.md) | the Muse Code plugin: install, use, troubleshooting |
 | [BUILD.md](docs/BUILD.md) | requirements, building, cross-compiling, installing, running the tests, CI, troubleshooting |
 | [USAGE.md](docs/USAGE.md) | the command line step by step: capture, infer, predict, model, flags, exit codes, refusals, warnings |
 | [REQUIREMENTS.md](docs/REQUIREMENTS.md) | what the traces must contain, how much data, load conditions, a Collector configuration |
@@ -204,8 +199,6 @@ loop an agent follows. Scope: [Known limits](docs/mcp/ARCHITECTURE.md#512-known-
 | [VALIDATION.md](docs/VALIDATION.md) | every check that has been run, failures first |
 | [REAL_CLUSTER.md](docs/REAL_CLUSTER.md) | the run on a real cluster: the OpenTelemetry Demo and the repository's demo, what failed, the causes, the fixes, before and after, what is still open |
 | [validation/cluster/](validation/cluster/README.md) | the scripts of the real-cluster runs (Phase A and Phase B); how to run them on your own cluster is in [REAL_CLUSTER.md](docs/REAL_CLUSTER.md#2-how-to-reproduce-it) |
-| [docs/mcp/RESULTS.md](docs/mcp/RESULTS.md), [CHANGES.md](docs/mcp/CHANGES.md) | rhobound-mcp on AWS: results, Meta orchestration, time saved; what the branch adds and how to use it |
-| [bed/](bed/README.md) | the deploy gate on AWS: launch, bootstrap, run, knobs, tests |
 | [docs/mcp/](docs/mcp/ARCHITECTURE.md) | rhobound-mcp: the architecture, the data contract (every code, generated from the registry), deployment on AWS and locally, the evaluation plan, the code-path research plan, and the JSON Schemas |
 
 Example topologies for `rhobound model` are in [examples/](examples/).

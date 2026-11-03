@@ -282,3 +282,55 @@ func TestParseLoadgenLog(t *testing.T) {
 		}
 	}
 }
+
+// A service with two routes where the candidate shifts one route only: the routes' differences are measured apart,
+// profile.route_heterogeneous names the moved route, and the variance test reads the shift of one route of the mixture
+// as no variance change; the same blended series spread out (no route moved alone) is one.
+func TestDiffRoutes(t *testing.T) {
+	t0 := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	tool := fit.Tool{Name: fit.ToolName, Version: "test", GOARCH: "arm64"}
+	const n = 8000
+	mk := func(name string, addB float64, seed uint64) *Input {
+		ra, rb := series(n*77/100, 2.5, 1, seed), series(n*23/100, 11, 1, seed+100)
+		var own []float64
+		for i := range rb {
+			rb[i] += addB
+		}
+		ia, ib := 0, 0
+		for k := 0; k < len(ra)+len(rb); k++ { // interleaved in arrival order
+			if ib < len(rb) && (ia >= len(ra) || k%100 >= 77) {
+				own = append(own, rb[ib])
+				ib++
+			} else {
+				own = append(own, ra[ia])
+				ia++
+			}
+		}
+		x := synthArm(name, own, 1, 0, t0, int64(len(own)))
+		x.Inferred.Samples["b"].RouteOwn = map[string][]float64{"GET /a": ra, "GET /b": rb}
+		return x
+	}
+	a, b := mk("arm-a", 0, 1), mk("arm-b", 2.5, 1)
+	r, err := Diff(a, b, loadgen(a.Inferred.Samples["b"].Own, b.Inferred.Samples["b"].Own), Options{}, tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb := r.Services[1]
+	if sb.Service != "b" || len(sb.Routes) != 2 || sb.Routes[0].Route != "GET /a" || sb.Routes[0].OwnMs.Delta != 0 ||
+		math.Abs(sb.Routes[1].OwnMs.Delta-2.5) > 1e-9 || sb.VarianceChanged {
+		t.Fatalf("b: %+v", sb)
+	}
+	got := codes(r)
+	if len(got) != 1 || got[0] != contract.ProfileRouteHeterogeneous || r.Findings[0].Numbers["route_delta_ms"] < 2.4 {
+		t.Errorf("findings %v %+v", got, r.Findings)
+	}
+	// without routes the same arms read as a variance change (the blended test), and nothing about routes
+	a.Inferred.Samples["b"].RouteOwn, b.Inferred.Samples["b"].RouteOwn = nil, nil
+	r, err = Diff(a, b, loadgen(a.Inferred.Samples["b"].Own, b.Inferred.Samples["b"].Own), Options{}, tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := codes(r); len(got) != 1 || got[0] != contract.ProfileVarianceChanged || r.Services[1].Routes != nil {
+		t.Errorf("blended: %v", got)
+	}
+}

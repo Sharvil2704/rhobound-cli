@@ -36,8 +36,35 @@ func batchTopo(n []int, shares []float64, c int, lower bool, rps, s float64) (*m
 
 func batchWarned(topo *model.Topology, stats []ServiceStats, nodes []int, owner map[int]string) []string {
 	var out []string
-	batchWarnings(topo, stats, nodes, owner, func(f string, a ...any) { out = append(out, fmt.Sprintf(f, a...)) })
+	batchWarnings(topo, stats, nodes, owner, func(int) bool { return false }, func(coded bool, f string, a ...any) {
+		if !coded {
+			panic("an unmodelled batch warning without its code")
+		}
+		out = append(out, fmt.Sprintf(f, a...))
+	})
 	return out
+}
+
+// A group the model takes as a batch (model.Config.Batch) is noted without the model.batch_arrivals code, and says how
+// it is modelled; one it does not take stays coded.
+func TestBatchWarningModelledIsANote(t *testing.T) {
+	topo, stats, nodes, owner := batchTopo([]int{4}, []float64{0.5}, 1, false, 50, 10)
+	type got struct {
+		coded bool
+		text  string
+	}
+	var out []got
+	batchWarnings(topo, stats, nodes, owner, func(callee int) bool { return model.BatchModelled(topo, callee) },
+		func(coded bool, f string, a ...any) { out = append(out, got{coded, fmt.Sprintf(f, a...)}) })
+	if len(out) != 1 || out[0].coded || !strings.Contains(out[0].text, "an M^X/G/c queue") {
+		t.Fatalf("warnings %+v, want one uncoded note of the batch model", out)
+	}
+	out = nil
+	batchWarnings(topo, stats, nodes, owner, func(int) bool { return false },
+		func(coded bool, f string, a ...any) { out = append(out, got{coded, fmt.Sprintf(f, a...)}) })
+	if len(out) != 1 || !out[0].coded || !strings.Contains(out[0].text, "queue behind each other") {
+		t.Fatalf("warnings %+v, want one coded warning", out)
+	}
 }
 
 // Two shapes of a service that each call one callee four times at once are one warning, with their shares added.

@@ -1,0 +1,65 @@
+diff --git a/maze/app/internal/svc/catalog/catalog.go b/maze/app/internal/svc/catalog/catalog.go
+index 9f1d6f5..779b9fe 100644
+--- a/maze/app/internal/svc/catalog/catalog.go
++++ b/maze/app/internal/svc/catalog/catalog.go
+@@ -10,6 +10,7 @@ import (
+ 	"sync/atomic"
+ 
+ 	"maze/internal/rt"
++	"maze/internal/svc/pricing"
+ )
+ 
+ var words = strings.Fields(`red blue green black white steel oak linen wool cotton lamp chair table desk sofa rug
+@@ -101,6 +102,43 @@ func Search(terms []string, k int) []int {
+ 	return ids
+ }
+ 
++// BulkQty is the quantity a search result's bulk price is quoted at (pricing's top volume tier).
++const BulkQty = 50
++
++// Hit is one search result with its bulk price.
++type Hit struct {
++	ID        int // the product, as Search returns it
++	BulkCents int // the price of one unit when BulkQty are bought, as pricing charges it
++}
++
++// SearchHits returns Search's results, in Search's order, each with its bulk price: pricing.Quote for a line of
++// BulkQty units of the product, divided by BulkQty and rounded to the nearest cent (half up).
++func SearchHits(terms []string, k int) []Hit {
++	ids := Search(terms, k)
++	hits := make([]Hit, len(ids))
++	for i, id := range ids {
++		hits[i] = Hit{ID: id, BulkCents: bulkCents(id)}
++	}
++	return hits
++}
++
++func bulkCents(id int) int {
++	total := pricing.Quote([]pricing.Line{{Cents: products[id].Price, Qty: BulkQty}})
++	return (total + BulkQty/2) / BulkQty
++}
++
++// appendHits prints hits as [id:cents id:cents ...].
++func appendHits(b []byte, hits []Hit) []byte {
++	b = append(b, '[')
++	for i, h := range hits {
++		if i > 0 {
++			b = append(b, ' ')
++		}
++		b = fmt.Appendf(b, "%d:%d", h.ID, h.BulkCents)
++	}
++	return append(b, ']')
++}
++
+ func init() {
+ 	rt.Register("catalog.item", func(r *rt.Req) error {
+ 		p := products[int(seq.Add(1))%len(products)]
+@@ -108,7 +146,7 @@ func init() {
+ 		return nil
+ 	})
+ 	rt.Register("catalog.search", func(r *rt.Req) error {
+-		r.Out = fmt.Appendf(nil, "%v", Search(query(), 20))
++		r.Out = appendHits(nil, SearchHits(query(), 20))
+ 		return nil
+ 	})
+ 	rt.Register("catalog.merge", func(r *rt.Req) error {

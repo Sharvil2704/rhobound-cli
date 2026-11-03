@@ -152,7 +152,7 @@ func TestEngineRefusals(t *testing.T) {
 		}
 	}
 	inf, _ := r.Inferred()
-	plan, err := planCorners(inf.Topology, items)
+	plan, err := planCorners(inf.Topology, inf.Stats, items)
 	var re *report.RefusalError
 	if !errors.As(err, &re) || re.Code != contract.ChangeUnsupportedOp {
 		t.Errorf("unsigned items: %v (%d corners)", err, len(plan.corners))
@@ -468,5 +468,81 @@ func TestMeasuredItem(t *testing.T) {
 	}
 	if err := set(it).Refusal(r, nil); err == nil {
 		t.Error("a measured item with no record store")
+	}
+}
+
+// A record's profile.variance_changed and profile.structure_changed are no doubts once the derived items apply them
+// (own_var_ms2 from its variance difference; set_p for every callee whose calls per visit changed), as
+// model.batch_arrivals is none once the batch term models it; a changed callee the engine cannot set keeps the doubt.
+func TestModelledDoubtsAreDropped(t *testing.T) {
+	r := handFit(t, chain(4, 2), 0.2)
+	codes := func(calls []abdiff.Calls) []string {
+		rec := &abdiff.Record{Schema: abdiff.Schema, SelfReportConsistent: true, Findings: []contract.Finding{
+			contract.NewFinding(contract.ProfileStructureChanged).WithSubject("a"),
+			contract.NewFinding(contract.ProfileVarianceChanged).WithSubject("a")},
+			Services: []abdiff.Service{{Service: "a", OwnMs: abdiff.Delta{Baseline: 1, Candidate: 1.4, Delta: 0.4, SE: 0.05},
+				OwnVar: abdiff.Delta{Baseline: 1, Candidate: 2, Delta: 1, SE: 0.2}, VarianceChanged: true, CallsChanged: true,
+				Calls: calls}}}
+		d := "sha256:" + strings.Repeat("cd", 32)
+		s := set(change.Item{Op: change.OpOwnMs, Service: "a", Value: change.Point(0.4), Label: change.LabelMeasuredAB,
+			Evidence: []string{d}})
+		var out []string
+		for _, f := range s.Validate(r, records{d: rec}) {
+			out = append(out, f.Code)
+		}
+		return out
+	}
+	if got := codes([]abdiff.Calls{{Callee: "b", Baseline: 1, Candidate: 0.5, BaselineSE: 0.01, CandidateSE: 0.01}}); len(got) != 0 {
+		t.Errorf("a modelled variance and call change: doubts %v, want none", got)
+	}
+	got := codes([]abdiff.Calls{{Callee: "zzz", Baseline: 1, Candidate: 0.5, BaselineSE: 0.01, CandidateSE: 0.01}})
+	if strings.Join(got, " ") != contract.ProfileStructureChanged {
+		t.Errorf("a changed callee the fit does not call directly: doubts %v, want only %s, once", got,
+			contract.ProfileStructureChanged)
+	}
+}
+
+// A changed variance of a service the change does not touch is one of the record's tests of its untouched services:
+// it is a doubt only past change.UntouchedVarianceZ for that many (Šidák on the 2-SE test), so a catalog A/B that also
+// measures five index shards is not held by one shard at 2.27 SE (the Muse experiment's false holds), while 3 SE
+// still holds, and a record with one untouched service keeps the plain 2-SE test.
+func TestUntouchedVarianceDoubtCorrected(t *testing.T) {
+	if z := change.UntouchedVarianceZ(1); z != 2 {
+		t.Errorf("UntouchedVarianceZ(1) = %v, want 2", z)
+	}
+	if z := change.UntouchedVarianceZ(5); math.Abs(z-2.60) > 0.01 {
+		t.Errorf("UntouchedVarianceZ(5) = %.3f, want about 2.60", z)
+	}
+	r := handFit(t, chain(4, 2), 0.2)
+	doubts := func(untouched []string, zc float64) []string {
+		svcs := []abdiff.Service{{Service: "a", OwnMs: abdiff.Delta{Baseline: 1, Candidate: 1.4, Delta: 0.4, SE: 0.05},
+			OwnVar: abdiff.Delta{Baseline: 1, Candidate: 1, Delta: 0, SE: 0.2}}}
+		for _, n := range untouched {
+			d := 0.0
+			if n == "c" {
+				d = zc
+			}
+			svcs = append(svcs, abdiff.Service{Service: n, OwnVar: abdiff.Delta{Baseline: 10, Candidate: 10 + d, Delta: d, SE: 1}})
+		}
+		rec := &abdiff.Record{Schema: abdiff.Schema, SelfReportConsistent: true, Services: svcs, Findings: []contract.Finding{
+			contract.NewFinding(contract.ProfileVarianceChanged).WithSubject("c").WithNumber("var_delta", zc).WithNumber("var_se", 1)}}
+		d := "sha256:" + strings.Repeat("ef", 32)
+		s := set(change.Item{Op: change.OpOwnMs, Service: "a", Value: change.Point(0.4), Label: change.LabelMeasuredAB,
+			Evidence: []string{d}})
+		var out []string
+		for _, f := range s.Validate(r, records{d: rec}) {
+			out = append(out, f.Code)
+		}
+		return out
+	}
+	five := []string{"b", "c", "d", "e", "f"}
+	if got := doubts(five, -2.27); slicesContains(got, contract.ProfileVarianceChanged) {
+		t.Errorf("one of five untouched services at 2.27 SE: doubts %v, want no %s", got, contract.ProfileVarianceChanged)
+	}
+	if got := doubts(five, 3.0); !slicesContains(got, contract.ProfileVarianceChanged) {
+		t.Errorf("one of five untouched services at 3 SE: doubts %v, want %s", got, contract.ProfileVarianceChanged)
+	}
+	if got := doubts([]string{"c"}, -2.27); !slicesContains(got, contract.ProfileVarianceChanged) {
+		t.Errorf("the one untouched service at 2.27 SE: doubts %v, want %s (2 SE for one test)", got, contract.ProfileVarianceChanged)
 	}
 }

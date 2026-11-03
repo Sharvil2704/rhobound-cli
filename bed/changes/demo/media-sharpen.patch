@@ -1,0 +1,215 @@
+diff --git a/maze/app/internal/svc/media/media.go b/maze/app/internal/svc/media/media.go
+index 135a053..5dfa741 100644
+--- a/maze/app/internal/svc/media/media.go
++++ b/maze/app/internal/svc/media/media.go
+@@ -25,9 +25,103 @@ func Thumb(seed uint64) []byte {
+ 	return out
+ }
+ 
++// g7 is the 1D sharpen kernel; the 7x7 blur weights are G[i]*G[j].
++var g7 = [7]int{1, 6, 15, 20, 15, 6, 1}
++
++// Sharpen returns a new sharpened copy of the 128x128 grayscale thumbnail img
++// (row-major, 16 KiB); img is not modified. It applies an unsharp mask with the
++// separable 7x7 blur of weights G[i]*G[j], clamped at the edges:
++//
++//	S = 7x7 weighted sum around each pixel (weight sum 4096)
++//	out = floor((20480*p - 3*S + 4096) / 8192), clamped to 0..255
++//
++// That is p + 1.5*(p - blur) rounded half up; a flat image is unchanged.
++func Sharpen(img []byte) []byte {
++	const w = 128
++	out := make([]byte, ThumbKB<<10)
++	tmp := make([]uint16, ThumbKB<<10)
++	// Horizontal blur pass (sums, weight total 64, max 255*64 = 16320).
++	for y := 0; y < w; y++ {
++		base := y * w
++		for x := 0; x < w; x++ {
++			xa := x - 3
++			if xa < 0 {
++				xa = 0
++			}
++			xb := x - 2
++			if xb < 0 {
++				xb = 0
++			}
++			xc := x - 1
++			if xc < 0 {
++				xc = 0
++			}
++			xe := x + 1
++			if xe > w-1 {
++				xe = w - 1
++			}
++			xf := x + 2
++			if xf > w-1 {
++				xf = w - 1
++			}
++			xg := x + 3
++			if xg > w-1 {
++				xg = w - 1
++			}
++			tmp[base+x] = uint16(g7[0]*int(img[base+xa]) + g7[1]*int(img[base+xb]) +
++				g7[2]*int(img[base+xc]) + g7[3]*int(img[base+x]) +
++				g7[4]*int(img[base+xe]) + g7[5]*int(img[base+xf]) + g7[6]*int(img[base+xg]))
++		}
++	}
++	// Vertical blur pass folded with the unsharp mask.
++	for y := 0; y < w; y++ {
++		ya := y - 3
++		if ya < 0 {
++			ya = 0
++		}
++		yb := y - 2
++		if yb < 0 {
++			yb = 0
++		}
++		yc := y - 1
++		if yc < 0 {
++			yc = 0
++		}
++		ye := y + 1
++		if ye > w-1 {
++			ye = w - 1
++		}
++		yf := y + 2
++		if yf > w-1 {
++			yf = w - 1
++		}
++		yg := y + 3
++		if yg > w-1 {
++			yg = w - 1
++		}
++		ra, rb, rc := ya*w, yb*w, yc*w
++		re, rf, rg := ye*w, yf*w, yg*w
++		base := y * w
++		for x := 0; x < w; x++ {
++			s := g7[0]*int(tmp[ra+x]) + g7[1]*int(tmp[rb+x]) +
++				g7[2]*int(tmp[rc+x]) + g7[3]*int(tmp[base+x]) +
++				g7[4]*int(tmp[re+x]) + g7[5]*int(tmp[rf+x]) + g7[6]*int(tmp[rg+x])
++			p := int(img[base+x])
++			v := (20480*p - 3*s + 4096) >> 13
++			if v < 0 {
++				v = 0
++			} else if v > 255 {
++				v = 255
++			}
++			out[base+x] = byte(v)
++		}
++	}
++	return out
++}
++
+ func init() {
+ 	rt.Register("media.thumb", func(r *rt.Req) error {
+-		r.Out = Thumb(n.Add(1))
++		r.Out = Sharpen(Thumb(n.Add(1)))
+ 		return nil
+ 	})
+ }
+diff --git a/maze/app/internal/svc/media/sharpen_test.go b/maze/app/internal/svc/media/sharpen_test.go
+new file mode 100644
+index 0000000..c7d4c85
+--- /dev/null
++++ b/maze/app/internal/svc/media/sharpen_test.go
+@@ -0,0 +1,100 @@
++package media
++
++import "testing"
++
++// specRef is the definition straight from the task: the full 7x7 weighted sum
++// per pixel with clamped edges, then floor((20480*p - 3*S + 4096)/8192).
++func specRef(img []byte) []byte {
++	g := [7]int{1, 6, 15, 20, 15, 6, 1}
++	clamp := func(v int) int {
++		if v < 0 {
++			return 0
++		}
++		if v > 127 {
++			return 127
++		}
++		return v
++	}
++	out := make([]byte, ThumbKB<<10)
++	for y := 0; y < 128; y++ {
++		for x := 0; x < 128; x++ {
++			p := int(img[y*128+x])
++			s := 0
++			for dy := -3; dy <= 3; dy++ {
++				for dx := -3; dx <= 3; dx++ {
++					s += g[dy+3] * g[dx+3] * int(img[clamp(y+dy)*128+clamp(x+dx)])
++				}
++			}
++			v := (20480*p - 3*s + 4096) / 8192
++			// Go's / truncates; the spec wants floor. They differ only for
++			// negative results, which clamp to 0 either way.
++			if (20480*p-3*s+4096) < 0 && (20480*p-3*s+4096)%8192 != 0 {
++				v--
++			}
++			if v < 0 {
++				v = 0
++			} else if v > 255 {
++				v = 255
++			}
++			out[y*128+x] = byte(v)
++		}
++	}
++	return out
++}
++
++func testImages() [][]byte {
++	imgs := [][]byte{Thumb(7), Thumb(1)}
++	flat := make([]byte, ThumbKB<<10)
++	for i := range flat {
++		flat[i] = 77
++	}
++	imgs = append(imgs, flat)
++	grad := make([]byte, ThumbKB<<10)
++	for y := 0; y < 128; y++ {
++		for x := 0; x < 128; x++ {
++			grad[y*128+x] = byte((x*2 + y) % 256)
++		}
++	}
++	imgs = append(imgs, grad)
++	return imgs
++}
++
++func TestSharpenMatchesSpec(t *testing.T) {
++	for i, img := range testImages() {
++		got := Sharpen(img)
++		want := specRef(img)
++		if len(got) != ThumbKB<<10 {
++			t.Fatalf("image %d: len = %d, want %d", i, len(got), ThumbKB<<10)
++		}
++		for j := range want {
++			if got[j] != want[j] {
++				t.Fatalf("image %d pixel %d (x=%d y=%d): got %d want %d", i, j, j%128, j/128, got[j], want[j])
++			}
++		}
++	}
++}
++
++func TestSharpenFlatUnchanged(t *testing.T) {
++	for _, v := range []byte{0, 1, 77, 200, 255} {
++		img := make([]byte, ThumbKB<<10)
++		for i := range img {
++			img[i] = v
++		}
++		for i, p := range Sharpen(img) {
++			if p != v {
++				t.Fatalf("flat %d pixel %d: got %d", v, i, p)
++			}
++		}
++	}
++}
++
++func TestSharpenDoesNotModifyInput(t *testing.T) {
++	img := Thumb(42)
++	orig := append([]byte(nil), img...)
++	_ = Sharpen(img)
++	for i := range img {
++		if img[i] != orig[i] {
++			t.Fatalf("input modified at %d", i)
++		}
++	}
++}

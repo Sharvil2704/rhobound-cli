@@ -1,0 +1,64 @@
+diff --git a/maze/app/internal/svc/catalog/catalog.go b/maze/app/internal/svc/catalog/catalog.go
+index 9f1d6f5..f55a99f 100644
+--- a/maze/app/internal/svc/catalog/catalog.go
++++ b/maze/app/internal/svc/catalog/catalog.go
+@@ -60,6 +60,16 @@ func Search(terms []string, k int) []int {
+ 		}
+ 	}
+ 	avg := float64(total) / float64(len(products))
++	// A typo matches too: each query term is expanded once into the title words (df's keys) equal to it or one edit
++	// away, so the scoring loop below compares against a short list instead of measuring an edit distance per word.
++	match := make([][]string, len(terms))
++	for i, q := range terms {
++		for w := range df {
++			if w == q || near(w, q) {
++				match[i] = append(match[i], w)
++			}
++		}
++	}
+ 	type hit struct {
+ 		id    int
+ 		score float64
+@@ -68,11 +78,14 @@ func Search(terms []string, k int) []int {
+ 	for _, p := range products {
+ 		toks := strings.Fields(p.Title)
+ 		s := 0.0
+-		for _, q := range terms {
++		for i, q := range terms {
+ 			tf := 0
+ 			for _, t := range toks {
+-				if t == q {
+-					tf++
++				for _, w := range match[i] {
++					if t == w {
++						tf++
++						break
++					}
+ 				}
+ 			}
+ 			if tf == 0 {
+@@ -101,6 +114,24 @@ func Search(terms []string, k int) []int {
+ 	return ids
+ }
+ 
++// near reports whether a and b are one edit apart (a typo: one letter changed, added or dropped).
++func near(a, b string) bool {
++	if len(a) > len(b) {
++		a, b = b, a
++	}
++	if len(b)-len(a) > 1 {
++		return false
++	}
++	i := 0
++	for i < len(a) && a[i] == b[i] {
++		i++
++	}
++	if len(a) == len(b) {
++		return i < len(a) && a[i+1:] == b[i+1:]
++	}
++	return a[i:] == b[i+1:]
++}
++
+ func init() {
+ 	rt.Register("catalog.item", func(r *rt.Req) error {
+ 		p := products[int(seq.Add(1))%len(products)]

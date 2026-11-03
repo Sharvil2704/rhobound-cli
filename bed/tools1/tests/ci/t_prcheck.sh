@@ -11,7 +11,7 @@ mkenv prcheck
 S=$T/src
 mkrepo "$S"
 BASE=$(git -C "$S" rev-parse main)
-CH=$KIT/changes
+CH=$HERE/fixtures/changes
 
 run() { "$CI/pr-check.sh" "$S" "$BASE" "$1" > "$T/out" 2> "$T/err"; echo $?; }
 refused() { # refused DESC HEAD EXPECTED-TEXT
@@ -52,24 +52,24 @@ H=$(branch "$S" r9 "req 'not json'")
 refused "a request that is not JSON" "$H" "not JSON"
 H=$(branch "$S" r10 "ln -s /var/lib/rbd/mcp/token rhobound-change.json")
 refused "rhobound-change.json as a symlink" "$H" "symlinks"
-H=$(branch "$S" r11 "cp $CH/c2-auth-small/rhobound-change.json .; ln -s /etc/passwd kshop/app/x.go")
-refused "a symlink under kshop/app" "$H" "symlinks"
+H=$(branch "$S" r11 "cp $CH/c2-auth-small/rhobound-change.json .; ln -s /etc/passwd maze/app/x.go")
+refused "a symlink under maze/app" "$H" "symlinks"
 # VCS metadata: go build's VCS stamping would run that tool on it in the build container (round-2 recheck A)
-H=$(branch "$S" r12 "cp $CH/c2-auth-small/rhobound-change.json .; mkdir -p kshop/app/.hg; echo '[ui]' > kshop/app/.hg/hgrc")
-refused "a .hg folder under kshop/app" "$H" "VCS metadata"
-H=$(branch "$S" r13 "cp $CH/c2-auth-small/rhobound-change.json .; mkdir -p kshop/app/internal/.svn; echo x > kshop/app/internal/.svn/entries")
-refused "a nested .svn folder under kshop/app" "$H" "VCS metadata"
-H=$(branch "$S" r14 "cp $CH/c2-auth-small/rhobound-change.json .; echo x > kshop/app/_FOSSIL_")
-refused "a fossil checkout marker under kshop/app" "$H" "VCS metadata"
+H=$(branch "$S" r12 "cp $CH/c2-auth-small/rhobound-change.json .; mkdir -p maze/app/.hg; echo '[ui]' > maze/app/.hg/hgrc")
+refused "a .hg folder under maze/app" "$H" "VCS metadata"
+H=$(branch "$S" r13 "cp $CH/c2-auth-small/rhobound-change.json .; mkdir -p maze/app/internal/.svn; echo x > maze/app/internal/.svn/entries")
+refused "a nested .svn folder under maze/app" "$H" "VCS metadata"
+H=$(branch "$S" r14 "cp $CH/c2-auth-small/rhobound-change.json .; echo x > maze/app/_FOSSIL_")
+refused "a fossil checkout marker under maze/app" "$H" "VCS metadata"
 # the policy is pinned (RBD_POLICY_SHA256): a BASE_SHA of the caller's choosing with a lax policy is refused even when the
-# diff BASE...HEAD shows only kshop/app (a PR's edited workflow passing its own commit as BASE_SHA)
+# diff BASE...HEAD shows only maze/app (a PR's edited workflow passing its own commit as BASE_SHA)
 L=$(branch "$S" lax "sed -i 's/: 5/: 1000/' policy/gate.json")
 (cd "$S" && git apply "$CH/c2-auth-small/change.patch")
 git -C "$S" add -A
 git -C "$S" -c user.name=t -c user.email=t@example.com commit -qm lax-head
 HL=$(git -C "$S" rev-parse HEAD)
 BASE0=$BASE BASE=$L
-refused "a BASE_SHA whose policy/gate.json is not the pinned policy (the diff shows kshop/app only)" "$HL" "not the pinned policy"
+refused "a BASE_SHA whose policy/gate.json is not the pinned policy (the diff shows maze/app only)" "$HL" "not the pinned policy"
 BASE=$BASE0
 check "  and writes no runs/HEAD/policy.json for it (nor a temporary file)" bash -c "[ ! -e '$THOME/runs/$HL/policy.json' ] &&
   [ -z \"\$(ls -A '$THOME/runs/$HL' | grep -v '^\.lock\$')\" ] && [ -z \"\$(ls -A '$THOME/tmp')\" ]"
@@ -89,7 +89,7 @@ git -C "$S" apply "$CH/c1-noop/change.patch"
 git -C "$S" add -A
 git -C "$S" -c user.name=t -c user.email=t@example.com commit -qm "merge c1"
 BASE=$(git -C "$S" rev-parse main)
-H=$(branch "$S" r12 "sed -i 's/2500, 32/2600, 32/' kshop/app/internal/work/lib_v11.go")
+H=$(branch "$S" r12 "sed -i 's/2500, 32/2600, 32/' maze/app/internal/work/lib_v11.go")
 refused "a stale request left on main by an earlier PR" "$H" "must add or update"
 H=$(branch "$S" ok5 "git apply --exclude=rhobound-change.json $CH/c2-auth-small/change.patch; cp $CH/c2-auth-small/rhobound-change.json .")
 rc=$(run "$H")
@@ -110,7 +110,7 @@ check "every refusal printed exactly one JSON object last" python3 -I -c 'import
 M=$T/marks
 git -C "$S" checkout -q main
 C2="git apply --exclude=rhobound-change.json $CH/c2-auth-small/change.patch; cp $CH/c2-auth-small/rhobound-change.json ."
-HA=$(branch "$S" attrs "$C2; printf '* filter=evil diff=evil\n' > kshop/app/.gitattributes")
+HA=$(branch "$S" attrs "$C2; printf '* filter=evil diff=evil\n' > maze/app/.gitattributes")
 HB=$(branch "$S" badwf "$C2; echo '# x' >> .github/workflows/gate.yml")
 HG=$(branch "$S" goodc2 "$C2")
 X=$T/hostile
@@ -129,7 +129,7 @@ check "  (the same config does run the uploadpack for a plain 'git -C CHECKOUT c
   git -C '$X' cat-file -e $NOBASE^{commit} 2> /dev/null; [ -e '$M/uploadpack' ]"
 rm -rf "$M" && mkdir -p "$M"
 rc=$(hrun "$X" "$BASE" "$HA")
-check "every hostile key, hook, include and attribute (fsmonitor, hooksPath, pager, sshCommand, alternateRefsCommand, diff and filter drivers, a committed kshop/app/.gitattributes): admitted, nothing ran (exit $rc, marks: $(marks "$M"))" \
+check "every hostile key, hook, include and attribute (fsmonitor, hooksPath, pager, sshCommand, alternateRefsCommand, diff and filter drivers, a committed maze/app/.gitattributes): admitted, nothing ran (exit $rc, marks: $(marks "$M"))" \
   clean "$rc" 0 'pr-check: ok'
 rc=$(hostile_env "$M" "$X" "$CI/pr-check.sh" "$X" "$NOBASE" "$HA" > "$T/out" 2> "$T/err"; echo $?)
 check "the caller's GIT_CONFIG_COUNT/GIT_CONFIG_PARAMETERS/GIT_DIR (an uploadpack, an fsmonitor) with a missing BASE_SHA: refused, nothing ran (exit $rc)" \
@@ -140,7 +140,7 @@ check "  and with the PR's real BASE_SHA: admitted, nothing ran (exit $rc)" clea
 Y=$T/replaced
 git clone -q "$S" "$Y"
 git -C "$Y" replace "$HB" "$HG"
-check "  (in the checkout itself refs/replace makes HB read as HG: only kshop/app and the request)" bash -c "
+check "  (in the checkout itself refs/replace makes HB read as HG: only maze/app and the request)" bash -c "
   ! git -C '$Y' diff --name-only '$BASE...$HB' | grep -q '^.github/'"
 rc=$(hrun "$Y" "$BASE" "$HB")
 check "a refs/replace/ in the checkout does not change what HEAD_SHA is: the workflow edit is refused (exit $rc)" \
@@ -170,10 +170,10 @@ check "  no temporary folder left in RBD_HOME/tmp after any of them" bash -c "[ 
 FG=$T/forged
 git clone -q --no-local "$S" "$FG"
 git -C "$FG" rev-parse -q --verify refs/heads/main > /dev/null || git -C "$FG" branch -q main origin/main
-HF=$(branch "$FG" forged "git apply --exclude=rhobound-change.json $CH/c2-auth-small/change.patch; cp $CH/c2-auth-small/rhobound-change.json .; echo '// forged-test' >> kshop/app/internal/work/lib_v11.go")
+HF=$(branch "$FG" forged "git apply --exclude=rhobound-change.json $CH/c2-auth-small/change.patch; cp $CH/c2-auth-small/rhobound-change.json .; echo '// forged-test' >> maze/app/internal/work/lib_v11.go")
 "$CI/pr-check.sh" "$FG" "$BASE" "$HF" > "$T/out" 2> "$T/err"
 check "the control: an untouched new commit in a fresh clone is admitted (exit $?)" test "$(fget "$T/out" ok)" = true
-FB=$(git -C "$FG" rev-parse "$HF:kshop/app/internal/work/lib_v11.go")
+FB=$(git -C "$FG" rev-parse "$HF:maze/app/internal/work/lib_v11.go")
 FP=$FG/.git/objects/${FB:0:2}/${FB:2}
 chmod u+w "$FP"
 python3 -I -c 'import zlib,sys; d=b"package work // ATTACKER BYTES\n"; open(sys.argv[1],"wb").write(zlib.compress(b"blob %d\0"%len(d)+d))' "$FP"
@@ -199,12 +199,12 @@ check "refuses while another step of the same run holds runs/HEAD/.lock (exit $r
 rc=$(run "$HG")
 check "  and admits once it is released (exit $rc)" test "$rc" -eq 0
 
-# ---- CI v2: rbd.change-request/v2 (1..5 services, one image; an optional base key of the kit's bases.json) ----
+# ---- CI v2: rbd.change-request/v2 (1..5 services, one image (every service that runs it); an optional base key of the kit's bases.json) ----
 echo "== pr-check v2"
-CODE="echo '// fold' >> kshop/app/internal/work/lib_v11.go"
+CODE="echo '// fold' >> maze/app/internal/work/lib_v11.go"
 H=$(branch "$S" v2a "$CODE; v2req '[\"catalog\", \"pricing\"]'")
 rc=$(run "$H")
-check "admits a v2 request of catalog + pricing with a kshop/app change (exit $rc; last line service catalog, services [catalog, pricing], base null)" \
+check "admits a v2 request of catalog + pricing with a maze/app change (exit $rc; last line service catalog, services [catalog, pricing], base null)" \
   bash -c "[ $rc -eq 0 ] && [ '$(fget "$T/out" service)' = catalog ] && [ '$(fget "$T/out" services)' = '[\"catalog\", \"pricing\"]' ] &&
   [ -z '$(fget "$T/out" base)' ]"
 check "  pr.json records service (the first), services, base null, request_schema v2" python3 -I -c '
@@ -213,11 +213,19 @@ sys.exit(not (d["service"]=="catalog" and d["services"]==["catalog","pricing"] a
   and d["request_schema"]=="rbd.change-request/v2" and d["summary"]=="fold: strip accents"))' "$THOME/runs/$H/pr.json"
 H=$(branch "$S" v2a5 "$CODE; v2req '[\"auth\", \"payments\", \"inventory\", \"catalog\", \"pricing\"]'")
 rc=$(run "$H")
-check "admits a v2 request of 5 services (a shared-library change; exit $rc)" \
-  bash -c "[ $rc -eq 0 ] && [ '$(fget "$T/out" services)' = '[\"auth\", \"payments\", \"inventory\", \"catalog\", \"pricing\"]' ]"
+check "admits a v2 request of 5 services of 4 images (a multi-image change, 2026-11-03; exit $rc)" bash -c "[ $rc -eq 0 ]"
+check "  pr.json and the last line map each image to its listed services, in the request's order" python3 -I -c '
+import json,sys; d=json.load(open(sys.argv[1])); o=json.loads(open(sys.argv[2]).read().splitlines()[-1])
+want={"auth":["auth"],"payments":["payments"],"inventory":["inventory"],"hot":["catalog","pricing"]}
+sys.exit(not (d["images"]==want and o["images"]==want and list(o["images"])==["auth","payments","inventory","hot"]))' \
+  "$THOME/runs/$H/pr.json" "$T/out"
+H=$(branch "$S" v2a6 "$CODE; v2req '[\"auth\", \"catalog\"]'")
+refused "a multi-image request of auth + catalog (image hot also runs pricing)" "$H" "image hot runs catalog, pricing: list every one"
+H=$(branch "$S" v2a1 "$CODE; v2req '[\"pricing\"]'")
+refused "a v2 request of pricing alone (its image hot also runs catalog)" "$H" "image hot runs catalog, pricing: list every one"
 H=$(branch "$S" v2b "v2req '[\"catalog\", \"pricing\"]' go127")
 rc=$(run "$H")
-G127=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["go127"])' "$TROOT/kshop/bases.json")
+G127=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["go127"])' "$TROOT/maze/bases.json")
 check "admits a PR whose only change is rhobound-change.json when it names a base (T4: go127; exit $rc)" \
   bash -c "[ $rc -eq 0 ] && [ '$(fget "$T/out" base)' = go127 ]"
 check "  pr.json records base go127 and base_image = the kit's bases.json value (by digest)" python3 -I -c '
@@ -235,9 +243,9 @@ H=$(branch "$S" v2g "$CODE; v2req '[]'")
 refused "a v2 request of no service" "$H" "1 to 5 distinct services"
 H=$(branch "$S" v2h "$CODE; v2req '[\"catalog\", \"billing\"]'")
 refused "a v2 request whose second service is unknown" "$H" "unknown service 'billing'"
-H=$(branch "$S" v2i "$CODE; v2req '[\"catalog\"]' go999")
+H=$(branch "$S" v2i "$CODE; v2req '[\"auth\"]' go999")
 refused "a base that is not a key of the kit's bases.json" "$H" "unknown base 'go999'"
-H=$(branch "$S" v2j "$CODE; v2req '[\"catalog\"]' _doc")
+H=$(branch "$S" v2j "$CODE; v2req '[\"auth\"]' _doc")
 refused "a base key starting with _ (bases.json's comment)" "$H" '"base" must be a key'
 H=$(branch "$S" v2k "$CODE; req '{\"schema\": \"rbd.change-request/v1\", \"services\": [\"auth\"], \"summary\": \"x\", \"base\": \"go127\"}'")
 refused "a base in a v1 request" "$H" "unknown keys base"
@@ -245,19 +253,19 @@ H=$(branch "$S" v2l "$CODE; req '{\"schema\": \"rbd.change-request/v2\", \"servi
 refused "a base that is not a string" "$H" '"base" must be a key'
 H=$(branch "$S" v2m "$CODE; req \"{\\\"schema\\\": \\\"rbd.change-request/v2\\\", \\\"services\\\": [\\\"auth\\\"], \\\"summary\\\": \\\"\$(printf 'x%.0s' \$(seq 1 1001))\\\"}\"")
 refused "a v2 summary longer than 1000 characters" "$H" "longer than 1000"
-H=$(branch "$S" v2n "$CODE; v2req '[\"catalog\"]' go127")
-cp "$TROOT/kshop/bases.json" "$T/bases.keep"
-rm "$TROOT/kshop/bases.json"
-refused "a base when the kit has no kshop/bases.json" "$H" "bases.json is missing"
+H=$(branch "$S" v2n "$CODE; v2req '[\"auth\"]' go127")
+cp "$TROOT/maze/bases.json" "$T/bases.keep"
+rm "$TROOT/maze/bases.json"
+refused "a base when the kit has no maze/bases.json" "$H" "bases.json is missing"
 python3 -I -c 'import json,sys; b=json.load(open(sys.argv[1])); b["go127"]="golang:1.27.2-bookworm"; json.dump(b,open(sys.argv[2],"w"))' \
-  "$T/bases.keep" "$TROOT/kshop/bases.json"
+  "$T/bases.keep" "$TROOT/maze/bases.json"
 refused "a base whose bases.json value is a tag, not pinned by digest" "$H" "not an image pinned by digest"
-cp "$T/bases.keep" "$TROOT/kshop/bases.json"
+cp "$T/bases.keep" "$TROOT/maze/bases.json"
 rc=$(run "$H")
 check "  and admits it again with the kit's bases.json (exit $rc)" test "$rc" -eq 0
-check "the kit's tools1/kshop/bases.json: every base pinned by digest, go1269 = the builder the kit's Dockerfile names" python3 -I -c '
+check "the kit's tools1/maze/bases.json: every base pinned by digest, go1269 = the builder the kit's Dockerfile names" python3 -I -c '
 import json,re,sys; b=json.load(open(sys.argv[1])); df=open(sys.argv[2]).read()
 vals={k:v for k,v in b.items() if not k.startswith("_")}
 sys.exit(not (vals and all(re.fullmatch(r"[a-z0-9][a-z0-9._/:-]*@sha256:[0-9a-f]{64}", v) for v in vals.values()) and vals["go1269"] in df))' \
-  "$KIT/tools1/kshop/bases.json" "$KIT/tools1/kshop/Dockerfile"
+  "$KIT/tools1/maze/bases.json" "$KIT/tools1/maze/Dockerfile"
 done_summary

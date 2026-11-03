@@ -11,8 +11,12 @@ import (
 	"time"
 )
 
-// LoadgenHeader is the header of loadgen.csv (the CLI's DATA.md 8 format).
-const LoadgenHeader = "arm,seq,sent_unix_ns,answered_unix_ns,status"
+// LoadgenHeader is the header of loadgen.csv (the CLI's DATA.md 8 format); LoadgenHeaderBytes that of the log with
+// each response body's size (-log-bytes).
+const (
+	LoadgenHeader      = "arm,seq,sent_unix_ns,answered_unix_ns,status"
+	LoadgenHeaderBytes = LoadgenHeader + ",bytes"
+)
 
 var armNames = [2]string{"A", "B"}
 
@@ -45,7 +49,9 @@ type ArmSummary struct {
 	AnsweredShare float64        `json:"answered_share"`
 	Status        map[string]int `json:"status"`
 	MeanMs        float64        `json:"mean_ms"`
-	Errors        []string       `json:"errors"`
+	// MeanBytes is the mean size of the answered responses' bodies, bytes.
+	MeanBytes float64  `json:"mean_bytes"`
+	Errors    []string `json:"errors"`
 }
 
 // Summary is summary.json.
@@ -59,7 +65,8 @@ type Summary struct {
 	Warmup           float64               `json:"warmup"`
 	Seed             uint64                `json:"seed"`
 	FreshConn        bool                  `json:"fresh_conn"`
-	Host             string                `json:"host"` // the Host header sent ("": each URL's own)
+	LogBytes         bool                  `json:"log_bytes"` // loadgen.csv has the bytes column
+	Host             string                `json:"host"`      // the Host header sent ("": each URL's own)
 	TimeoutS         float64               `json:"timeout_s"`
 	MinAnswered      float64               `json:"min_answered"`
 	Window           Window                `json:"window"`
@@ -100,9 +107,10 @@ func writeAtomic(dir, name string, b []byte) error {
 func Summarize(cfg Config, service string, minAnswered float64, res *Result) *Summary {
 	s := &Summary{Schema: "rbd.abdrive-summary/v1", Service: service,
 		URLs: map[string]string{"A": cfg.URLs[0], "B": cfg.URLs[1]}, Rate: cfg.Rate, Seconds: cfg.Seconds,
-		Warmup: cfg.Warmup, Seed: cfg.Seed, FreshConn: cfg.FreshConn, Host: cfg.Host, TimeoutS: cfg.Timeout.Seconds(),
-		MinAnswered: minAnswered, Arms: map[string]ArmSummary{}, WarmupCounts: map[string]Counts{},
-		LateMaxMs: float64(res.LateMaxNs) / 1e6, LateOver1ms: res.LateOver1ms, Interrupted: res.Interrupted}
+		Warmup: cfg.Warmup, Seed: cfg.Seed, FreshConn: cfg.FreshConn, LogBytes: cfg.LogBytes, Host: cfg.Host,
+		TimeoutS: cfg.Timeout.Seconds(), MinAnswered: minAnswered, Arms: map[string]ArmSummary{},
+		WarmupCounts: map[string]Counts{}, LateMaxMs: float64(res.LateMaxNs) / 1e6, LateOver1ms: res.LateOver1ms,
+		Interrupted: res.Interrupted}
 	for i, p := range cfg.Paths {
 		s.Paths = append(s.Paths, MixPath{Path: p, W: cfg.Weights[i]})
 	}
@@ -110,7 +118,7 @@ func Summarize(cfg Config, service string, minAnswered float64, res *Result) *Su
 	ok := !res.Interrupted
 	for k, rows := range res.Rows {
 		a := ArmSummary{Scheduled: len(rows), Status: map[string]int{}, Errors: []string{}}
-		sum := 0.0
+		sum, body := 0.0, 0.0
 		for _, r := range rows {
 			if r.Sent == 0 {
 				continue
@@ -129,12 +137,14 @@ func Summarize(cfg Config, service string, minAnswered float64, res *Result) *Su
 			a.Answered++
 			a.Status[strconv.Itoa(r.Status)]++
 			sum += float64(r.Answered-r.Sent) / 1e6
+			body += float64(r.Bytes)
 			if r.Answered > last {
 				last = r.Answered
 			}
 		}
 		if a.Answered > 0 {
 			a.MeanMs = sum / float64(a.Answered)
+			a.MeanBytes = body / float64(a.Answered)
 		}
 		if a.Scheduled > 0 {
 			a.AnsweredShare = float64(a.Answered) / float64(a.Scheduled)
@@ -158,7 +168,11 @@ func WriteOutputs(dir string, s *Summary, res *Result) error {
 		return err
 	}
 	var csv bytes.Buffer
-	csv.WriteString(LoadgenHeader + "\n")
+	if s.LogBytes {
+		csv.WriteString(LoadgenHeaderBytes + "\n")
+	} else {
+		csv.WriteString(LoadgenHeader + "\n")
+	}
 	for k, rows := range res.Rows {
 		idx := make([]int, 0, len(rows))
 		for i, r := range rows {
@@ -169,7 +183,11 @@ func WriteOutputs(dir string, s *Summary, res *Result) error {
 		sort.Ints(idx)
 		for _, i := range idx {
 			r := rows[i]
-			fmt.Fprintf(&csv, "%s,%d,%d,%d,%d\n", armNames[k], i+1, r.Sent, r.Answered, r.Status)
+			if s.LogBytes {
+				fmt.Fprintf(&csv, "%s,%d,%d,%d,%d,%d\n", armNames[k], i+1, r.Sent, r.Answered, r.Status, r.Bytes)
+			} else {
+				fmt.Fprintf(&csv, "%s,%d,%d,%d,%d\n", armNames[k], i+1, r.Sent, r.Answered, r.Status)
+			}
 		}
 	}
 	if err := writeAtomic(dir, "loadgen.csv", csv.Bytes()); err != nil {

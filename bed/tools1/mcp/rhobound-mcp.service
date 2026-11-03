@@ -1,5 +1,5 @@
 # rhobound-mcp over HTTP on loopback (SPEC 4); installed by rbd_bootstrap.sh mcp (tools1/mcp/mcp-setup.sh).
-# The orchestrator reaches it with: ssh -L 8765:127.0.0.1:8765 rbd-tools1 (orch/rbd.sh tunnel).
+# Your workstation reaches it with: ssh -L 8765:127.0.0.1:8765 rbd-tools1 (orch/rbd.sh tunnel).
 # Static tokens grant rhobound:read only: context, budget, predict (declared changes) and explain; not fit_start.
 [Unit]
 Description=rhobound-mcp (demo1, loopback HTTP)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rbd.sh CMD ...   the orchestrator's helpers for rbd-tools1 (ssh only: this box never runs kubectl, aws or docker itself)
+# rbd.sh CMD ...   your workstation's helpers for rbd-tools1 (ssh only: the workstation never runs kubectl, aws or docker itself)
 #   rbd.sh run CMD...                     CMD on rbd-tools1 as rbd, /opt/rbd/lib/rbd-env.sh sourced (kubectl, aws, rhobound on PATH)
 #   rbd.sh kubectl ARGS...                kubectl on rbd-tools1 as rbd
 #   rbd.sh capture NAME [SECONDS [SEED]]  /opt/rbd/ci/capture.sh (600 s; seed from NAME as refit.sh makes it)

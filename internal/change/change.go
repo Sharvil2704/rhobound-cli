@@ -28,6 +28,7 @@ import (
 	"github.com/Sharvil2704/rhobound-cli/internal/abdiff"
 	"github.com/Sharvil2704/rhobound-cli/internal/contract"
 	"github.com/Sharvil2704/rhobound-cli/internal/fit"
+	"github.com/Sharvil2704/rhobound-cli/internal/infer"
 	"github.com/Sharvil2704/rhobound-cli/internal/model"
 	"github.com/Sharvil2704/rhobound-cli/internal/sanitize"
 )
@@ -43,8 +44,9 @@ const (
 	MaxNoteChars      = 200
 )
 
-// The operations (DATA.md 11.2). This version applies OpOwnMs, OpOwnPct, OpWorkers and OpLoadScale; the others are
-// refused with change.unsupported_op until the variance patch (cs2) and the structural patch ship.
+// The operations (DATA.md 11.2). This version applies OpOwnMs, OpOwnPct, OpWorkers and OpLoadScale from any label it
+// accepts, and OpOwnVar and OpSetP from an A/B record only (measured-ab: Resolve also derives them from the record of
+// every measured own_ms item); the others are refused with change.unsupported_op until their patches ship.
 const (
 	OpOwnMs        = "own_ms"     // +ms per visit, holding a worker (--patch svc=+Nms)
 	OpOwnPct       = "own_pct"    // +-% of own time and glue (--patch svc=+N%)
@@ -58,20 +60,27 @@ const (
 	OpScaleCount   = "scale_count"
 	OpSetAsync     = "set_async"
 	OpMakeParallel = "make_parallel"
+	// OpOwnVar is the difference of the own time's variance, ms^2 (an A/B record's own_var): with an own_ms item of
+	// the same service the engine sets the service time's cs2 to (cs2 s^2 + own_var_ms2) / (s + own_ms)^2, so that a
+	// change that adds rare long visits moves the queue by its second moment, not by its mean alone.
+	OpOwnVar = "own_var_ms2"
 )
 
 // Ops lists every operation, in the order of the schema's enum.
 var Ops = []string{OpOwnMs, OpOwnPct, OpWorkers, OpLoadScale, OpGlueMs, OpCS2, OpAddCall, OpRemoveCall, OpSetP,
-	OpScaleCount, OpSetAsync, OpMakeParallel}
+	OpScaleCount, OpSetAsync, OpMakeParallel, OpOwnVar}
 
 // Applies reports whether this version applies an operation.
 func Applies(op string) bool {
 	switch op {
-	case OpOwnMs, OpOwnPct, OpWorkers, OpLoadScale:
+	case OpOwnMs, OpOwnPct, OpWorkers, OpLoadScale, OpOwnVar, OpSetP:
 		return true
 	}
 	return false
 }
+
+// MeasuredOnly reports whether this version applies an operation only from an A/B record (label measured-ab).
+func MeasuredOnly(op string) bool { return op == OpOwnVar || op == OpSetP }
 
 // The labels (ARCHITECTURE.md 4.3, defs.v1 Label). Only LabelDeclared may come from a caller; the CLI or the server
 // mints the others from records they made, and a label never moves up.
@@ -99,14 +108,15 @@ const (
 )
 
 // SignOf returns an operation's sign as ARCHITECTURE.md 4.5 states it: increasing for own_ms, own_pct, glue_ms,
-// load_scale and the added calls, call probabilities and counts; decreasing for workers; unsigned for set_async and
+// load_scale, own_var_ms2 (a queue's wait grows with the second moment at a fixed mean) and the added calls, call
+// probabilities and counts; decreasing for workers; unsigned for set_async and
 // make_parallel (their effect depends on the other branches); and "" for an operation whose sign is not stated yet
 // (cs2, remove_call) or is unknown. The low corner of a set takes every increasing item at its Lo and every decreasing
 // item at its Hi, the high corner the opposite ends; unsigned items are enumerated at every corner of their own ranges.
 // That the entry mean is monotone in each item is an assumption ("monotonicity assumed (untested)").
 func SignOf(op string) string {
 	switch op {
-	case OpOwnMs, OpOwnPct, OpGlueMs, OpLoadScale, OpAddCall, OpSetP, OpScaleCount:
+	case OpOwnMs, OpOwnPct, OpGlueMs, OpLoadScale, OpAddCall, OpSetP, OpScaleCount, OpOwnVar:
 		return SignIncreasing
 	case OpWorkers:
 		return SignDecreasing
@@ -166,8 +176,12 @@ type Item struct {
 	Service string `json:"service"`
 	// Callee is the callee of a structural operation, or "".
 	Callee string `json:"callee,omitempty"`
-	Value  Range  `json:"value"`
-	Label  string `json:"label"`
+	// Route restricts an own_ms item to one route of its service, as the fit names it (its routes[].route, or
+	// "other"): value ms on every visit of that route. The engine moves the service's queue by the route's share of
+	// it and the callers by the route they reach. "" for the whole service.
+	Route string `json:"route,omitempty"`
+	Value Range  `json:"value"`
+	Label string `json:"label"`
 	// Evidence are the digests of the records a label other than declared rests on (an A/B record's Digest).
 	Evidence []string `json:"evidence,omitempty"`
 	// Note is the caller's words, at most MaxNoteChars; never parsed (a number in prose is change.free_text).
@@ -229,9 +243,13 @@ func Parse(b []byte) (*Set, error) {
 		}
 		var pending []issue
 		if _, ok := keys["route"]; ok {
-			delete(keys, "route")
-			pending = append(pending, issue{code: contract.ChangeRouteScopeUnsupported,
-				msg: "an item restricted to a route; give the per-visit mean (ms times the route's share of visits)"})
+			var op, route string
+			_ = json.Unmarshal(keys["op"], &op)
+			if err := json.Unmarshal(keys["route"], &route); op != OpOwnMs || err != nil || route == "" {
+				delete(keys, "route")
+				pending = append(pending, issue{code: contract.ChangeRouteScopeUnsupported,
+					msg: "an item restricted to a route other than an own_ms item on a route the fit names; give the per-visit mean (ms times the route's share of visits)"})
+			}
 		}
 		if src, ok := keys["source"]; ok {
 			delete(keys, "source")
@@ -312,6 +330,10 @@ func checkValue(it Item) error {
 			if !(v > 0) || math.IsInf(v, 0) {
 				return fmt.Errorf("load_scale multiplies the rate: a positive number, not %v", v)
 			}
+		case OpSetP:
+			if !(v >= 0 && v <= 1) {
+				return fmt.Errorf("set_p is a call's probability per visit: a number in [0, 1], not %v", v)
+			}
 		}
 	}
 	return nil
@@ -365,17 +387,21 @@ type Records interface {
 // issue is one problem of a set: a finding's code, the item it concerns (-1 for the set) and the message the text
 // form prints.
 type issue struct {
-	code    string
-	item    int
-	subject string
-	numbers map[string]float64
-	msg     string
+	code     string
+	item     int
+	subject  string
+	numbers  map[string]float64
+	examples []string
+	msg      string
 }
 
 func (i issue) finding() contract.Finding {
 	f := contract.NewFinding(i.code)
 	if i.subject != "" {
 		f = f.WithSubject(i.subject)
+	}
+	if len(i.examples) > 0 {
+		f = f.WithExamples(i.examples...)
 	}
 	for _, k := range sortedKeys(i.numbers) {
 		f = f.WithNumber(k, i.numbers[k])
@@ -462,6 +488,8 @@ func (s *Set) check(r *fit.Record, recs Records) ([]issue, error, error) {
 	patchErrItem := -1
 	// the lowest own time and glue each service reaches, over the items so far (the v1 check accumulates)
 	ds, glue := map[int]float64{}, map[int]float64{}
+	// per service, the own_ms items on the whole service, and per route those on the route (route items, CB-3)
+	wholeDS, routeDS := map[int]float64{}, map[int]map[int]float64{}
 	unsigned := 0
 	seenRec := map[string]bool{}
 	var doubts []issue
@@ -494,8 +522,13 @@ func (s *Set) check(r *fit.Record, recs Records) ([]issue, error, error) {
 			unsigned++ // counted whether or not this version applies the operation
 		}
 		if !Applies(it.Op) {
-			add(contract.ChangeUnsupportedOp, k, it.Service, fmt.Sprintf("%s: this version cannot apply %s (it applies %s, %s, %s and %s)",
-				it.Service, it.Op, OpOwnMs, OpOwnPct, OpWorkers, OpLoadScale), nil)
+			add(contract.ChangeUnsupportedOp, k, it.Service, fmt.Sprintf("%s: this version cannot apply %s (it applies %s, %s, %s and %s, "+
+				"and %s and %s from an A/B record)", it.Service, it.Op, OpOwnMs, OpOwnPct, OpWorkers, OpLoadScale, OpOwnVar, OpSetP), nil)
+			continue
+		}
+		if MeasuredOnly(it.Op) && it.Label != LabelMeasuredAB {
+			add(contract.ChangeUnsupportedOp, k, it.Service, fmt.Sprintf("%s: this version applies %s from an A/B record only "+
+				"(label measured-ab, citing the record)", it.Service, it.Op), nil)
 			continue
 		}
 		if it.Value.Lo > it.Value.Hi {
@@ -517,14 +550,64 @@ func (s *Set) check(r *fit.Record, recs Records) ([]issue, error, error) {
 					it.Service), nil)
 				continue
 			}
+		case OpSetP:
+			if _, why := DirectCall(topo, i, it.Callee); why != "" {
+				add(contract.ChangeUnsupportedOp, k, it.Service, fmt.Sprintf("%s set_p %s: %s", it.Service, it.Callee, why), nil)
+				continue
+			}
 		case OpOwnMs:
-			ds[i] += it.Value.Lo
+			lo := it.Value.Lo
+			if it.Label == LabelMeasuredAB {
+				// Resolve applies a measured item at its record's delta - 2 SE: check that corner, not the point
+				// (lean/Rbproofs/Lanes/ChangeBand.lean, CB-4)
+				if _, rsv, why := measured(it, recs, topo); why == "" {
+					d := rsv.OwnMs
+					if j := slices.IndexFunc(rsv.Routes, func(x abdiff.Route) bool { return x.Route == it.Route }); it.Route != "" && j >= 0 {
+						d = rsv.Routes[j].OwnMs
+					}
+					lo = math.Min(lo, d.Delta-2*d.SE)
+				}
+			}
+			if it.Route != "" {
+				rs := inf.Stats[i].Routes
+				r := slices.IndexFunc(rs, func(x infer.RouteStats) bool { return x.Route == it.Route })
+				if r < 0 {
+					var names []string
+					for _, x := range rs {
+						names = append(names, x.Route)
+					}
+					add(contract.ChangeRouteScopeUnsupported, k, it.Service, fmt.Sprintf("%s: the fit names no route %q of it "+
+						"(its routes: %s)", it.Service, it.Route, strings.Join(names, ", ")), nil)
+					continue
+				}
+				ds[i] += rs[r].Share * lo
+				if routeDS[i] == nil {
+					routeDS[i] = map[int]float64{}
+				}
+				// a route moves by its own items and by every whole-service item, as routePatch moves it (CB-3)
+				routeDS[i][r] += lo
+				if d := wholeDS[i] + routeDS[i][r]; rs[r].OwnMs+d < 0 {
+					add(contract.ChangeNegativeTime, k, it.Service, fmt.Sprintf("%s: own_ms %v on %s would make its service "+
+						"time negative", it.Service, lo, it.Route), map[string]float64{"own_ms": rs[r].OwnMs, "change_ms": d})
+				}
+				break
+			}
+			ds[i] += lo
+			wholeDS[i] += lo
 			if sv.S+ds[i] < 0 {
-				msg := fmt.Sprintf("%s: own_ms %v would make its service time negative", it.Service, it.Value.Lo)
+				msg := fmt.Sprintf("%s: own_ms %v would make its service time negative", it.Service, lo)
 				if it.patch != "" {
 					msg = fmt.Sprintf("--patch: %s would get a negative service time", it.Service)
 				}
 				add(contract.ChangeNegativeTime, k, it.Service, msg, map[string]float64{"own_ms": sv.S, "change_ms": ds[i]})
+			} else if rs := inf.Stats[i].Routes; len(rs) > 0 {
+				for r, x := range rs {
+					if d := wholeDS[i] + routeDS[i][r]; x.OwnMs+d < 0 {
+						add(contract.ChangeNegativeTime, k, it.Service, fmt.Sprintf("%s: own_ms %v would make the own time of "+
+							"its route %s negative", it.Service, lo, x.Route), map[string]float64{"own_ms": x.OwnMs, "change_ms": d})
+						break
+					}
+				}
 			}
 		case OpOwnPct:
 			ds[i] += sv.S * it.Value.Lo / 100
@@ -553,7 +636,7 @@ func (s *Set) check(r *fit.Record, recs Records) ([]issue, error, error) {
 		case LabelMeasuredAB:
 			named := it
 			named.Service = sv.Name // the record names the service as the traces wrote it
-			rec, svc, why := measured(named, recs)
+			rec, svc, why := measured(named, recs, topo)
 			if why != "" {
 				add(contract.ChangeLabelNotMinted, k, it.Service, fmt.Sprintf("%s: measured-ab %s", it.Service, why), nil)
 				continue
@@ -563,20 +646,43 @@ func (s *Set) check(r *fit.Record, recs Records) ([]issue, error, error) {
 				continue
 			}
 			seenRec[key] = true
-			if svc.CallsChanged {
+			structModelled, varModelled := structureModelled(topo, i, svc), varianceModelled(svc)
+			if svc.CallsChanged && !structModelled {
 				doubts = append(doubts, issue{code: contract.ProfileStructureChanged, item: k, subject: it.Service})
 			}
-			if svc.VarianceChanged {
+			if svc.VarianceChanged && !varModelled {
 				doubts = append(doubts, issue{code: contract.ProfileVarianceChanged, item: k, subject: it.Service,
-					numbers: map[string]float64{"cs2_delta": svc.OwnCS2.Delta, "cs2_se": svc.OwnCS2.SE}})
+					numbers: map[string]float64{"var_delta": svc.OwnVar.Delta, "var_se": svc.OwnVar.SE}})
 			}
 			if !rec.SelfReportConsistent && !seenRec[it.Evidence[0]] {
 				doubts = append(doubts, issue{code: contract.ProfileSelfReportMismatch, item: k})
 			}
 			if !seenRec[it.Evidence[0]] {
 				for _, f := range rec.Findings {
+					// a record's routes that moved differently are no doubt for a set that applies them by route
+					if f.Code == contract.ProfileRouteHeterogeneous && s.byRoute(it.Evidence[0], f.Subject, shown, topo) {
+						continue
+					}
+					// nor a changed variance or call structure of this service: the record's flags above already raised it,
+					// or found that the derived items apply it (the finding repeats the flag)
+					if f.Subject == sv.Name && ((f.Code == contract.ProfileVarianceChanged && (varModelled || svc.VarianceChanged)) ||
+						(f.Code == contract.ProfileStructureChanged && (structModelled || svc.CallsChanged))) {
+						continue
+					}
+					// a changed variance of a service the item does not change is one of the record's tests of the
+					// services it does not touch: a doubt only past the bound for that many tests (UntouchedVarianceZ)
+					if f.Code == contract.ProfileVarianceChanged && f.Subject != sv.Name && !untouchedVarianceHolds(rec, f.Subject, sv.Name) {
+						continue
+					}
 					if f.Level != contract.Refuse {
-						doubts = append(doubts, issue{code: f.Code, item: k, subject: f.Subject, numbers: f.Numbers})
+						d := issue{code: f.Code, item: k, subject: f.Subject, numbers: f.Numbers}
+						if f.Code == contract.ABPayloadChanged {
+							// the cost of a changed payload falls on the callers: name the fit's callers of the service
+							if j := topo.Index(f.Subject); j >= 0 {
+								d.examples = Callers(topo, j)
+							}
+						}
+						doubts = append(doubts, d)
 					}
 				}
 			}
@@ -601,6 +707,20 @@ func (s *Set) check(r *fit.Record, recs Records) ([]issue, error, error) {
 		return issues, patchErr, nil
 	}
 	return issues, nil, nil
+}
+
+// byRoute reports whether the set applies service svc (as the record names it) of the record digest by route: some
+// own_ms item with a route cites that record for that service.
+func (s *Set) byRoute(digest, svc string, shown map[string]sanitize.Shown, topo *model.Topology) bool {
+	for _, it := range s.Items {
+		if it.Route == "" || it.Op != OpOwnMs || len(it.Evidence) != 1 || it.Evidence[0] != digest {
+			continue
+		}
+		if i, _ := nodeOf(topo, shown, it); i >= 0 && topo.Services[i].Name == svc {
+			return true
+		}
+	}
+	return false
 }
 
 // nodeOf is the node of the topology an item names: for an item of a change set, the node the views show by that name,
@@ -628,9 +748,45 @@ func parsedFor(parsed []issue, item int) bool {
 }
 
 // measured resolves a measured-ab item to its record and the record's row for the item's service, or says why it
-// cannot: no evidence, a record the store does not hold, a service the record does not measure, another operation,
-// or a value that is not the record's own-time delta.
-func measured(it Item, recs Records) (*abdiff.Record, *abdiff.Service, string) {
+// cannot: no evidence, a record the store does not hold, a service the record does not measure, an operation a record
+// does not measure, or a value that is not the record's (own_ms: the own-time delta; own_var_ms2: the variance delta;
+// set_p: the fit's probability of the call times the record's ratio of calls per visit, MeasuredP).
+// UntouchedVarianceZ is the bound, in standard errors, that the variance difference of one of k services an A/B
+// record measured but the change does not touch must pass to be a doubt (profile.variance_changed): the Šidák
+// correction of the record's 2-SE test, so that the k tests together raise the doubt by chance as often as one 2-SE
+// test does (4.55%). 2 for k <= 1; about 2.60 for 5. Each of k untouched services tested at 2 SE would raise it by
+// chance in 1 - 0.9545^k of the A/Bs (21% for 5): CT3's maze bed, whose catalog A/B measures five untouched shards,
+// held two clean changes in five that way (Muse experiment, 2026-11-03).
+func UntouchedVarianceZ(k int) float64 {
+	if k <= 1 {
+		return 2
+	}
+	a0 := math.Erfc(2 / math.Sqrt2)
+	a := 1 - math.Pow(1-a0, 1/float64(k))
+	return math.Sqrt2 * math.Erfinv(1-a)
+}
+
+// untouchedVarianceHolds reports whether the record's profile.variance_changed of service subject, which the item for
+// service own does not change, is past UntouchedVarianceZ of the record's untouched services. A service measured by
+// route (its test is against the routes' mixture, not the plain difference) keeps the record's 2-SE flag.
+func untouchedVarianceHolds(rec *abdiff.Record, subject, own string) bool {
+	k := 0
+	var sub *abdiff.Service
+	for i := range rec.Services {
+		if rec.Services[i].Service != own {
+			k++
+		}
+		if rec.Services[i].Service == subject {
+			sub = &rec.Services[i]
+		}
+	}
+	if sub == nil || sub.Routes != nil || !(sub.OwnVar.SE > 0) {
+		return true
+	}
+	return math.Abs(sub.OwnVar.Delta) > UntouchedVarianceZ(k)*sub.OwnVar.SE
+}
+
+func measured(it Item, recs Records, topo *model.Topology) (*abdiff.Record, *abdiff.Service, string) {
 	if len(it.Evidence) != 1 {
 		return nil, nil, "must cite exactly one A/B record (evidence)"
 	}
@@ -641,16 +797,42 @@ func measured(it Item, recs Records) (*abdiff.Record, *abdiff.Service, string) {
 	if !ok {
 		return nil, nil, "cites " + it.Evidence[0] + ", which is not an A/B record this tool computed"
 	}
-	if it.Op != OpOwnMs {
-		return nil, nil, "applies to own_ms only"
+	if it.Op != OpOwnMs && it.Op != OpOwnVar && it.Op != OpSetP {
+		return nil, nil, "applies to own_ms, own_var_ms2 and set_p only"
 	}
 	for k := range rec.Services {
 		svc := &rec.Services[k]
 		if svc.Service != it.Service {
 			continue
 		}
-		if it.Value != Point(svc.OwnMs.Delta) {
-			return nil, nil, fmt.Sprintf("value %v..%v is not the record's own-time delta %v", it.Value.Lo, it.Value.Hi, svc.OwnMs.Delta)
+		switch it.Op {
+		case OpOwnMs:
+			if it.Route != "" {
+				r := slices.IndexFunc(svc.Routes, func(x abdiff.Route) bool { return x.Route == it.Route })
+				if r < 0 {
+					return nil, nil, "cites a record that does not measure route " + it.Route + " of " + it.Service
+				}
+				if d := svc.Routes[r].OwnMs; it.Value != Point(d.Delta) {
+					return nil, nil, fmt.Sprintf("value %v..%v is not the record's own-time delta %v of route %s", it.Value.Lo,
+						it.Value.Hi, d.Delta, it.Route)
+				}
+			} else if it.Value != Point(svc.OwnMs.Delta) {
+				return nil, nil, fmt.Sprintf("value %v..%v is not the record's own-time delta %v", it.Value.Lo, it.Value.Hi, svc.OwnMs.Delta)
+			}
+		case OpOwnVar:
+			if it.Value != Point(svc.OwnVar.Delta) {
+				return nil, nil, fmt.Sprintf("value %v..%v is not the record's own-time variance delta %v", it.Value.Lo, it.Value.Hi,
+					svc.OwnVar.Delta)
+			}
+		case OpSetP:
+			p, _, why := MeasuredP(topo, svc, it.Callee)
+			if why != "" {
+				return nil, nil, why
+			}
+			if it.Value != Point(p) {
+				return nil, nil, fmt.Sprintf("value %v..%v is not the fit's probability of the call times the record's ratio of "+
+					"calls per visit, %v", it.Value.Lo, it.Value.Hi, p)
+			}
 		}
 		for _, f := range rec.Findings {
 			if f.Level == contract.Refuse {
@@ -674,22 +856,205 @@ func (s *Set) Resolve(r *fit.Record, recs Records) (*Set, error) {
 	topo := inf.Topology
 	shown := sanitize.Services(topo.Names())
 	out := &Set{Schema: s.Schema, Fit: s.Fit, Items: make([]Item, len(s.Items))}
+	type key struct{ op, service, callee, evidence string }
+	given := map[key]bool{}
+	var rows []measuredRow
 	for k, it := range s.Items {
 		if i, _ := nodeOf(topo, shown, it); i >= 0 {
 			it.Service = topo.Services[i].Name
 		}
 		it.Evidence = append([]string(nil), it.Evidence...)
 		if it.Label == LabelMeasuredAB {
-			_, svc, why := measured(it, recs)
+			_, svc, why := measured(it, recs, topo)
 			if why != "" {
 				return nil, fmt.Errorf("change: item %d: measured-ab %s", k, why)
 			}
-			d := svc.OwnMs
-			it.Value = Range{Lo: d.Delta - 2*d.SE, Hi: d.Delta + 2*d.SE}
+			it.Value = widen(topo, svc, it.Op, it.Callee)
+			if it.Op == OpOwnMs && it.Route != "" {
+				d := svc.Routes[slices.IndexFunc(svc.Routes, func(x abdiff.Route) bool { return x.Route == it.Route })].OwnMs
+				it.Value = Range{Lo: d.Delta - 2*d.SE, Hi: d.Delta + 2*d.SE}
+			}
+			given[key{it.Op, it.Service, it.Callee, it.Evidence[0]}] = true
+			if it.Op == OpOwnMs {
+				rows = append(rows, measuredRow{svc: svc, evidence: it.Evidence[0]})
+			}
 		}
 		out.Items[k] = it
 	}
+	// The items the record of every measured own_ms item implies (derive): its variance difference, and the changed
+	// calls per visit to callees the fit reaches by one direct call, unless the set gives them itself.
+	for _, row := range rows {
+		for _, it := range derive(topo, row.svc, row.evidence) {
+			if !given[key{it.Op, it.Service, it.Callee, it.Evidence[0]}] && len(out.Items) < MaxItems {
+				given[key{it.Op, it.Service, it.Callee, it.Evidence[0]}] = true
+				out.Items = append(out.Items, it)
+			}
+		}
+	}
 	return out, nil
+}
+
+type measuredRow struct {
+	svc      *abdiff.Service
+	evidence string
+}
+
+// widen is a measured item's range: the record's difference +-2 standard errors (own_ms, own_var_ms2), or the fit's
+// probability of the call times the record's ratio of calls per visit +-2 standard errors, within [0, 1] (set_p).
+func widen(topo *model.Topology, svc *abdiff.Service, op, callee string) Range {
+	switch op {
+	case OpOwnVar:
+		d := svc.OwnVar
+		return Range{Lo: d.Delta - 2*d.SE, Hi: d.Delta + 2*d.SE}
+	case OpSetP:
+		_, r, _ := MeasuredP(topo, svc, callee)
+		return r
+	}
+	d := svc.OwnMs
+	return Range{Lo: d.Delta - 2*d.SE, Hi: d.Delta + 2*d.SE}
+}
+
+// derive returns the measured items an A/B record's row implies beside its own-time difference, already widened: the
+// own time's variance difference (own_var_ms2; none for a record that does not carry it), and a set_p item for each
+// callee whose calls per visit changed (abdiff.CallsGap) and that the fit reaches from the service by one direct call
+// (DirectCall). A changed callee reached otherwise (through the call structure's stage or shape nodes, or by several
+// calls) gets no item: the record's profile.structure_changed doubt then stands for it alone.
+func derive(topo *model.Topology, svc *abdiff.Service, evidence string) []Item {
+	var out []Item
+	if svc.OwnVar.SE > 0 || svc.OwnVar.Delta != 0 {
+		out = append(out, Item{Op: OpOwnVar, Service: svc.Service, Label: LabelMeasuredAB, Evidence: []string{evidence},
+			Value: widen(topo, svc, OpOwnVar, "")})
+	}
+	for _, c := range svc.Calls {
+		if !(math.Abs(c.Candidate-c.Baseline) > abdiff.CallsGap*math.Max(c.Baseline, c.Candidate)) {
+			continue
+		}
+		if _, r, why := MeasuredP(topo, svc, c.Callee); why == "" {
+			out = append(out, Item{Op: OpSetP, Service: svc.Service, Callee: c.Callee, Label: LabelMeasuredAB,
+				Evidence: []string{evidence}, Value: r})
+		}
+	}
+	return out
+}
+
+// varianceModelled reports whether the engine applies a record's variance difference for the service: the derived
+// own_var_ms2 item (derive), which every measured record with a variance difference gets. profile.variance_changed is
+// then no doubt, as model.batch_arrivals is none once the batch term models the batch.
+func varianceModelled(svc *abdiff.Service) bool {
+	return svc.OwnVar.SE > 0 || svc.OwnVar.Delta != 0
+}
+
+// structureModelled reports whether the engine applies a record's changed call structure for service i: every callee
+// whose calls per visit changed (abdiff.CallsGap) gets a derived set_p item, a direct call the engine can change, and
+// the service has no routes (set_p moves the blend's call chance, not each route's; a routed service keeps the doubt).
+func structureModelled(topo *model.Topology, i int, svc *abdiff.Service) bool {
+	if len(topo.Services[i].Routes) > 0 {
+		return false
+	}
+	covered := 0
+	for _, c := range svc.Calls {
+		if !(math.Abs(c.Candidate-c.Baseline) > abdiff.CallsGap*math.Max(c.Baseline, c.Candidate)) {
+			continue
+		}
+		if _, _, why := MeasuredP(topo, svc, c.Callee); why != "" {
+			return false
+		}
+		covered++
+	}
+	return covered > 0 // a record that says the calls changed without naming a changed callee keeps the doubt
+}
+
+// DirectCall returns the index in the service's calls of its one direct call to callee, or why a set_p item cannot
+// change it: no callee named, an unknown callee, no direct call or more than one (a callee the fit reaches through
+// the call structure's stage or shape nodes), or a parallel fan-out (one with a call probability is not modelled).
+func DirectCall(topo *model.Topology, i int, callee string) (int, string) {
+	if callee == "" {
+		return -1, "set_p names the callee whose call it changes"
+	}
+	j := topo.Index(callee)
+	if j < 0 {
+		return -1, fmt.Sprintf("unknown callee %q", callee)
+	}
+	sv := &topo.Services[i]
+	at := -1
+	for k, c := range sv.Calls {
+		if c.Child != j {
+			continue
+		}
+		if at >= 0 {
+			return -1, "the fit has more than one call to the callee"
+		}
+		at = k
+	}
+	if at < 0 {
+		return -1, "the fit has no direct call to the callee (it may reach it through the call structure)"
+	}
+	if sv.Parallel && !sv.Calls[at].Async && len(sv.SyncCalls()) > 1 {
+		return -1, "the call is in a parallel fan-out, where a call probability is not modelled"
+	}
+	return at, ""
+}
+
+// MeasuredP is the probability per visit a measured set_p item gives the service's call to callee: the fit's
+// probability times the record's ratio of calls per visit (candidate over baseline), as a point and as the range of
+// the ratio +-2 standard errors, clipped to [0, 1]; or why it cannot (DirectCall, a callee the record does not count
+// in the baseline, or a point above 1: more calls than visits, which a probability cannot carry).
+func MeasuredP(topo *model.Topology, svc *abdiff.Service, callee string) (float64, Range, string) {
+	i := topo.Index(svc.Service)
+	if i < 0 {
+		return 0, Range{}, "the record's service is not the fit's"
+	}
+	at, why := DirectCall(topo, i, callee)
+	if why != "" {
+		return 0, Range{}, why
+	}
+	for _, c := range svc.Calls {
+		if c.Callee != callee {
+			continue
+		}
+		ratio, se, ok := c.Ratio()
+		if !ok {
+			return 0, Range{}, "the record's baseline makes no call to the callee"
+		}
+		p := topo.Services[i].Calls[at].P
+		point := p * ratio
+		if point > 1 {
+			return 0, Range{}, fmt.Sprintf("the measured probability %v is above 1", point)
+		}
+		r := Range{Lo: math.Max(0, p*(ratio-2*se)), Hi: math.Min(1, p*(ratio+2*se))}
+		return point, r, ""
+	}
+	return 0, Range{}, "the record does not count calls to the callee"
+}
+
+// Callers are the services of the fit that call service j, in name order: a caller reached through the call
+// structure's stage or shape nodes (stage:S:n, shape:S:n) is its service S. At most contract.MaxExamples.
+func Callers(topo *model.Topology, j int) []string {
+	seen := map[int]bool{}
+	var walk func(int)
+	var out []string
+	walk = func(j int) {
+		for i := range topo.Services {
+			for _, c := range topo.Services[i].Calls {
+				if c.Child != j || seen[i] {
+					continue
+				}
+				seen[i] = true
+				name := topo.Services[i].Name
+				if strings.HasPrefix(name, "stage:") || strings.HasPrefix(name, "shape:") {
+					walk(i)
+				} else if !slices.Contains(out, name) {
+					out = append(out, name)
+				}
+			}
+		}
+	}
+	walk(j)
+	sort.Strings(out)
+	if len(out) > contract.MaxExamples {
+		out = out[:contract.MaxExamples]
+	}
+	return out
 }
 
 // patchTargets are the services a patch can name, for the message that lists them: the topology's names without the

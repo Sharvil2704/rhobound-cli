@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # fake capture.sh NAME SECONDS SEED: keeps part B's lock convention (no second lock when RBD_LOCK_HELD is set), records what it
-# saw in $STUB/capture.log, writes captures/NAME/meta/load.json in kshop-load's format, then part B's rbd.load/v1 line (the load
+# saw in $STUB/capture.log, writes captures/NAME/meta/load.json in maze-load's format, then part B's rbd.load/v1 line (the load
 # setting, SPEC3 F6a: the default here) as capture.sh appends it. Means: storefront 68 / checkout 88.7, plus
 # STUB_D_SF / STUB_D_CO [1.0] while auth runs $STUB_CAND, plus a small jitter from the seed.
 #   STUB_FAIL_ON=NAME   exit 1 without a load.json
@@ -28,11 +28,11 @@ D=$RBD_HOME/captures/$name
 [[ ${STUB_RC_ON:-} == "$name" ]] && D=$RBD_HOME/captures/.$name.tmp
 mkdir -p "$D/meta"
 {
-  echo "2026/10/31 09:00:00 kshop-load: 60000 requests over $secs s (100.0 rps), seed $seed"
-  awk -v m="$sf" -v j="$j" 'BEGIN{printf "{\"errors\":0,\"mean_ms\":%.4f,\"ok\":42000,\"p50_ms\":1,\"p95_ms\":2,\"p99_ms\":3,\"url\":\"http://storefront.kshop.svc.cluster.local:8080/browse\"}\n", m+j}'
-  awk -v m="$co" -v j="$j" 'BEGIN{printf "{\"errors\":0,\"mean_ms\":%.4f,\"ok\":10800,\"p50_ms\":1,\"p95_ms\":2,\"p99_ms\":3,\"url\":\"http://checkout.kshop.svc.cluster.local:8080/buy/card\"}\n", m+j}'
-  echo "2026/10/31 09:10:00 kshop-load: done in $secs s"
-  awk -v m="$co" -v j="$j" 'BEGIN{printf "{\"errors\":0,\"mean_ms\":%.4f,\"ok\":7200,\"p50_ms\":1,\"p95_ms\":2,\"p99_ms\":3,\"url\":\"http://checkout.kshop.svc.cluster.local:8080/buy/wallet\"}\n", m+j}'
+  echo "2026/10/31 09:00:00 maze-load: 60000 requests over $secs s (100.0 rps), seed $seed"
+  awk -v m="$sf" -v j="$j" 'BEGIN{printf "{\"errors\":0,\"mean_ms\":%.4f,\"ok\":42000,\"p50_ms\":1,\"p95_ms\":2,\"p99_ms\":3,\"url\":\"http://storefront.maze.svc.cluster.local:8080/browse\"}\n", m+j}'
+  awk -v m="$co" -v j="$j" 'BEGIN{printf "{\"errors\":0,\"mean_ms\":%.4f,\"ok\":10800,\"p50_ms\":1,\"p95_ms\":2,\"p99_ms\":3,\"url\":\"http://checkout.maze.svc.cluster.local:8080/buy/card\"}\n", m+j}'
+  echo "2026/10/31 09:10:00 maze-load: done in $secs s"
+  awk -v m="$co" -v j="$j" 'BEGIN{printf "{\"errors\":0,\"mean_ms\":%.4f,\"ok\":7200,\"p50_ms\":1,\"p95_ms\":2,\"p99_ms\":3,\"url\":\"http://checkout.maze.svc.cluster.local:8080/buy/wallet\"}\n", m+j}'
   echo '{"schema":"rbd.load/v1","source":"default","file":null,"sha256":null,"rps":100.0,"mix":"browse=0.7,card=0.18,wallet=0.12","shares":{"browse":0.7,"card":0.18,"wallet":0.12},"rates":{"browse":70.0,"card":18.0,"wallet":12.0},"entries":{"storefront":70.0,"checkout":30.0},"summary":"100 rps (default): browse 70, card 18, wallet 12"}'
 } > "$D/meta/load.json"
 if [[ ${STUB_RC_ON:-} == "$name" ]]; then

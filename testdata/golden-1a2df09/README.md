@@ -40,6 +40,14 @@ printed for the capture as it is (api at `2 x 1+`), where 1a2df09 itself read on
 alone, prints the bytes of the same capture with the task ids as `k8s.pod.name`, its split warning naming the task ids
 (`TestPodIdentitySplitWarning`).
 
+A second planned change is on captures where a parallel node calls one service twice or more at once (the refined
+model's batch term, [ACCURACY.md](../../docs/ACCURACY.md#64-calls-made-at-once-the-batch-term-mxgc), section 6.4):
+`internal/infer/testdata/counts/shipped-20s` is one (the front end calls cart and product-catalog twice at once). There
+the rows of the services on a batch path (`model.BatchPath`: a batch-fed service, the node that sends the batch, and
+every service that waits for one of them), the model line and a batch's warning text may differ from 1a2df09's; every
+other row and field, the exit status and standard error are held to 1a2df09's bytes (`compareBatch` in
+`cmd/rhobound/golden_test.go`). With `--plain` nothing changes.
+
 ## How the files were made
 
 - A binary built from commit 1a2df09 (`git archive 1a2df09`, then `go build ./cmd/rhobound`) with Go 1.27.2 on

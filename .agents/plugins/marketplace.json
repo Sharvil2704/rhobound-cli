@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    { "name": "rhobound", "version": "0.1.0", "source": { "source": "local", "path": "integrations/muse-code" } }
+  ]
+}

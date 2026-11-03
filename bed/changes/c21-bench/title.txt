@@ -1,1 +1,0 @@
-AUDIT do-not-merge: T1 latency-bad reference instead of the inverted index

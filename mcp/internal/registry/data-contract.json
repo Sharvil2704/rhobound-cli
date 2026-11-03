@@ -1311,6 +1311,20 @@
       ]
     },
     {
+      "code": "ab.payload_changed",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "the mean response body the load generator read differs between the arms by more than 10% [D] (the subject is the driven service; a prediction names the fit's callers of it as examples): the callers' cost of reading and decoding it is in no arm's spans",
+      "fix": "measure the callers with the candidate (an A/B of the callers, or a canary), or describe their cost as a change",
+      "doc": "DATA.md 8",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "baseline_bytes",
+        "candidate_bytes"
+      ]
+    },
+    {
       "code": "change.label_not_minted",
       "level": "refuse",
       "trigger": "input",
@@ -1437,8 +1451,8 @@
       "code": "change.route_scope_unsupported",
       "level": "refuse",
       "trigger": "input",
-      "when": "an operation restricted to a route",
-      "fix": "convert to a per-visit mean: ms times the route's share of visits",
+      "when": "an operation other than own_ms restricted to a route, or an own_ms item on a route the fit does not keep",
+      "fix": "give own_ms on a route the fit's routes[] names, or convert to a per-visit mean: ms times the route's share of visits",
       "doc": "DATA.md 11.2",
       "since": "v1.0",
       "status": "new"
@@ -1700,12 +1714,14 @@
       "code": "profile.variance_changed",
       "level": "doubt",
       "trigger": "input",
-      "when": "the own time's variance (diff-fit) or cs2 (a profile) differs beyond 2 standard errors",
-      "fix": "none in this version: inconclusive until a variance patch exists",
+      "when": "the own time's variance (diff-fit: var_delta, var_se in ms^2) or cs2 (a profile) differs beyond 2 standard errors",
+      "fix": "none: a prediction applies the measured variance difference (own_var_ms2), and its uncertainty stays a doubt",
       "doc": "DATA.md 8, 9.5 #15",
       "since": "v1.0",
       "status": "new",
       "numbers": [
+        "var_delta",
+        "var_se",
         "cs2_delta",
         "cs2_se",
         "levels"
@@ -1722,6 +1738,22 @@
       "status": "new",
       "numbers": [
         "levels"
+      ]
+    },
+    {
+      "code": "profile.route_heterogeneous",
+      "level": "doubt",
+      "trigger": "input",
+      "when": "a route's own-time difference differs from the service's blended difference beyond 3 standard errors (diff-fit)",
+      "fix": "give the change as one own_ms item per route (route: the record's routes[].route, value: its own_ms delta), not the blend",
+      "doc": "DATA.md 8",
+      "since": "v1.0",
+      "status": "new",
+      "numbers": [
+        "route_delta_ms",
+        "blend_delta_ms",
+        "route_se",
+        "route_share"
       ]
     },
     {

@@ -462,3 +462,60 @@ func readRows(path string) ([]PreviewRow, error) {
 	}
 	return rows, sc.Err()
 }
+
+// previewLogMax is the largest preview log PreviewedSince reads.
+const previewLogMax = 64 << 20
+
+// PreviewedSince reports whether the preview log of the Dir at root holds a row stamped at or after t, in any
+// repository, principal or branch. It only reads: a missing root or log folder is no row, and it creates nothing. The
+// row times are compared, never file times (AppendPreview and Sweep rewrite whole files). The Muse Code plugin's Stop
+// hook uses it to tell whether predict ran in a session.
+func PreviewedSince(root string, t time.Time) (bool, error) {
+	dir := filepath.Join(root, "previews")
+	ents, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, e := range ents {
+		if !e.Type().IsRegular() || !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
+		}
+		// a log is a month of rows of about 200 bytes: one far larger is not a log this store wrote
+		if fi, err := e.Info(); err != nil || fi.Size() > previewLogMax {
+			continue
+		}
+		seen, err := rowSince(filepath.Join(dir, e.Name()), t)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // swept since the listing
+		}
+		if err != nil {
+			return false, err
+		}
+		if seen {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// rowSince reports whether the log at path holds a row stamped at or after t, reading it a line at a time and
+// keeping no rows (a log of many tiny lines must not take memory in proportion to them).
+func rowSince(path string, t time.Time) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	for sc.Scan() {
+		var r PreviewRow
+		if json.Unmarshal(sc.Bytes(), &r) == nil && !r.Time.Before(t) {
+			return true, nil
+		}
+	}
+	return false, sc.Err()
+}

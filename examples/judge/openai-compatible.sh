@@ -49,10 +49,21 @@ curl --fail --silent --show-error "${endpoint%/}/chat/completions" \
 # 3. The answer: the model's text, without a Markdown fence if it added one.
 jq -r '.choices[0].message.content' "$out/response.json" | sed -e '/^```/d' >"$out/judge-answer.json"
 
-# 4. Only typed fields go on; a refused answer stops here (exit 1), recorded as "judge unavailable".
-"$rhobound" judge-check "$out/judge-answer.json" --packet "$out/packet.json" --json >"$out/judge-check.json"
+# 4. Only typed fields go on. An answer judge-check refuses (exit 1) or cannot read (exit 2) is "judge unavailable":
+#    recorded in OUT/judge-unavailable.json, never retried into another answer, and the gate runs without it, so a
+#    judge that answers badly cannot stop a release (or pass one) on its own.
+judge_args=()
+if "$rhobound" judge-check "$out/judge-answer.json" --packet "$out/packet.json" --json >"$out/judge-check.json" 2>"$out/judge-check.err"; then
+  judge_args=(--judge-answer "$out/judge-answer.json" --judge-packet "$out/packet.json" \
+    --judge-model "$model" --judge-request "$request_digest")
+else
+  check_status=$?
+  jq -n --arg model "$model" --arg request "$request_digest" --argjson status "$check_status" \
+    --rawfile check "$out/judge-check.json" --rawfile err "$out/judge-check.err" \
+    '{judge: "unavailable", model_id: $model, request: $request, judge_check_status: $status, judge_check: $check, stderr: $err}' \
+    >"$out/judge-unavailable.json"
+fi
 
-# 5. The gate, with the answer recorded as ci-judge (model id and request digest in gate.json).
-"$rhobound" gate "$prediction" --policy "$policy" --out "$out/gate" --json \
-  --judge-answer "$out/judge-answer.json" --judge-packet "$out/packet.json" \
-  --judge-model "$model" --judge-request "$request_digest"
+# 5. The gate, with a checked answer recorded as ci-judge (model id and request digest in gate.json). Its exit status is
+#    the script's: 0 pass, 1 block, 2 error, 3 inconclusive.
+"$rhobound" gate "$prediction" --policy "$policy" --out "$out/gate" --json ${judge_args[@]+"${judge_args[@]}"}

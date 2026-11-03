@@ -4,12 +4,12 @@
 #   1. a fresh clone of GitHub main -> repo/ (rsync --delete, the tree only) and state/main.sha
 #   2. RBD_IMAGES_UPLOAD_ONLY=1 rbd_bootstrap.sh images: main's tree -> rbd-tools1:/var/lib/rbd/src/main (+ main.sha), no build
 #      (a merged change's image was built by its gate and deployed by deploy.sh)
-# Prints main's sha. Exit 0 / 1. Env: REPO [Sharvil2704/rhobound-demo].
+# Prints main's sha. Exit 0 / 1. Env: REPO [Sharvil2704/rhobound-maze-bed].
 set -euo pipefail
 DEMO=$(cd "$(dirname "$0")/.." && pwd)
-REPO=${REPO:-Sharvil2704/rhobound-demo}
+REPO=${REPO:-Sharvil2704/rhobound-maze-bed}
 die() { echo "sync_main: error: $*" >&2; exit 1; }
-mkdir -p "$DEMO/../.tmp-bed"; W=$(mktemp -d "$DEMO/../.tmp-bed/sync_main.XXXXXX")
+SCR=${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}; mkdir -p "$SCR"; W=$(mktemp -d "$SCR/sync_main.XXXXXX")
 trap 'rm -rf "$W"' EXIT
 git -c credential.helper= -c 'credential.helper=!gh auth git-credential' clone -q "https://github.com/$REPO.git" "$W/main" ||
   die "cannot clone $REPO"

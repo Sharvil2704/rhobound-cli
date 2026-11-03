@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # policy-digest.sh CLI PREDICTION POLICY [EXPECTED]   the effective-policy digest CLI's `gate` writes as gate.json digests.policy for
 #   POLICY: RBD_POLICY_DIGEST in rbd.env (predict.sh, sign.sh and deploy.sh refuse a verdict decided under any other policy).
-#   rbd_bootstrap.sh runs it on the orchestrator with build/rhobound-arm64 on orch/fixtures/policy-digest-prediction.json and
+#   rbd_bootstrap.sh runs it on your workstation with build/rhobound-local on orch/fixtures/policy-digest-prediction.json and
 #   repo/policy/gate.json (no rbd.env without it), then on rbd-tools1 with the installed /opt/rbd/bin/rhobound on the same bytes and
-#   EXPECTED = the orchestrator's digest (the tools1 step refuses a difference). Needs python3 only (runs before tools1-setup.sh).
+#   EXPECTED = the workstation's digest (the tools1 step refuses a difference). Needs python3 only (runs before tools1-setup.sh).
 #   Prints sha256:<64 hex>. Exit 0; 1 no digest, or not EXPECTED; 2 usage. Scratch: a folder under RBD_TMP [/var/tmp], removed.
 # shellcheck disable=SC2015
 set -euo pipefail

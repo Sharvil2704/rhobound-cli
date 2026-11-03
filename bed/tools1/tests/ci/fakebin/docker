@@ -11,7 +11,7 @@ case ${1:-} in
     while [[ $# -gt 0 ]]; do
       case $1 in -t) ref=$2; shift 2 ;; -f) df=$2; shift 2 ;; --build-arg | --label) shift 2 ;; *) ctx=$1; shift ;; esac
     done
-    # the context must be the one the Dockerfile copies from (COPY app/... -> kshop/, COPY go.mod -> kshop/app)
+    # the context must be the one the Dockerfile copies from (COPY app/... -> maze/, COPY go.mod -> maze/app)
     want=$ctx/go.mod; grep -q '^COPY app/' "$df" 2> /dev/null && want=$ctx/app/go.mod
     [[ -r $df && -r $want ]] || { echo "docker stub: bad -f '$df' or context '$ctx' (no $want)" >&2; exit 1; }
     [[ ${STUB_BUILD_RC:-0} -eq 0 ]] || { echo "docker stub: build failed (STUB_BUILD_RC)" >&2; exit "$STUB_BUILD_RC"; }

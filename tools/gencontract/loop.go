@@ -153,7 +153,7 @@ func Fixture(code, out string) error {
 			return err
 		}
 		if c.Dir != out || c.Manifest != "" || c.KeptShare != nil || len(c.Samplers) > 0 || len(c.ProbeRoutes) > 0 ||
-			c.PodIdentity != "" || c.Limits != nil || len(c.Workers) > 0 || c.Patch != "" {
+			c.PodIdentity != "" || c.Limits != nil || len(c.Workers) > 0 || c.Patch != "" || c.Plain {
 			return fmt.Errorf("the fixture of %s runs with flags or a manifest, not as the folder alone", code)
 		}
 		return nil

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""verify/score.py: the orchestrator's independent score of rhobound gate verdicts against measured truth (SPEC 7).
+"""verify/score.py: the independent score of rhobound gate verdicts against measured truth.
 
 Reads files only. Imports no rhobound code and runs no command. Stdlib only (python3 -I).
 
@@ -14,8 +14,8 @@ exit: 0 report written, no failure listed; 1 report written, failures listed (wr
 writes: DIR/score.json (rbd.verify-score/v1), DIR/report.md
 
 Fields read, nothing else:
-  load.json   kshop-load's job log: JSON lines {url, ok, errors, mean_ms} (mean_ms is over ok requests only), the line
-              'kshop-load: N requests over S s (R rps), seed K' and the line 'kshop-load: done in S s'.
+  load.json   maze-load's job log: JSON lines {url, ok, errors, mean_ms} (mean_ms is over ok requests only), the line
+              'maze-load: N requests over S s (R rps), seed K' and the line 'maze-load: done in S s'.
   prediction  rhobound-cli.report/v2: version, fit_digest, items[].service, entries[].{name, before_ms, change_ms.lo/hi,
               band_ms.lo/hi}; a refusal {"error": {"code"}} is accepted (the gate turns it into inconclusive).
   gate.json   rhobound.gate/v1: schema, verdict, exit_code, advisory, digests.fit,
@@ -51,9 +51,9 @@ SCHEMA = "rbd.verify-score/v1"
 ENTRIES = {"storefront": ("/browse",), "checkout": ("/buy/card", "/buy/wallet")}
 EXIT_OF = {"pass": 0, "block": 1, "inconclusive": 3}
 ERR_PCT_MAX = 1.0
-RE_START = re.compile(r"(\d{4}/\d\d/\d\d \d\d:\d\d:\d\d)\S* kshop-load: (\d+) requests over ([\d.]+) s "
+RE_START = re.compile(r"(\d{4}/\d\d/\d\d \d\d:\d\d:\d\d)\S* maze-load: (\d+) requests over ([\d.]+) s "
                       r"\(([\d.]+) rps\), seed (-?\d+)")
-RE_DONE = re.compile(r"kshop-load: done in ([\d.]+) s")
+RE_DONE = re.compile(r"maze-load: done in ([\d.]+) s")
 TRUTH_RANK = {"regression": 3, "unknown": 2, "unresolved": 1, "clean": 0}
 
 
@@ -85,7 +85,7 @@ def rng(x):
 
 
 def parse_load(path):
-    """kshop-load's log -> {urls: {path: row}, start, requests, seconds, seed, done, problems}."""
+    """maze-load's log -> {urls: {path: row}, start, requests, seconds, seed, done, problems}."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
@@ -121,9 +121,9 @@ def parse_load(path):
             w["problems"].append(f"{p}: two result lines")
         w["urls"][p] = {"ok": ok, "errors": err, "mean_ms": float(mean)}
     if not w["done"]:
-        w["problems"].append("no 'kshop-load: done' line (window incomplete?)")
+        w["problems"].append("no 'maze-load: done' line (window incomplete?)")
     if w["requests"] is None:
-        w["problems"].append("no 'kshop-load: N requests over' line")
+        w["problems"].append("no 'maze-load: N requests over' line")
     elif w["urls"]:
         total = sum(r["ok"] + r["errors"] for r in w["urls"].values())
         if total != w["requests"]:
@@ -437,7 +437,7 @@ def report_md(doc):
     c = doc["counts"]
     L.append("# Independent verification of the gate's verdicts")
     L.append("")
-    L.append(f"Generated {doc['generated_at']} by `verify/score.py` from files only (kshop-load's own client-side "
+    L.append(f"Generated {doc['generated_at']} by `verify/score.py` from files only (maze-load's own client-side "
              "means, the run's prediction.json and gate/). No rhobound code was run or imported.")
     L.append("")
     L.append(f"**{len(doc['changes'])} changes:** " + ", ".join(f"{k} {v}" for k, v in c.items()) + ".")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests of verify/score.py: synthetic kshop-load windows + the offline proof's prediction.json/gate (copied in
+"""Offline tests of verify/score.py: synthetic maze-load windows + the offline proof's prediction.json/gate (copied in
 fixtures/proof; block and inconclusive gates are SYNTHETIC edits of it). usage: python3 -I test_score.py [-v]"""
 import copy
 import importlib.util
@@ -14,12 +14,12 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCORE = os.path.join(os.path.dirname(HERE), "score.py")
 FIX = os.path.join(HERE, "fixtures")
-SCRATCH = os.environ.get("VERIFY_SCRATCH", "$HOME/rbd-dev/tmp/verify")
+SCRATCH = os.environ.get("VERIFY_SCRATCH") or os.path.join(os.environ.get("RBD_SCRATCH") or os.path.join(os.environ.get("TMPDIR") or "/tmp", "rbd"), "verify")
 # the proof: storefront before 67.948 (T 3.397, band -0.611..3.016), checkout before 89.219 (T 4.461, band
 # -1.094..3.498)
-URLS = {"/browse": "http://storefront.kshop.svc.cluster.local:8080/browse",
-        "/buy/card": "http://checkout.kshop.svc.cluster.local:8080/buy/card",
-        "/buy/wallet": "http://checkout.kshop.svc.cluster.local:8080/buy/wallet"}
+URLS = {"/browse": "http://storefront.maze.svc.cluster.local:8080/browse",
+        "/buy/card": "http://checkout.maze.svc.cluster.local:8080/buy/card",
+        "/buy/wallet": "http://checkout.maze.svc.cluster.local:8080/buy/wallet"}
 
 
 def jload(path):
@@ -34,18 +34,18 @@ def jdump(obj, path):
 
 def window(path, sf, co, seed, ok=(42000, 10800, 7200), err=(0, 0, 0), start="2026-10-31 09:00:00", done=True,
            wallet_delta=0.0):
-    """A kshop-load log: storefront mean sf; checkout card co - wallet_delta*w, wallet co + ..., weighted to co."""
+    """A maze-load log: storefront mean sf; checkout card co - wallet_delta*w, wallet co + ..., weighted to co."""
     n = sum(ok) + sum(err)
     card = co - wallet_delta * ok[2] / (ok[1] + ok[2])
     wallet = co + wallet_delta * ok[1] / (ok[1] + ok[2])
     rows = [("/browse", sf, ok[0], err[0]), ("/buy/card", card, ok[1], err[1]), ("/buy/wallet", wallet, ok[2], err[2])]
-    lines = [f"{start.replace('-', '/')} kshop-load: {n} requests over 600 s ({n / 600:.1f} rps), seed {seed}"]
+    lines = [f"{start.replace('-', '/')} maze-load: {n} requests over 600 s ({n / 600:.1f} rps), seed {seed}"]
     for i, (p, m, k, e) in enumerate(rows):
         js = json.dumps({"errors": e, "mean_ms": m, "ok": k, "p50_ms": m * 0.9, "p95_ms": m * 2, "p99_ms": m * 3,
                          "url": URLS[p]}, sort_keys=True)
         lines.append(js)
         if i == 1 and done:
-            lines.append(f"{start.replace('-', '/')[:11]}09:10:00 kshop-load: done in 600 s")
+            lines.append(f"{start.replace('-', '/')[:11]}09:10:00 maze-load: done in 600 s")
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")
     return path
@@ -213,7 +213,7 @@ class ProblemsTest(unittest.TestCase):
         self.assertEqual(p.returncode, 1)
         probs = " | ".join(doc["changes"][0]["problems"])
         for want in ("differs from gate rule 10", "verdict.txt 'block' and gate.json 'pass' differ",
-                     "no 'kshop-load: done' line", "storefront errors", "exit_code"):
+                     "no 'maze-load: done' line", "storefront errors", "exit_code"):
             self.assertIn(want, probs)
         self.assertIn("no A/A pair", " | ".join(f["what"] for f in doc["failures"]))
 
@@ -251,7 +251,7 @@ class ProblemsTest(unittest.TestCase):
         self.assertEqual(doc["changes"][0]["score"], "right-pass")
 
     def test_real_rs2_window_parses(self):
-        """The real kshop-load log (rs2 base-poisson100-r1): JSON lines interleaved with log lines, wallet after done."""
+        """The real maze-load log (rs2 base-poisson100-r1): JSON lines interleaved with log lines, wallet after done."""
         d = self.d
         real = os.path.join(FIX, "rs2-base-poisson100-r1.load.json")
         c = window(f"{d}/c.json", 68.21983039687669 + 1, 88.88, 8)

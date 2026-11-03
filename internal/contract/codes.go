@@ -113,6 +113,7 @@ const (
 	ABErrorsDiffer    = "ab.errors_differ"
 	ABTooFewVisits    = "ab.too_few_visits"
 	ABCountConflict   = "ab.count_conflict"
+	ABPayloadChanged  = "ab.payload_changed"
 
 	ChangeLabelNotMinted        = "change.label_not_minted"
 	ChangeUnknownService        = "change.unknown_service"
@@ -160,6 +161,7 @@ const (
 	ProfileBadSignature       = "profile.bad_signature"
 	ProfileVarianceChanged    = "profile.variance_changed"
 	ProfileStructureChanged   = "profile.structure_changed"
+	ProfileRouteHeterogeneous = "profile.route_heterogeneous"
 	ProfileSelfReportMismatch = "profile.self_report_mismatch"
 	ProfileUntrustedSigner    = "profile.untrusted_signer"
 	ProfilePredicateType      = "profile.predicate_type"
@@ -421,6 +423,11 @@ var registry = []Code{
 		When: "an A/B arm whose own request count gives a kept share other than 1, while the load generator's log, which " +
 			"admits the arm, says its traces hold every request (the subject is the arm)",
 		Fix: "give each arm its own request count, or none: the log alone proves an arm's kept share"},
+	{ID: ABPayloadChanged, Level: Doubt, Trigger: Input, Doc: "DATA.md 8",
+		When: "the mean response body the load generator read differs between the arms by more than 10% [D] (the subject " +
+			"is the driven service; a prediction names the fit's callers of it as examples): the callers' cost of reading " +
+			"and decoding it is in no arm's spans",
+		Fix: "measure the callers with the candidate (an A/B of the callers, or a canary), or describe their cost as a change"},
 	{ID: ChangeLabelNotMinted, Level: Refuse, Trigger: Input, Doc: "DATA.md 11.2",
 		When: "a label other than declared without a record the CLI can find and recompute", Fix: "cite an A/B record the CLI computed, or label it declared"},
 	{ID: ChangeUnknownService, Level: Refuse, Trigger: Input, Doc: "DATA.md 11.2",
@@ -446,7 +453,7 @@ var registry = []Code{
 	{ID: ChangeMicrobenchUnvalidated, Level: Refuse, Trigger: Input, Doc: "DATA.md 11.2",
 		When: "a microbenchmark delta outside research use", Fix: "measure own time per visit (an A/B run)"},
 	{ID: ChangeRouteScopeUnsupported, Level: Refuse, Trigger: Input, Doc: "DATA.md 11.2",
-		When: "an operation restricted to a route", Fix: "convert to a per-visit mean: ms times the route's share of visits"},
+		When: "an operation other than own_ms restricted to a route, or an own_ms item on a route the fit does not keep", Fix: "give own_ms on a route the fit's routes[] names, or convert to a per-visit mean: ms times the route's share of visits"},
 	{ID: ChangeCalleeCostAssumed, Level: Doubt, Trigger: Input, Status: StatusLater, Doc: "DATA.md 11.2",
 		When: "a structural operation that assumes the callee's mean visit", Fix: "measure the callee's visit for that endpoint"},
 	{ID: LoadBusiestUnknown, Level: Note, Trigger: Runtime, Doc: "ARCHITECTURE.md 4.2",
@@ -500,9 +507,13 @@ var registry = []Code{
 	{ID: ProfileBadSignature, Level: Refuse, Trigger: Input, Doc: "DATA.md 9.5 #3",
 		When: "the signature does not verify (the first build refuses every signature)", Fix: "sign with a key on the trust list"},
 	{ID: ProfileVarianceChanged, Level: Doubt, Trigger: Input, Doc: "DATA.md 8, 9.5 #15",
-		When: "the own time's variance (diff-fit) or cs2 (a profile) differs beyond 2 standard errors", Fix: "none in this version: inconclusive until a variance patch exists"},
+		When: "the own time's variance (diff-fit: var_delta, var_se in ms^2) or cs2 (a profile) differs beyond 2 standard errors",
+		Fix:  "none: a prediction applies the measured variance difference (own_var_ms2), and its uncertainty stays a doubt"},
 	{ID: ProfileStructureChanged, Level: Doubt, Trigger: Input, Doc: "DATA.md 8, 9.5 #14",
 		When: "calls per visit differ between arms (also from diff-fit)", Fix: "describe the change structurally"},
+	{ID: ProfileRouteHeterogeneous, Level: Doubt, Trigger: Input, Doc: "DATA.md 8",
+		When: "a route's own-time difference differs from the service's blended difference beyond 3 standard errors (diff-fit)",
+		Fix:  "give the change as one own_ms item per route (route: the record's routes[].route, value: its own_ms delta), not the blend"},
 	{ID: ProfileSelfReportMismatch, Level: Doubt, Trigger: Input, Doc: "DATA.md 8, 9.5 #16",
 		When: "the outside measurement disagrees with the spans (also from diff-fit)", Fix: "check the candidate's instrumentation"},
 	{ID: ProfileUntrustedSigner, Level: Refuse, Trigger: Input, Status: StatusLater, Doc: "DATA.md 9.5 #4",
@@ -639,9 +650,11 @@ var numberNames = map[string][]string{
 	ABTooFewVisits:            {"visits", "needed"},
 	ABErrorsDiffer:            {"baseline", "candidate"},
 	ABCountConflict:           {"kept_share", "log_share"},
-	ProfileVarianceChanged:    {"cs2_delta", "cs2_se", "levels"},
+	ABPayloadChanged:          {"baseline_bytes", "candidate_bytes"},
+	ProfileVarianceChanged:    {"var_delta", "var_se", "cs2_delta", "cs2_se", "levels"},
 	ProfileSelfReportMismatch: {"client_delta_ms", "span_delta_ms", "levels"},
 	ProfileStructureChanged:   {"levels"},
+	ProfileRouteHeterogeneous: {"route_delta_ms", "blend_delta_ms", "route_se", "route_share"},
 	ProfileErrorsDiffer:       {"levels"},
 	ProfileLevelDrift:         {"levels"},
 	ProfileStale:              {"age_days", "valid_for_days"},

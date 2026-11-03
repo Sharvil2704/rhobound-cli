@@ -6,9 +6,9 @@ unset RBD_LOAD_RPS RBD_LOAD_MIX   # part B's load setting (SPEC3 F6a) never from
 HERE=$(cd "$(dirname "$0")" && pwd)
 V=$(dirname "$HERE")
 KIT=$(dirname "$V")
-SCR=${VERIFY_SCRATCH:-$HOME/rbd-dev/tmp/verify}
+SCR=${VERIFY_SCRATCH:-${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}/verify}
 mkdir -p "$SCR"
-ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop
+ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze
 BASE=sha256:$(printf 'base' | sha256sum | cut -d' ' -f1)
 CAND=sha256:$(printf 'cand' | sha256sum | cut -d' ' -f1)
 OTHER=sha256:$(printf 'other' | sha256sum | cut -d' ' -f1)
@@ -36,7 +36,7 @@ EOF
       cp "$KIT/tools1/lib/lock.sh" "$KIT/tools1/lib/rbd-env.sh" "$T/lib/"
       printf '%s\n' RBD_REGION=ap-south-1 RBD_ACCOUNT=123456789012 RBD_BUCKET=rhobound-research-123456789012-ap-south-1 \
         "RBD_ECR=$ECR" RBD_KMS=awskms:///alias/rhobound-demo-verdict KUBECONFIG=/dev/null "RBD_HOME=$T/home" \
-        "RHOBOUND_STATE=$T/home/state" RBD_REPO=Sharvil2704/rhobound-demo > "$T/rbd.env"
+        "RHOBOUND_STATE=$T/home/state" RBD_REPO=Sharvil2704/rhobound-maze-bed > "$T/rbd.env"
       EXTRA=(RBD_ENV_FILE="$T/rbd.env" RBD_OPT="$T/opt" STUB_REAL_LOCK=1) ;;
   esac
   local s

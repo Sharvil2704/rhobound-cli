@@ -5,7 +5,7 @@
 #   collect.sh aa CAPTURE       an existing baseline capture's meta/load.json as an A/A window: the refit's (prod-0) and
 #                               each bracket's B0 (truth-CHANGE-b0); a B0 whose capture.sh failed after its window (kept as
 #                               CAPTURE.failed-<epoch>, used by truth.sh with a warning) is taken from there, as truth.sh does
-# Then, from the orchestrator: orch/rbd.sh get /var/lib/rbd/verify/aa verify/data; orch/rbd.sh get /var/lib/rbd/verify/truth
+# Then, from your workstation: orch/rbd.sh get /var/lib/rbd/verify/aa verify/data; orch/rbd.sh get /var/lib/rbd/verify/truth
 #   verify/data; python3 -I verify/score.py --bundle verify/data --out verify/out
 # Exit: 0 ok; 1 a file is missing; 2 usage. Copies by temp + rename; a re-run overwrites with the same files.
 set -euo pipefail

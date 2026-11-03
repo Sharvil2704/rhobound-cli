@@ -1,1 +1,0 @@
-pricing: apply bulk-quantity tiers in Quote

@@ -5,7 +5,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: otel-collector
-  namespace: kshop-obs
+  namespace: maze-obs
 data:
   config.yaml: |
     receivers:

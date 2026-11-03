@@ -269,8 +269,11 @@ replications of the base and the changed system. Each seed has 36 rows (30 rando
       every row of the table whose error is above 1.5% and is silent at the rows below 0.5%). It is warned of, for
       fixed fan-outs read as before too (a warning only), when the batch is larger than the callee's workers (when the count is a lower bound, for
       a batch of 3 or more, at any load: four calls at once to a one-worker callee at 3% busy left the caller 22% too fast with the hop reading the batch's
-      queue as network time) or when its utilization times the batch over its workers reaches 15%. The model itself is not changed; batch arrivals
-      (an M^X/G/c queue) are the way to remove the error, and it has not been done.
+      queue as network time) or when its utilization times the batch over its workers reaches 15%. **Since the batch term
+      (section 6.4) the refined model takes such calls as one batch** (an M^X/G/c queue at the callee, the caller waiting
+      for the batch's makespan) when the callee's queue is one pool: the rows of section 6.3 that were 2-62% too fast are
+      within -0.1% to +2.5%, and the warning is a note without the `model.batch_arrivals` doubt. The doubt stays for a
+      callee with replicas under random routing or uneven shares, and with `--plain`.
     - **A mean count is the mean.** Exact for the callee's load and the caller's mean time, not for the spread of the
       counts (section 6.3: unbiased within 2% over runs, single runs of a one-worker callee with heavy tails off by up to 10%).
       A count that varies because CLIENT spans were lost or sampled out looks the same as one that varies by request type.
@@ -817,11 +820,26 @@ The reading of the table:
   and the callee's load is the observed one to the last digit (the tests check it to 1e-9). A single run of a one-worker
   callee with 20 calls on one request in ten is off by up to 10%: the estimate of a queue with bursts of 20 is noisy, not
   biased (16 runs of one such setting: mean -0.6%, spread 4%).
-- **Calls made at once are understated** at the callee, by what the batch warning says. The model takes the calls of a
-  batch as independent arrivals; they arrive together. The error grows with the batch and the load and shrinks with the
-  workers; it is under 0.5% when the callee is quiet (8 workers, 20%), and the warning is silent there and speaks at every
-  setting above where the error is above 1.5%. A fixed fan-out accepted before (`fan4`) has the same error and now
-  has the warning; its numbers are not changed.
+- **Calls made at once were understated** at the callee, by what the batch warning says, before the batch term
+  (section 6.4): the model took the calls of a batch as independent arrivals; they arrive together. The error grew with
+  the batch and the load and shrank with the workers (the table above). With the batch term, the same settings (4 runs of
+  200 s, 8 for one worker), A / B as A saw it, mean (range):
+
+  | calls of A to B | B workers, busy | A | B as A saw it |
+  |---|---|---|---|
+  | `mix` | 8, 20% | +0.1 (-0.1..+0.2) | -0.0 (-0.1..+0.1) |
+  | | 8, 40% | +0.2 (+0.0..+0.5) | +0.1 (-0.1..+0.3) |
+  | | 4, 20% | +0.9 (+0.8..+1.0) | +0.2 (-0.0..+0.5) |
+  | | 4, 40% | +1.0 (+0.6..+1.8) | +0.1 (-0.6..+1.3) |
+  | `mixvar` | 8, 20% | +0.2 (-0.1..+0.3) | +0.0 (-0.1..+0.0) |
+  | | 8, 40% | +0.4 (+0.1..+0.7) | +0.2 (-0.3..+0.6) |
+  | | 4, 20% | +0.9 (+0.6..+1.1) | +0.3 (+0.1..+0.4) |
+  | | 4, 40% | +1.4 (+0.8..+2.2) | +0.8 (-0.1..+1.9) |
+  | `fan4` | 1, 30% | +0.2 (-1.5..+2.2) | +0.4 (-1.5..+3.1) |
+  | | 4, 30% | +2.0 (+1.7..+2.5) | +0.6 (-0.5..+1.9) |
+
+  The change, `fan4` on one worker at 30%, B +20% (`TestBatchChangeAgainstTheSimulator`, 4 runs of 100 s): A's change
+  14.49 ms against 15.04 simulated (-3.7%); without the batch term 6.14 ms.
 - **The change** (B's service time +20% with its arrival rate kept; the simulator run again with the slower B on the same
   seeds; mean of 6 runs of 200 s; `TestVariableCountsChangeAgainstTheSimulator` runs two of these rows with 4 runs of
   100 s and a 12% limit). The model's change against the simulator's, in percent of the change, A / B as A saw it:
@@ -841,6 +859,42 @@ The reading of the table:
   at 12 of the 13 services with a measurement (the quietest tenth is what `hopMaxRho = -1` in `internal/infer/hops.go` gives
   back). On the 420 s shipped capture the same change took the worst row from -48.1% to -2.3%
   ([accuracy-logs/hops.txt](accuracy-logs/hops.txt), section 3).
+
+### 6.4 Calls made at once: the batch term (M^X/G/c)
+
+A parallel node that calls one service k >= 2 times (a stage node of the fit) sends it a batch. The refined model
+(`model.Config.Batch`; not with `--plain`) takes the service's arrivals as compound Poisson (one batch per epoch, calls
+from anywhere else batches of 1) into its c workers, FIFO, with gamma service times, and the node's latency as the
+batch's makespan: from the epoch to the last member's end of service, plus the latest of the members' work after their
+worker is freed (`internal/model/batch.go`, `batchq.go`). The queue is solved semi-analytically:
+
+- the number in system N that an epoch finds is (1-w) pD + w pM, w = min(cs2, 1): pM the exact M^X/M/c law (cut
+  equations), pD the exact M^X/D/c law (the Crommelin chain N(t+s) = (N(t)-c)^+ + A(s), by GTH state reduction);
+- busy workers are independent equilibrium renewal processes: member j starts at the (N-c+j)-th point of their
+  superposition, whose moments are closed forms in the regularized incomplete gamma function
+  (P(N_eq(t) >= j) = (I_{j-1}(t) - I_j(t))/s, I_j the integral of the CDF of a sum of j services); with N < c the
+  batch's first members start at once on fresh workers;
+- the batch ends with the slowest member still in service when the last one starts (a whole service, the forward
+  recurrence times of the fresh workers, equilibrium residuals of the others if they started a member);
+- c = 1 uses the exact M^X/G/1 forms (Takacs).
+
+It reduces to the old numbers where no node calls one service twice at once, bit for bit (the services off every batch
+path keep theirs in any topology). Against a seeded discrete-event simulation of the queue (960 settings: c 1-8, rho
+0.1-0.8, cs2 0.16/0.5/1/2, batches uniform over 2-4, 3-6, 4-12, 3-8 with 4-12, and 4-12 with singles; 2-4 million calls
+each; the change at +25% and -25% of the service time), mean |error| / 90th percentile / worst:
+
+| | cs2 <= 1 | cs2 2 |
+|---|---|---|
+| makespan of a batch, by size | 0.5-0.9% / 1.2-2.1% / 7.3% | 1.7% / 3.6% / 10.2% |
+| its change | 1.2-2.0% / 2.9-4.0% / 15.5% | 3.3% / 8.1% / 27.3% |
+| mean wait (where at least s/5) | 0.5-1.1% / 1.3-2.3% / 7.0% | 2.8% / 7.2% / 16.9% |
+| a single call's wait (where at least s/5) | 0.8-1.5% / 1.6-3.4% / 7.3% | 3.8% / 9.6% / 19.7% |
+
+The largest errors are at 6-8 workers and low load, at cs2 2. `internal/model/testdata/batch` holds the simulator and
+20 of its cases, which `TestBatchAgainstTheSimulation` checks. On rhobound-maze (pricing: partner batches of 4-12 into 2
+workers; media: batches of 3-8 and 4-12 into 4; feature-store: 3-6 into 2), the base1 fit's modelled waits are pricing
+20.5 ms (traces 21.8), media 5.83 (5.82), feature-store 5.08 (4.95), where the model without the term had 0.76, 0.46 and
+0.21; the misfit rows of pricing, partner, media, layout, features, feature-store go from -40..-66% to within 5%.
 
 ## 7. A real cluster (kind), one service changed
 

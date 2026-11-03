@@ -1,0 +1,17 @@
+{
+ "schema": "rbd.muse-ticket/v1",
+ "id": "T8",
+ "ticket": "PRICE-88",
+ "title": "Quotes should apply the best promotions",
+ "source": "Muse experiment 2 (2026-11-03): written for real work on a hot path, not around a planted cost; its latency effect was not measured before the runs",
+ "prompt": "task.md",
+ "services": ["pricing"],
+ "image": "pricing",
+ "routes": ["pricing GET /quote"],
+ "entries_touched": ["checkout (-> pricing)", "partner (batch of 4-12 pricing calls)"],
+ "user_facing_entries": ["web /browse", "mobile /feed", "search-api /q", "checkout /buy", "partner /bulk"],
+ "slo_ms": 4.0,
+ "writable": ["maze/app/internal/svc/pricing/"],
+ "test_tags": "hidden",
+ "notes": "pricing has 2 workers and about 114 calls/s (checkout + partner's batches); 384 combinations per quote; today's Quote rebuilds its discount table per call (bed main)"
+}

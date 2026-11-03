@@ -91,6 +91,20 @@
               "additionalProperties": false
             },
             "description": "constructs with a documented directional error on the path to this entry (ARCHITECTURE.md 4.5, item 3)"
+          },
+          "workers_unbounded": {
+            "type": "object",
+            "properties": {
+              "services": {"type": "array", "items": {"type": "string"}, "minItems": 1,
+                           "description": "the services whose worker count is a lower bound (workers_are_a_lower_bound) that some corner raises (utilization after it above the one before), in the rows' order"},
+              "change_ms": {"$ref": "defs.v1.json#/$defs/Range",
+                            "description": "over the corners, the least of the entry's change and its change with each such service the corner raises given more workers: unbounded (a pure delay: its service time kept, no queue) and at each count of a ladder above its bound (bound+1..+4, 2x, 4x, 8x), since a raise's departure smoothing makes the change non-monotone in the workers; never above change_ms at either end"},
+              "band_ms": {"$ref": "defs.v1.json#/$defs/Range",
+                          "description": "this change_ms widened as the entry's band_ms widens its change_ms"}
+            },
+            "required": ["services", "change_ms", "band_ms"],
+            "additionalProperties": false,
+            "description": "only when the change raises a service whose worker count is a lower bound and change_ms is not null: the entry's change with their queueing at its least, which the gate reads to keep a block that does not rest on them (ARCHITECTURE.md 6.3, rule 10)"
           }
         },
         "required": ["name", "before_ms", "after_ms", "change_ms", "change_pct", "model_band_ms", "band_ms", "biased"],

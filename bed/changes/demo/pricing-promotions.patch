@@ -1,0 +1,301 @@
+diff --git a/maze/app/internal/svc/pricing/pricing.go b/maze/app/internal/svc/pricing/pricing.go
+index 7e98937..498a095 100644
+--- a/maze/app/internal/svc/pricing/pricing.go
++++ b/maze/app/internal/svc/pricing/pricing.go
+@@ -3,6 +3,7 @@ package pricing
+ 
+ import (
+ 	"fmt"
++	"sort"
+ 	"sync/atomic"
+ 
+ 	"maze/internal/rt"
+@@ -14,6 +15,33 @@ type Line struct {
+ 	Qty   int
+ }
+ 
++// Promotion is one marketing promotion. Promotions combine with at most one
++// per Group; Kind is one of pct_line, free_unit or fixed_cart.
++type Promotion struct {
++	Code     string
++	Group    string
++	Kind     string
++	MinQty   int
++	MinTotal int
++	Value    int
++}
++
++// Promotions is the active promotion table, in application order.
++var Promotions = []Promotion{
++	{Code: "SPRING10", Group: "season", Kind: "pct_line", MinQty: 1, MinTotal: 0, Value: 100},
++	{Code: "SUMMER15", Group: "season", Kind: "pct_line", MinQty: 5, MinTotal: 0, Value: 150},
++	{Code: "FLASH20", Group: "season", Kind: "pct_line", MinQty: 12, MinTotal: 0, Value: 200},
++	{Code: "BULK5", Group: "volume", Kind: "pct_line", MinQty: 10, MinTotal: 0, Value: 50},
++	{Code: "FREE1", Group: "volume", Kind: "free_unit", MinQty: 6, MinTotal: 0, Value: 1},
++	{Code: "FREE2", Group: "volume", Kind: "free_unit", MinQty: 12, MinTotal: 0, Value: 2},
++	{Code: "OFF500", Group: "cart", Kind: "fixed_cart", MinQty: 0, MinTotal: 10000, Value: 500},
++	{Code: "OFF2000", Group: "cart", Kind: "fixed_cart", MinQty: 0, MinTotal: 40000, Value: 2000},
++	{Code: "OFF5000", Group: "cart", Kind: "fixed_cart", MinQty: 0, MinTotal: 90000, Value: 5000},
++	{Code: "LOYAL3", Group: "loyalty", Kind: "pct_line", MinQty: 1, MinTotal: 0, Value: 30},
++	{Code: "WELCOME", Group: "loyalty", Kind: "fixed_cart", MinQty: 0, MinTotal: 0, Value: 300},
++	{Code: "STACK7", Group: "stack", Kind: "pct_line", MinQty: 3, MinTotal: 0, Value: 70},
++}
++
+ // discounts returns the volume discount (per mille) for each quantity up to 100, from the tiered rules: 5% from 10,
+ // 8% from 25, 12% from 50, each tier also capped by the price band the quantity falls in.
+ func discounts() []int {
+@@ -32,18 +60,150 @@ func discounts() []int {
+ 	return d
+ }
+ 
++// discountTable caches discounts: it is deterministic, so every Quote shares
++// one read-only copy instead of rebuilding it per call.
++var discountTable = discounts()
++
+ // Quote returns the cart's total in cents: each line less its volume discount, rounded half up per line.
+ func Quote(lines []Line) int {
+-	d := discounts()
+ 	total := 0
+ 	for _, l := range lines {
+ 		t := l.Cents * l.Qty
+ 		q := min(l.Qty, 100)
+-		total += (t*(1000-d[q]) + 500) / 1000
++		total += (t*(1000-discountTable[q]) + 500) / 1000
+ 	}
+ 	return total
+ }
+ 
++// promoCombo is one promotion combination: at most one promotion per Group.
++// pct, free and fixed hold indexes into Promotions in table order; codes holds
++// the combination's codes, sorted.
++type promoCombo struct {
++	pct   []int
++	free  []int
++	fixed []int
++	codes []string
++}
++
++// promoCombos holds every combination, the empty one included. It is built
++// once and never mutated, so QuotePromo stays safe for concurrent use.
++var promoCombos = buildPromoCombos()
++
++func buildPromoCombos() []promoCombo {
++	var groups []string
++	byGroup := map[string][]int{}
++	for i, p := range Promotions {
++		if _, ok := byGroup[p.Group]; !ok {
++			groups = append(groups, p.Group)
++		}
++		byGroup[p.Group] = append(byGroup[p.Group], i)
++	}
++	opts := make([][]int, len(groups))
++	for gi, g := range groups {
++		opts[gi] = append([]int{-1}, byGroup[g]...)
++	}
++	var out []promoCombo
++	var cur []int
++	var rec func(gi int)
++	rec = func(gi int) {
++		if gi == len(opts) {
++			c := promoCombo{}
++			for _, pi := range cur {
++				switch Promotions[pi].Kind {
++				case "pct_line":
++					c.pct = append(c.pct, pi)
++				case "free_unit":
++					c.free = append(c.free, pi)
++				case "fixed_cart":
++					c.fixed = append(c.fixed, pi)
++				}
++				c.codes = append(c.codes, Promotions[pi].Code)
++			}
++			sort.Strings(c.codes)
++			out = append(out, c)
++			return
++		}
++		for _, o := range opts[gi] {
++			if o < 0 {
++				rec(gi + 1)
++				continue
++			}
++			cur = append(cur, o)
++			rec(gi + 1)
++			cur = cur[:len(cur)-1]
++		}
++	}
++	rec(0)
++	return out
++}
++
++// lessCodes reports whether the sorted code list a is lexicographically smaller
++// than b. Callers only compare lists of equal length.
++func lessCodes(a, b []string) bool {
++	for i := range a {
++		if a[i] != b[i] {
++			return a[i] < b[i]
++		}
++	}
++	return false
++}
++
++// QuotePromo returns the lowest total over all promotion combinations, the
++// empty one included, and the sorted codes of the combination that gives it.
++// Ties go to the combination with fewer promotions, then to the
++// lexicographically smallest sorted list of codes.
++func QuotePromo(lines []Line) (int, []string) {
++	base := make([]int, len(lines))
++	for i, l := range lines {
++		t := l.Cents * l.Qty
++		base[i] = (t*(1000-discountTable[min(l.Qty, 100)]) + 500) / 1000
++	}
++	work := make([]int, len(lines))
++	bestTotal := int(^uint(0) >> 1)
++	var bestCodes []string
++	for _, c := range promoCombos {
++		copy(work, base)
++		for _, pi := range c.pct {
++			p := Promotions[pi]
++			for i, l := range lines {
++				if l.Qty >= p.MinQty {
++					work[i] -= (work[i]*p.Value + 500) / 1000
++				}
++			}
++		}
++		for _, pi := range c.free {
++			p := Promotions[pi]
++			for i, l := range lines {
++				if l.Qty >= p.MinQty {
++					work[i] -= p.Value * l.Cents
++					if work[i] < 0 {
++						work[i] = 0
++					}
++				}
++			}
++		}
++		sub := 0
++		for _, w := range work {
++			sub += w
++		}
++		for _, pi := range c.fixed {
++			p := Promotions[pi]
++			if sub >= p.MinTotal {
++				sub -= p.Value
++				if sub < 0 {
++					sub = 0
++				}
++			}
++		}
++		if sub < bestTotal || (sub == bestTotal && (len(c.codes) < len(bestCodes) ||
++			(len(c.codes) == len(bestCodes) && lessCodes(c.codes, bestCodes)))) {
++			bestTotal = sub
++			bestCodes = c.codes
++		}
++	}
++	return bestTotal, append([]string(nil), bestCodes...)
++}
++
+ var n atomic.Uint64
+ 
+ func cart(seed uint64) []Line {
+@@ -54,9 +214,24 @@ func cart(seed uint64) []Line {
+ 	return ls
+ }
+ 
++// quoteJSON renders the pricing.quote response body for total and promos.
++func quoteJSON(total int, promos []string) []byte {
++	buf := fmt.Appendf(nil, `{"total":%d,"promos":[`, total)
++	for i, c := range promos {
++		if i > 0 {
++			buf = append(buf, ',')
++		}
++		buf = append(buf, '"')
++		buf = append(buf, c...)
++		buf = append(buf, '"')
++	}
++	return append(buf, ']', '}')
++}
++
+ func init() {
+ 	rt.Register("pricing.quote", func(r *rt.Req) error {
+-		r.Out = fmt.Appendf(nil, `{"total":%d}`, Quote(cart(n.Add(1))))
++		total, promos := QuotePromo(cart(n.Add(1)))
++		r.Out = quoteJSON(total, promos)
+ 		return nil
+ 	})
+ }
+diff --git a/maze/app/internal/svc/pricing/pricing_test.go b/maze/app/internal/svc/pricing/pricing_test.go
+index 08cf41d..836ae7b 100644
+--- a/maze/app/internal/svc/pricing/pricing_test.go
++++ b/maze/app/internal/svc/pricing/pricing_test.go
+@@ -1,6 +1,9 @@
+ package pricing
+ 
+-import "testing"
++import (
++	"slices"
++	"testing"
++)
+ 
+ func TestQuote(t *testing.T) {
+ 	if got := Quote([]Line{{Cents: 1000, Qty: 1}}); got != 1000 {
+@@ -19,3 +22,60 @@ func BenchmarkQuote(b *testing.B) {
+ 		Quote(cart(7))
+ 	}
+ }
++
++func TestPromotionsTable(t *testing.T) {
++	want := []Promotion{
++		{Code: "SPRING10", Group: "season", Kind: "pct_line", MinQty: 1, MinTotal: 0, Value: 100},
++		{Code: "SUMMER15", Group: "season", Kind: "pct_line", MinQty: 5, MinTotal: 0, Value: 150},
++		{Code: "FLASH20", Group: "season", Kind: "pct_line", MinQty: 12, MinTotal: 0, Value: 200},
++		{Code: "BULK5", Group: "volume", Kind: "pct_line", MinQty: 10, MinTotal: 0, Value: 50},
++		{Code: "FREE1", Group: "volume", Kind: "free_unit", MinQty: 6, MinTotal: 0, Value: 1},
++		{Code: "FREE2", Group: "volume", Kind: "free_unit", MinQty: 12, MinTotal: 0, Value: 2},
++		{Code: "OFF500", Group: "cart", Kind: "fixed_cart", MinQty: 0, MinTotal: 10000, Value: 500},
++		{Code: "OFF2000", Group: "cart", Kind: "fixed_cart", MinQty: 0, MinTotal: 40000, Value: 2000},
++		{Code: "OFF5000", Group: "cart", Kind: "fixed_cart", MinQty: 0, MinTotal: 90000, Value: 5000},
++		{Code: "LOYAL3", Group: "loyalty", Kind: "pct_line", MinQty: 1, MinTotal: 0, Value: 30},
++		{Code: "WELCOME", Group: "loyalty", Kind: "fixed_cart", MinQty: 0, MinTotal: 0, Value: 300},
++		{Code: "STACK7", Group: "stack", Kind: "pct_line", MinQty: 3, MinTotal: 0, Value: 70},
++	}
++	if !slices.Equal(Promotions, want) {
++		t.Fatalf("Promotions = %v, want %v", Promotions, want)
++	}
++}
++
++func TestQuotePromo(t *testing.T) {
++	for _, tc := range []struct {
++		name  string
++		lines []Line
++		total int
++		codes []string
++	}{
++		{"empty", nil, 0, nil},
++		{"single", []Line{{Cents: 1000, Qty: 1}}, 600, []string{"SPRING10", "WELCOME"}},
++		{"lexicographic tie", []Line{{Cents: 1, Qty: 1}, {Cents: 50, Qty: 6}}, 0, []string{"FREE1", "WELCOME"}},
++	} {
++		total, codes := QuotePromo(tc.lines)
++		if total != tc.total || !slices.Equal(codes, tc.codes) {
++			t.Fatalf("%s: QuotePromo(%v) = (%d, %q), want (%d, %q)",
++				tc.name, tc.lines, total, codes, tc.total, tc.codes)
++		}
++		if q := Quote(tc.lines); total > q {
++			t.Fatalf("%s: promo total %d exceeds Quote %d", tc.name, total, q)
++		}
++	}
++}
++
++func TestQuoteJSON(t *testing.T) {
++	if got := string(quoteJSON(600, []string{"SPRING10", "WELCOME"})); got != `{"total":600,"promos":["SPRING10","WELCOME"]}` {
++		t.Fatalf("with promos: %s", got)
++	}
++	if got := string(quoteJSON(1000, nil)); got != `{"total":1000,"promos":[]}` {
++		t.Fatalf("empty: %s", got)
++	}
++}
++
++func BenchmarkQuotePromo(b *testing.B) {
++	for b.Loop() {
++		QuotePromo(cart(7))
++	}
++}

@@ -53,7 +53,7 @@ class Client:
     def open(self):
         m = self._post({"jsonrpc": "2.0", "id": 1, "method": "initialize",
                         "params": {"protocolVersion": PROTOCOL, "capabilities": {},
-                                   "clientInfo": {"name": "rbd-orchestrator", "version": "1"}}})
+                                   "clientInfo": {"name": "rbd-workstation", "version": "1"}}})
         if "error" in m:
             raise RuntimeError(f"initialize: {m['error']}")
         self.version = m["result"].get("protocolVersion", PROTOCOL)

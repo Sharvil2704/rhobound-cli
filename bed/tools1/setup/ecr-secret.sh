@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ecr-secret.sh   (as rbd on rbd-tools1; rbd-ecr-secret.service, every 4 h) SPEC 3: the imagePullSecret "ecr" in kshop, kshop-obs and
+# ecr-secret.sh   (as rbd on rbd-tools1; rbd-ecr-secret.service, every 4 h) SPEC 3: the imagePullSecret "ecr" in maze, maze-obs and
 #   rbd-ab (namespaces made when missing), on each namespace's default ServiceAccount. The ECR password (12 h) goes from
 #   `aws ecr get-login-password` into the Secret through pipes and shell builtins only, never an argv (other users see argv).
 # shellcheck disable=SC2015

@@ -90,6 +90,10 @@ type Loadgen struct {
 	LogSHA256       string  `json:"log_sha256"`
 	Requests        PairInt `json:"requests"`
 	ClientLatencyMs Delta   `json:"client_latency_ms"`
+	// ResponseBytes is the mean size of a response body in each arm, bytes, when the log has its bytes column; nil
+	// otherwise. A change of more than PayloadGap is ab.payload_changed: a cost the callers pay (reading, decoding) that
+	// no arm's spans contain.
+	ResponseBytes *Pair `json:"response_bytes,omitempty"`
 }
 
 // Service is the difference measured for one service.
@@ -102,6 +106,9 @@ type Service struct {
 	OwnMs        Delta `json:"own_ms"`
 	GlueMs       Delta `json:"glue_ms"`
 	OwnCS2       Delta `json:"own_cs2"`
+	// OwnVar is the own time's variance in each arm, ms^2, and its difference with the standard error by batch means:
+	// the evidence of a measured own_var_ms2 item, which the engine applies with the own-time difference.
+	OwnVar Delta `json:"own_var"`
 	// Calls are the calls per visit to each callee, in each arm. Never nil.
 	Calls []Calls `json:"calls"`
 	// CallsChanged is profile.structure_changed: the calls per visit differ, the change is structural, and the
@@ -113,13 +120,42 @@ type Service struct {
 	// and is no variance change.
 	VarianceChanged bool `json:"variance_changed"`
 	ErrorShare      Pair `json:"error_share"`
+	// Routes are the own-time differences of the service's routes (infer.ServiceStats.Routes), for a service both arms
+	// read two or more common routes of; omitted otherwise, so that a record of single-route services keeps its bytes.
+	// With them, VarianceChanged tests the candidate's variance against the variance each route's own shift predicts
+	// (the routes' variances kept, their means moved by their deltas, mixed by the candidate's shares), not against the
+	// baseline's: shifting one route of a mixture moves the blended variance without changing any route's spread.
+	Routes []Route `json:"routes,omitempty"`
 }
 
-// Calls are the calls per visit to one callee in each arm.
+// Route is the own-time difference of one route of a service.
+type Route struct {
+	Route  string  `json:"route"`
+	Visits PairInt `json:"visits"`
+	// Share is the route's share of the service's visits in each arm.
+	Share Pair  `json:"share"`
+	OwnMs Delta `json:"own_ms"`
+}
+
+// Calls are the calls per visit to one callee in each arm, and the standard error of each mean from the spread of the
+// calls per visit over the visits (sd/sqrt(n), not batch means: the counts are kept as a histogram, not in order).
 type Calls struct {
-	Callee    string  `json:"callee"`
-	Baseline  float64 `json:"baseline"`
-	Candidate float64 `json:"candidate"`
+	Callee      string  `json:"callee"`
+	Baseline    float64 `json:"baseline"`
+	Candidate   float64 `json:"candidate"`
+	BaselineSE  float64 `json:"baseline_se"`
+	CandidateSE float64 `json:"candidate_se"`
+}
+
+// Ratio is the candidate's calls per visit over the baseline's and its standard error (by the delta method, the arms
+// independent); ok is false when the baseline makes no call.
+func (c Calls) Ratio() (ratio, se float64, ok bool) {
+	if !(c.Baseline > 0) {
+		return 0, 0, false
+	}
+	ratio = c.Candidate / c.Baseline
+	se = math.Hypot(c.CandidateSE/c.Baseline, ratio*c.BaselineSE/c.Baseline)
+	return ratio, se, true
 }
 
 // Pair is one value per arm.
@@ -241,33 +277,45 @@ type LoadgenLog struct {
 	// SHA256 is the bare hex sha256 of the log file (Loadgen.LogSHA256).
 	SHA256 string
 	Rows   []LoadgenRow
+	// HasBytes is true for a log with the bytes column (LoadgenHeaderBytes).
+	HasBytes bool
 }
 
-// LoadgenRow is one request of the log: arm,seq,sent_unix_ns,answered_unix_ns,status.
+// LoadgenRow is one request of the log: arm,seq,sent_unix_ns,answered_unix_ns,status[,bytes].
 type LoadgenRow struct {
 	Arm            string // "A" (the baseline) or "B" (the candidate)
 	Seq            int64
 	SentUnixNs     int64
 	AnsweredUnixNs int64
 	Status         int
+	// Bytes is the size of the response body the load generator read, or -1 when the log has no bytes column.
+	Bytes int64
 }
 
-// LoadgenHeader is the header line of a load generator's log.
-const LoadgenHeader = "arm,seq,sent_unix_ns,answered_unix_ns,status"
+// LoadgenHeader is the header line of a load generator's log; LoadgenHeaderBytes that of a log that also gives each
+// response body's size in bytes.
+const (
+	LoadgenHeader      = "arm,seq,sent_unix_ns,answered_unix_ns,status"
+	LoadgenHeaderBytes = LoadgenHeader + ",bytes"
+)
 
-// ParseLoadgenLog reads a load generator's log in the CSV form of DATA.md 8, with its header line.
+// ParseLoadgenLog reads a load generator's log in the CSV form of DATA.md 8, with its header line: LoadgenHeader, or
+// LoadgenHeaderBytes for a log whose rows also give the response body's size.
 func ParseLoadgenLog(b []byte) (*LoadgenLog, error) {
 	r := csv.NewReader(bytes.NewReader(b))
-	r.FieldsPerRecord = 5
+	r.FieldsPerRecord = -1
 	r.ReuseRecord = true
 	head, err := r.Read()
 	if err != nil {
 		return nil, fmt.Errorf("abdiff: load generator log: %v", err)
 	}
-	if strings.Join(head, ",") != LoadgenHeader {
-		return nil, fmt.Errorf("abdiff: load generator log: the header is %q, want %q", strings.Join(head, ","), LoadgenHeader)
+	withBytes := strings.Join(head, ",") == LoadgenHeaderBytes
+	if strings.Join(head, ",") != LoadgenHeader && !withBytes {
+		return nil, fmt.Errorf("abdiff: load generator log: the header is %q, want %q or %q", strings.Join(head, ","),
+			LoadgenHeader, LoadgenHeaderBytes)
 	}
-	log := &LoadgenLog{SHA256: contract.SHA256Hex(b)}
+	r.FieldsPerRecord = len(head)
+	log := &LoadgenLog{SHA256: contract.SHA256Hex(b), HasBytes: withBytes}
 	for {
 		rec, err := r.Read()
 		if err == io.EOF {
@@ -284,8 +332,18 @@ func ParseLoadgenLog(b []byte) (*LoadgenLog, error) {
 		row.SentUnixNs, errs[1] = strconv.ParseInt(rec[2], 10, 64)
 		row.AnsweredUnixNs, errs[2] = strconv.ParseInt(rec[3], 10, 64)
 		row.Status, errs[3] = strconv.Atoi(rec[4])
-		if err := errors.Join(errs[:]...); err != nil || (row.Arm != "A" && row.Arm != "B") || row.AnsweredUnixNs < row.SentUnixNs {
-			return nil, fmt.Errorf("abdiff: load generator log, line %d: want arm A or B, integers, answered at or after sent", line)
+		row.Bytes = -1
+		var errBytes error
+		if withBytes {
+			row.Bytes, errBytes = strconv.ParseInt(rec[5], 10, 64)
+			if errBytes == nil && row.Bytes < 0 {
+				errBytes = errors.New("negative bytes")
+			}
+		}
+		if err := errors.Join(append(errs[:], errBytes)...); err != nil || (row.Arm != "A" && row.Arm != "B") ||
+			row.AnsweredUnixNs < row.SentUnixNs {
+			return nil, fmt.Errorf("abdiff: load generator log, line %d: want arm A or B, integers, answered at or after sent, "+
+				"bytes not negative", line)
 		}
 		log.Rows = append(log.Rows, row)
 	}
@@ -313,6 +371,9 @@ const (
 	// CallsGap is the relative difference of calls per visit above which the structure changed
 	// (profile.structure_changed).
 	CallsGap = 0.05
+	// PayloadGap is the relative difference of the mean response body above which the payload changed
+	// (ab.payload_changed).
+	PayloadGap = 0.10
 	// SelfReportSlackMs and SelfReportFrac widen the band within which the client-side difference must agree with the
 	// span-derived one, beyond 2 standard errors of the client-side difference.
 	SelfReportSlackMs = 0.1
@@ -353,6 +414,7 @@ func Diff(baseline, candidate *Input, log *LoadgenLog, opt Options, tool fit.Too
 
 	// the load generator's side
 	var lat [2][]float64
+	var body [2]float64
 	r.Loadgen.LogSHA256 = log.SHA256
 	rows := append([]LoadgenRow(nil), log.Rows...)
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].SentUnixNs < rows[j].SentUnixNs })
@@ -362,9 +424,20 @@ func Diff(baseline, candidate *Input, log *LoadgenLog, opt Options, tool fit.Too
 			k = 1
 		}
 		lat[k] = append(lat[k], float64(row.AnsweredUnixNs-row.SentUnixNs)/1e6)
+		body[k] += float64(row.Bytes)
 	}
 	r.Loadgen.Requests = PairInt{int64(len(lat[0])), int64(len(lat[1]))}
 	r.Loadgen.ClientLatencyMs = delta(lat[0], lat[1], batches)
+	if log.HasBytes && len(lat[0]) > 0 && len(lat[1]) > 0 {
+		rb := &Pair{Baseline: body[0] / float64(len(lat[0])), Candidate: body[1] / float64(len(lat[1]))}
+		r.Loadgen.ResponseBytes = rb
+		if math.Abs(rb.Candidate-rb.Baseline) > PayloadGap*rb.Baseline {
+			for _, name := range entryNames(baseline.Inferred) {
+				r.Findings = append(r.Findings, contract.NewFinding(contract.ABPayloadChanged).WithSubject(name).
+					WithNumber("baseline_bytes", rb.Baseline).WithNumber("candidate_bytes", rb.Candidate))
+			}
+		}
+	}
 	for k, in := range []*Input{baseline, candidate} {
 		sent := r.Loadgen.Requests.Baseline
 		if k == 1 {
@@ -397,10 +470,12 @@ func Diff(baseline, candidate *Input, log *LoadgenLog, opt Options, tool fit.Too
 			continue
 		}
 		svc := Service{Service: name, Visits: PairInt{sa.Visits, sb.Visits}, OwnMs: delta(sa.Own, sb.Own, batches),
-			GlueMs: delta(sa.Glue, sb.Glue, batches), OwnCS2: cs2Delta(sa.Own, sb.Own, batches), Calls: []Calls{},
+			GlueMs: delta(sa.Glue, sb.Glue, batches), OwnCS2: cs2Delta(sa.Own, sb.Own, batches),
+			OwnVar: varDelta(sa.Own, sb.Own, batches), Calls: []Calls{},
 			ErrorShare: Pair{share(sa.Errors, sa.Visits), share(sb.Errors, sb.Visits)}}
 		for _, callee := range unionKeys(sa.Calls, sb.Calls) {
-			c := Calls{Callee: callee, Baseline: sa.Calls[callee], Candidate: sb.Calls[callee]}
+			c := Calls{Callee: callee, Baseline: sa.Calls[callee], Candidate: sb.Calls[callee],
+				BaselineSE: callsSE(sa, callee), CandidateSE: callsSE(sb, callee)}
 			svc.Calls = append(svc.Calls, c)
 			if math.Abs(c.Candidate-c.Baseline) > CallsGap*math.Max(c.Baseline, c.Candidate) {
 				svc.CallsChanged = true
@@ -409,8 +484,10 @@ func Diff(baseline, candidate *Input, log *LoadgenLog, opt Options, tool fit.Too
 		// The engine applies an own-time difference as a shift, which keeps the variance (its cs2 falls as the mean
 		// grows), so the variance, not the cs2, is what must not have changed beyond noise for the difference to be
 		// applied alone.
-		vd := varDelta(sa.Own, sb.Own, batches)
-		svc.VarianceChanged = math.Abs(vd.Delta) > 2*vd.SE
+		svc.VarianceChanged = math.Abs(svc.OwnVar.Delta) > 2*svc.OwnVar.SE
+		if svc.Routes = routeDeltas(sa, sb, batches); svc.Routes != nil {
+			svc.VarianceChanged = math.Abs(svc.OwnVar.Candidate-mixtureVariance(sa, svc.Routes)) > 2*svc.OwnVar.SE
+		}
 		if opt.MarginMs > 0 {
 			s, cs2 := svc.OwnMs.Baseline, svc.OwnCS2.Baseline
 			svc.VisitsNeeded = int64(math.Ceil(8 * cs2 * s * s / (opt.MarginMs * opt.MarginMs)))
@@ -427,9 +504,12 @@ func Diff(baseline, candidate *Input, log *LoadgenLog, opt Options, tool fit.Too
 		if svc.CallsChanged {
 			r.Findings = append(r.Findings, contract.NewFinding(contract.ProfileStructureChanged).WithSubject(name))
 		}
+		if f, ok := routeFinding(name, svc.OwnMs, svc.Routes); ok {
+			r.Findings = append(r.Findings, f)
+		}
 		if svc.VarianceChanged {
 			r.Findings = append(r.Findings, contract.NewFinding(contract.ProfileVarianceChanged).WithSubject(name).
-				WithNumber("cs2_delta", svc.OwnCS2.Delta).WithNumber("cs2_se", svc.OwnCS2.SE))
+				WithNumber("var_delta", svc.OwnVar.Delta).WithNumber("var_se", svc.OwnVar.SE))
 		}
 		r.Services = append(r.Services, svc)
 	}
@@ -472,6 +552,108 @@ func overlap(a, b Window) float64 {
 		return 0
 	}
 	return math.Min(1, end.Sub(start).Seconds()/longer)
+}
+
+// RouteZ is how many standard errors of a route's own-time difference it must lie from the service's blended
+// difference for profile.route_heterogeneous [D].
+const RouteZ = 3
+
+// routeDeltas are the own-time differences of the routes both arms read (infer.Samples.RouteOwn), in name order;
+// nil when fewer than two routes are common to both arms.
+func routeDeltas(sa, sb *infer.Samples, batches int) []Route {
+	var names []string
+	for nm, xs := range sa.RouteOwn {
+		if ys, ok := sb.RouteOwn[nm]; ok && len(xs) > 0 && len(ys) > 0 {
+			names = append(names, nm)
+		}
+	}
+	if len(names) < 2 {
+		return nil
+	}
+	sort.Strings(names)
+	na, nb := 0, 0
+	for _, xs := range sa.RouteOwn {
+		na += len(xs)
+	}
+	for _, ys := range sb.RouteOwn {
+		nb += len(ys)
+	}
+	out := make([]Route, len(names))
+	for k, nm := range names {
+		xs, ys := sa.RouteOwn[nm], sb.RouteOwn[nm]
+		out[k] = Route{Route: nm, Visits: PairInt{int64(len(xs)), int64(len(ys))},
+			Share: Pair{float64(len(xs)) / float64(na), float64(len(ys)) / float64(nb)}, OwnMs: delta(xs, ys, batches)}
+	}
+	return out
+}
+
+// mixtureVariance is the variance the candidate's own time has if each route's own time only shifts by its delta: the
+// baseline's route variances, the candidate's route means (the baseline's plus the delta) and the candidate's shares
+// (renormalized over the routes common to both arms).
+func mixtureVariance(sa *infer.Samples, routes []Route) float64 {
+	var w, m1, m2 float64
+	for _, r := range routes {
+		mu := r.OwnMs.Candidate
+		v := varOf(sa.RouteOwn[r.Route])
+		w += r.Share.Candidate
+		m1 += r.Share.Candidate * mu
+		m2 += r.Share.Candidate * (v + mu*mu)
+	}
+	if !(w > 0) {
+		return 0
+	}
+	m1, m2 = m1/w, m2/w
+	return m2 - m1*m1
+}
+
+// routeFinding is profile.route_heterogeneous for a service whose routes moved differently: some route (of at least
+// infer.MinRouteShare of the baseline's visits) lies more than RouteZ of its standard errors from the blended
+// difference. The numbers are those of the such route farthest from the blend, in ms.
+func routeFinding(name string, blend Delta, routes []Route) (contract.Finding, bool) {
+	best, bestGap := -1, 0.0
+	for k, r := range routes {
+		if r.Share.Baseline < infer.MinRouteShare || !(r.OwnMs.SE > 0) {
+			continue
+		}
+		gap := math.Abs(r.OwnMs.Delta - blend.Delta)
+		if gap > RouteZ*r.OwnMs.SE && gap > bestGap {
+			best, bestGap = k, gap
+		}
+	}
+	if best < 0 {
+		return contract.Finding{}, false
+	}
+	r := routes[best]
+	return contract.NewFinding(contract.ProfileRouteHeterogeneous).WithSubject(name).
+		WithNumber("route_delta_ms", r.OwnMs.Delta).WithNumber("blend_delta_ms", blend.Delta).
+		WithNumber("route_se", r.OwnMs.SE).WithNumber("route_share", r.Share.Baseline), true
+}
+
+// entryNames are the entries of an arm (the services the load generator drives), in name order.
+func entryNames(inf *infer.Inferred) []string {
+	var out []string
+	for _, st := range inf.Stats {
+		if st.Entry && !st.External {
+			out = append(out, st.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// callsSE is the standard error of a service's mean calls per visit to a callee: the spread of the calls per visit
+// over the visits of complete traces, sd/sqrt(n); 0 without the counts.
+func callsSE(s *infer.Samples, callee string) float64 {
+	n := float64(s.CallVisits)
+	if n < 2 || s.CallsSq == nil {
+		return 0
+	}
+	m := s.Calls[callee]
+	v := (s.CallsSq[callee] - m*m) * n / (n - 1)
+	if !(v > 0) {
+		return 0
+	}
+	return math.Sqrt(v / n)
 }
 
 // entryMean is the mean server-span time of the entries, weighted by their entry visits.

@@ -241,7 +241,7 @@ gate(report, policy, environment readiness)      -> verdict        milliseconds;
 | input | fit record | from `fit`; refused when expired (`fit.expired`), of another schema version (`fit.version`), or over `max_fit_age_h` at gate time (`fit.stale`, inconclusive) |
 | input | change set | `rhobound.change/v1`: a list of operations, each a number or a range, each with a label minted by the server (4.3) |
 | input | load point | the fit's own window by default; at the gate, the **busiest observed window** of the last 7 days when one exists. Until a busiest-window pointer exists (it needs the scheduled fits, which come after the first build), the gate evaluates at the fit's window, reports `evaluated_at: fit_window`, and adds the note `load.busiest_unknown`. A load beyond the busiest observed one is allowed only as a what-if, marked `extrapolated_load: true`, and is never gating. `predict --fit F --load-scale S` is such a what-if: before and after the change both at S times the fit's rate (`evaluated_at: what_if`, `load_scale: S`), so each entry's change is the change's effect at that load and its `load_level_ms` the load's alone; `error_pct` stays the model at the fit's load against the traces |
-| output | report | `rhobound-cli.report/v2`, additive over today's v1: per entry the before mean, the after range, the change range, the **band** (4.5), per service the utilization before and after, coded findings, the assumptions list, labels, the evidence class, input digests, tool version, `GOARCH` |
+| output | report | `rhobound-cli.report/v2`, additive over today's v1: per entry the before mean, the after range, the change range, the **band** (4.5) and, when the change raises a service whose workers are a lower bound, the change with their queueing at its least (`workers_unbounded`, 6.3), per service the utilization before and after, coded findings, the assumptions list, labels, the evidence class, input digests, tool version, `GOARCH` |
 | refusal | data | any refuse-level finding from `check` (DATA.md): the function does not run; the gate turns it into `inconclusive` with `input_refused:<code>` |
 | refusal | scope | the base load is already above the utilization limit (`model.utilization_observed`); the change pushes a service past the limit or to saturation (`model.utilization_after`); an operation this version cannot apply (`change.unsupported_op`) |
 
@@ -547,7 +547,7 @@ the goldens of both modules and the CLI's real outputs against them [slice].
 one registry, listed in full in DATA.md, sections 3.14 and 19. The gate's **rule tokens** name why a rule fired and
 are a separate, fixed list, in rule order: `input_refused:<code>`, `base_out_of_scope`, `fit_stale`,
 `baseline_moved`, `model_misfit`, `doubt_holds:<code>`, `beyond_validated`, `extrapolated_load`, `saturates`,
-`saturation_upper_bound`, `utilization_after`, `utilization_after_upper_bound`, `mean_change`, `range_straddles`,
+`saturation_upper_bound`, `utilization_after`, `utilization_after_upper_bound`, `mean_change`, `range_straddles`, `range_inverted`,
 `change_upper_bound`, `unmeasured_delta`, `transfer_unvalidated`, `threshold_under_floor`, `advisory` (section 6.3;
 the `RuleToken` definition of `defs.v1.json`). A rule token may cite the finding code that triggered it
 (`input_refused:trace.ids_base64`; `fit.stale` triggers `fit_stale`). A rule that did not fire is listed under its
@@ -1137,7 +1137,7 @@ What this release does not do or guarantee:
                        "trace.context_not_propagated", "trace.errors_present", "trace.retries", "trace.shedding",
                        "trace.arrivals_unjudged", "trace.arrivals_overdispersed", "trace.load_trend",
                        "model.batch_arrivals", "profile.variance_changed", "profile.structure_changed",
-                       "profile.self_report_mismatch"],
+                       "profile.self_report_mismatch", "profile.route_heterogeneous", "ab.payload_changed"],
   "max_preview_attempts": 5,
   "enforce": false,
   "exceptions": []
@@ -1184,7 +1184,7 @@ What this release does not do or guarantee:
 | 8 | after the change a service passes the limit or saturates, with identified workers | **block**, `saturates` |
 | 8b | the same with lower-bound workers | inconclusive, `saturation_upper_bound`, `decide_with: ["workers:<service>"]` |
 | 9 | `utilization_after` above `max_utilization_after` (below the limit) | block, `utilization_after`; or inconclusive, `utilization_after_upper_bound`, with lower-bound workers |
-| 10 | mean change per entry, band against threshold (6.4) | pass or block, `mean_change`; inconclusive, `range_straddles`; a block that rests on lower-bound workers is inconclusive, `change_upper_bound`; under `block_band: "model"` the row carries `variant: block_band_model` |
+| 10 | mean change per entry, band against threshold (6.4) | pass or block, `mean_change`; inconclusive, `range_straddles`, or `range_inverted` for an entry whose change range has lo above hi (no band is formed); a block that rests on lower-bound workers is inconclusive, `change_upper_bound`: the change raises a service whose workers are a trusted lower bound, and the entry's change with their queueing at its least (report v2 `workers_unbounded`), widened as the block test widens, is not above `T` (an entry whose `workers_unbounded` still blocks keeps its block, and the row names it; a report without the key, or one that leaves out such a service, is inconclusive); under `block_band: "model"` the row carries `variant: block_band_model` |
 | 11 | a change item's label not in `trusted_labels` and not covered by an `exceptions` entry | inconclusive, `unmeasured_delta` (`transfer_unvalidated` for a measured label whose transfer is not validated); a block from rule 8-10 still blocks. It applies in the preview too (6.5) |
 | 12 | a threshold below this environment's A/A noise floor, once a floor exists | inconclusive, `threshold_under_floor`, unless an `exceptions` entry waives it |
 | 13 | `enforce: false`, or the environment has not earned enforcement (6.6) | the verdict stands, printed and recorded as `advisory: true` (`advisory`) |
@@ -1195,7 +1195,18 @@ The tokens in the effect column are rule tokens, not finding codes (5.4).
 predicted change is expected to be an over-estimate. The gate uses that direction (a pass under the threshold stands;
 an over-threshold result is inconclusive, not block) **only** when CLIENT spans are present on the edges concerned and
 no clock-skew finding fired, because without CLIENT spans counts can read as identified when they are not, and skew
-can over-read a count. It never uses it for a claimed improvement.
+can over-read a count. It never uses it for a claimed improvement. Nor for a block that does not rest on those
+workers: per entry, the engine writes `workers_unbounded`, the change with every lower-bound service a corner raises
+given more workers, unbounded (a pure delay: its service time kept, no queue) and at each count of a ladder above its
+bound (the bound plus 1 to 4, then 2, 4 and 8 times), at each corner the least of those and the predicted change, and
+its band. Not the unbounded change alone: under the default model a raise also smooths the service's departures, which
+shortens its busy children's queues, so the change is not monotone in the workers (a lower-bound service at rho 0.375
+feeding four children at 0.84, own time +10 ms: 10.0 unbounded, 6.8 at 3 workers). The true change is taken to be at
+least that range; the ladder is a finite search, and the least between its counts is assumed not far below. Rule 10 keeps an entry's block when that range's low end, less the
+model band at it (and, under the default `block_band`, the biased constructs' widening on that side), is still above
+`T`: a negligible raise of a lower-bound service (0.20 -> 0.20001) no longer holds a block that rests elsewhere
+(lean/Rbproofs/Lanes/GateRules.lean, GR-1). The engine takes every raised lower-bound service unbounded, trusted or not,
+which can only lower the range.
 
 ### 6.4 Decision geometry for one entry
 

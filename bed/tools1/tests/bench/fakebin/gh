@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# test stand-in for gh (orch/automerge.sh, orch/bench.sh): a stateful fake GitHub in STUB_WORLD (../fakegh.py), every call
-# logged in STUB_DIR/calls.log. Never touches the network.
-set -euo pipefail
-exec python3 -I "$(dirname "$(readlink -f "$0")")/../fakegh.py" "$@"

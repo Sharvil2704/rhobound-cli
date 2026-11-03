@@ -1,1 +1,0 @@
-Base image: build every service with the Go 1.27.3 builder (5 services)

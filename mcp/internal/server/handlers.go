@@ -144,7 +144,7 @@ func (s *Server) resolveFit(ctx context.Context, c *call, fitID, env, capture st
 		return &fitRef{handle: fitID, digest: d, bytes: b}, nil
 	case env != "":
 		if _, err := s.opt.Config.Env(env); err != nil {
-			return nil, invalidParams("unknown environment")
+			return nil, unknownEnv(s.opt.Config)
 		}
 		// The fixes name no fit_start: this build does not fit an environment's window (jobs.go), and its baseline is
 		// made outside the server.

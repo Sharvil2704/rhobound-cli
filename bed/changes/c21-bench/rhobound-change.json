@@ -1,1 +1,0 @@
-{"schema": "rbd.change-request/v2", "services": ["catalog"], "summary": "AUDIT (truth arm, not for merge): T1 re-run latency-bad reference (allocation-heavy per-request tokenization on Rank) in place of the deployed inverted index. The funnel did not ship it; this PR measures it through the gate, then a truth bracket deploys it to production briefly."}

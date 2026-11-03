@@ -253,6 +253,9 @@ func TestFitAndPredictFixtures(t *testing.T) {
 				sort.Strings(ws)
 				args = append(args, "--workers", strings.Join(ws, ","))
 			}
+			if cs.Plain {
+				args = append(args, "--plain")
+			}
 			out, errw, code := exec(t, args...)
 			if cs.Want == "" {
 				var rep struct {

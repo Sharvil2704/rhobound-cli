@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # mcp-setup.sh [POLICY_JSON]   (root, on rbd-tools1) rhobound-mcp http as a systemd unit (user rbd) on 127.0.0.1:8765 (SPEC 4).
-#   /var/lib/rbd/mcp/: token (0600, made here once; it leaves the machine only into the orchestrator's memory), tokens.json (its
+#   /var/lib/rbd/mcp/: token (0600, made here once; it leaves the machine only into the workstation's memory), tokens.json (its
 #   sha256: rhobound:read), config.json (rhobound-mcp.config/v1: engine = /opt/rbd/bin/rhobound by sha256, env "prod" whose
 #   baseline is the production fit, policy "default" = the repo's policy/gate.json), state/ (the server's store).
 #   POLICY_JSON default: /var/lib/rbd/src/main/policy/gate.json (uploaded by rbd_bootstrap.sh images). Idempotent. Exit 0 / 1.
@@ -19,7 +19,7 @@ DAYS=${RBD_MCP_TOKEN_DAYS:-7}
 TTL=${RBD_MCP_FIT_TTL_H:-168}   # hours a baseline fit is used after its window ended (fit.expired after)
 HERE=$(dirname "$(readlink -f "$0")")
 die() { echo "mcp-setup: $1" >&2; exit 1; }
-REPO=Sharvil2704/rhobound-demo
+REPO=Sharvil2704/rhobound-maze-bed
 if [ -r /opt/rbd/etc/rbd.env ]; then REPO=$(sed -n 's/^RBD_REPO=//p' /opt/rbd/etc/rbd.env); fi
 if [ "$SYSTEMD" = 1 ]; then [ "$(id -u)" = 0 ] || die "run as root"; fi
 as_owner() { if [ "$(id -un)" = "$OWNER" ]; then "$@"; else sudo -u "$OWNER" "$@"; fi; }

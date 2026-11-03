@@ -91,9 +91,16 @@ type Samples struct {
 	Glue []float64
 	// Calls are the mean calls per visit the visits wait for, by callee, over the visits of complete traces.
 	Calls map[string]float64
+	// CallsSq are the mean squared calls per visit, by callee, over the same visits (the spread of the calls per visit,
+	// for the standard error of Calls), and CallVisits the number of those visits.
+	CallsSq    map[string]float64
+	CallVisits int64
 	// Visits are the visits counted; Errors those whose SERVER span has an error status or an HTTP status of 500 or
 	// more.
 	Visits, Errors int64
+	// RouteOwn are Own's values by route (ServiceStats.Routes), each in order of arrival; nil for a service without
+	// routes.
+	RouteOwn map[string][]float64
 }
 
 // ServiceStats are the observations behind one service of the topology.
@@ -147,6 +154,9 @@ type ServiceStats struct {
 	PodShares   []PodShare `json:"pod_shares,omitempty"`
 	SplitP      *float64   `json:"split_p,omitempty"`
 	UnevenSplit bool       `json:"uneven_split,omitempty"`
+	// Routes are the service's routes (routes.go), when two or more of them each hold MinRouteShare of its visits;
+	// nil otherwise.
+	Routes []RouteStats `json:"routes,omitempty"`
 }
 
 // Inferred is the result.
@@ -213,6 +223,7 @@ type visitRec struct {
 	alt   uint64
 	own   float32
 	early bool
+	route uint16 // the SERVER span's route (otlp.Span.Route)
 }
 
 // maxK is the largest "visits already busy at arrival" tracked; more is lumped into it.
@@ -260,10 +271,19 @@ type sigKey struct {
 	sig string
 }
 
+// routeSigKey counts a service's visits by the SERVER span's route (Span.Route, raw) and call signature ("" for a
+// visit that makes no calls), complete traces only: the call shapes of each route (routeCalls).
+type routeSigKey struct {
+	svc   int32
+	route uint16
+	sig   string
+}
+
 // acc holds the sums over a set of traces. A broken trace (one that lost a
 // span) adds its visits to the queues and the rates only: visits, own times,
-// server times, segs and vrec. Everything else is the call structure and the
-// entries, read from complete traces only; sVisits counts their visits.
+// server times, segs and vrec, and the route counts of the calls whose caller
+// it kept (routeEdge, routeKnown). Everything else is the call structure and
+// the entries, read from complete traces only; sVisits counts their visits.
 type acc struct {
 	pairs      map[pairKey]*pairAcc
 	visits     []int64
@@ -281,6 +301,7 @@ type acc struct {
 	counts     map[countKey]int64 // visits by the number of calls to a callee they wait for
 	asyncN     map[edgeKey]int64  // calls on an async edge that the visits did not wait for
 	sigs       map[sigKey]int64
+	routeSigs  map[routeSigKey]int64
 	hopSamples [][]float64           // client span time minus server span time of each call, by callee
 	edgeGaps   map[edgeKey][]float64 // the same gaps by edge (caller, callee)
 	segs       []seg
@@ -301,6 +322,9 @@ type acc struct {
 	earlyOwn   []int64      // ... of which the call's start is on the visit's own pod clock (a CLIENT span of its own)
 	earlyMax   []float64    // ... and by how much at most, ms
 
+	routeEdge  map[routeEdgeKey]int64 // visits by route and caller: entries in complete traces, callers in every trace (routes.go)
+	routeKnown map[routeKey]int64     // visits by route in broken traces whose caller is known (routes.go)
+
 	lostEdges map[lostKey]int64   // calls with no span of their callee under them, by caller and address (lost.go)
 	lostBelow map[orphanKey]int64 // spans whose parent is not in the capture, below a top in it or not SERVER/CONSUMER, by service and kind
 
@@ -315,11 +339,12 @@ func newAcc(n int) *acc {
 		glueSum: make([]float64, n), glueSq: make([]float64, n),
 		serverSum: make([]float64, n), clientSum: make([]float64, n), clientN: make([]int64, n),
 		multi: make([]int64, n), overlap: make([]int64, n), edges: map[edgeKey]*edgeAcc{},
-		counts: map[countKey]int64{}, asyncN: map[edgeKey]int64{}, sigs: map[sigKey]int64{},
+		counts: map[countKey]int64{}, asyncN: map[edgeKey]int64{}, sigs: map[sigKey]int64{}, routeSigs: map[routeSigKey]int64{},
 		hopSamples: make([][]float64, n), edgeGaps: map[edgeKey][]float64{}, entries: make([]int64, n), entryMin: math.MaxUint64,
 		pairs: map[pairKey]*pairAcc{}, early: make([]int64, n), earlyOwn: make([]int64, n), earlyMax: make([]float64, n),
 		calledTop: make([]int64, n), consumerEn: make([]int64, n),
-		lostEdges: map[lostKey]int64{}, lostBelow: map[orphanKey]int64{},
+		lostEdges: map[lostKey]int64{}, lostBelow: map[orphanKey]int64{}, routeEdge: map[routeEdgeKey]int64{},
+		routeKnown: map[routeKey]int64{},
 	}
 }
 
@@ -578,6 +603,9 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		for k, n := range a.sigs {
 			t.sigs[k] += n
 		}
+		for k, n := range a.routeSigs {
+			t.routeSigs[k] += n
+		}
 		for k, p := range a.pairs {
 			tp := t.pairs[k]
 			if tp == nil {
@@ -608,6 +636,12 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		}
 		for k, n := range a.lostEdges {
 			t.lostEdges[k] += n
+		}
+		for k, n := range a.routeEdge {
+			t.routeEdge[k] += n
+		}
+		for k, n := range a.routeKnown {
+			t.routeKnown[k] += n
 		}
 		for k, n := range a.lostBelow {
 			t.lostBelow[k] += n
@@ -708,6 +742,10 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	} else {
 		hist = sweepByK(t.segs, t.vrec, nAll)
 	}
+
+	// each service's routes (routes.go): nil for the services with one
+	routeNames, routeBucket := routeBuckets(t.vrec, d.Routes, nSvc)
+	mixOf := map[int]mixtureResult{} // topology index -> its mixture of call shapes (routeCalls)
 
 	// which services and externals are in the topology
 	var used []int32
@@ -817,6 +855,11 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 			}
 			st.Visits, st.OwnMeanMs, st.OwnCS2 = t.visits[i], mean, cs2
 			st.InSpanWaitMs = math.Max(0, allMean-mean)
+			var rq *svcQueue // the jobs the service time was read from, when the rebuild gave it
+			if fifo && queues[i] != nil && queues[i].jobs >= 2 {
+				rq = queues[i]
+			}
+			st.Routes = routeStatsOf(t, rq, id, routeNames[i], routeBucket[i], names)
 			if ns := float64(t.sVisits[i]); ns > 0 { // glue is call structure: complete traces only
 				if g := t.glueSum[i] / ns; g > 0 {
 					st.GlueMs = g
@@ -1157,6 +1200,7 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 							"sequential, parallel and staged calls, or a mixture of up to %d shapes (most common shape: %s, %.0f%% of visits)",
 						name, 100*share, maxShapes, maxShapes, 100*res.tail, 100*shapeTail, maxShapes, shape, 100*float64(seen)/float64(nsp))}
 			}
+			mixOf[si] = res
 			calls := append(res.calls, topUpCalls(res.expected, "the call shapes")...)
 			topo.Services[si].Calls = append(calls, asyncCalls...)
 			batchNodes = append(batchNodes, res.nodes...)
@@ -1204,6 +1248,7 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		}
 		sv.Calls = append(sv.Calls, asyncCalls...)
 	}
+	routeNodes(topo, stats, idx, t.routeSigs, t.routeKnown, routeNames, routeBucket, mixOf)
 	if len(asyncDesc) > 0 {
 		warn("calls the caller does not wait for (at least %.0f%% of them start once the caller's span has ended, or outlive "+
 			"it on the caller's clock: fire and forget) are "+
@@ -1273,10 +1318,14 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 		}
 		return nil, r
 	}
-	batchWarnings(topo, stats, batchNodes, nodeOwner, func(f string, a ...any) {
+	// the refined model takes calls made at once to a pooled callee as batch arrivals (model.Config.Batch); --plain does not
+	modelled := func(callee int) bool { return !opt.Plain && model.BatchModelled(topo, callee) }
+	batchWarnings(topo, stats, batchNodes, nodeOwner, modelled, func(isCoded bool, f string, a ...any) {
 		warn(f, a...)
-		subject, _ := a[0].(string) // the caller that sends the calls at once
-		coded(contract.ModelBatchArrivals, subject)
+		if isCoded {
+			subject, _ := a[0].(string) // the caller that sends the calls at once
+			coded(contract.ModelBatchArrivals, subject)
+		}
 	})
 	markLost(lostEdges, stats, idx)
 	for _, w := range markStructure(t, stats, idx) {
@@ -1297,6 +1346,11 @@ func Run(d *otlp.Data, opt Options) (*Inferred, error) {
 	}
 	if opt.KeepSamples {
 		out.Samples = keptSamples(t, queues, names, nSvc, extName)
+		for i := 0; i < nSvc; i++ {
+			if smp := out.Samples[names[i]]; smp != nil && i < len(queues) && queues[i] != nil {
+				smp.RouteOwn = routeSamples(t, queues[i], routeNames[i], routeBucket[i])
+			}
+		}
 	}
 	return out, nil
 }
@@ -1329,8 +1383,8 @@ func keptSamples(t *acc, queues []*svcQueue, names []string, nSvc int, extName f
 		}
 	}
 	for i := 0; i < nSvc; i++ {
-		smp := &Samples{Calls: map[string]float64{}, Visits: t.visits[i], Errors: t.errs[i], Glue: byStart(glue[i]),
-			Own: []float64{}}
+		smp := &Samples{Calls: map[string]float64{}, CallsSq: map[string]float64{}, CallVisits: t.sVisits[i],
+			Visits: t.visits[i], Errors: t.errs[i], Glue: byStart(glue[i]), Own: []float64{}}
 		if i < len(queues) && queues[i] != nil {
 			var own []timed
 			for _, q := range queues[i].pods {
@@ -1361,6 +1415,7 @@ func keptSamples(t *acc, queues []*svcQueue, names []string, nSvc int, extName f
 					callee = extName(k.callee)
 				}
 				smp.Calls[callee] += float64(k.n) * float64(t.counts[k]) / n
+				smp.CallsSq[callee] += float64(k.n) * float64(k.n) * float64(t.counts[k]) / n
 			}
 		}
 		out[names[i]] = smp
@@ -1413,6 +1468,23 @@ func commonShape(sigs map[string]int64, stats []ServiceStats, idx map[int32]int)
 // cs2SnapSigma is the reference's cs2 snap: a measured cs2 within this
 // many standard errors of 1 is taken as 1.
 const cs2SnapSigma = 3.0
+
+// asyncLink reports whether link l, a call of visit l.owner (of service owner) to callee, is one the visit did not wait
+// for: on an async edge (prepass.async) and not waited for (notWaited), timed as collectCalls times it.
+func asyncLink(g []otlp.Span, l link, owner, callee int32, resPod []int32, pp *prepass) bool {
+	if !pp.async[edgeKey{owner, callee}] {
+		return false
+	}
+	k := l.client
+	if k < 0 {
+		k = l.server // no client span: the call is timed by the callee's span
+	}
+	c := call{start: g[k].Start, end: g[k].End, ownClock: resPod[g[k].Res] == resPod[g[l.owner].Res]}
+	if l.client >= 0 {
+		c.quant = pp.quantPod[resPod[g[k].Res]]
+	}
+	return notWaited(c, g[l.owner].End)
+}
 
 // notWaited reports whether a call cannot have been waited for by a visit that ends at end: it starts after the
 // visit's span has ended, or its CLIENT span, on the visit's own pod clock, ends after the span (a fire-and-forget
@@ -1831,10 +1903,11 @@ func ownerVisit(g []otlp.Span, pos map[uint64]int, k int) (int, uint8) {
 
 // link is a server span of a service, the client span over it (-1: none) and
 // its caller's visit (-1: none, an entry). consumer: there is no caller's
-// visit because a message consumer's span is above it.
+// visit because a message consumer's span is above it. lost: there is none
+// because the walk up to it met a span whose parent is not in the capture.
 type link struct {
 	server, client, owner int
-	consumer              bool
+	consumer, lost        bool
 }
 
 // loose is a client span with no server span under it, the peer it calls
@@ -1865,7 +1938,7 @@ func collectCalls(g []otlp.Span, pos map[uint64]int, resSvc, resPod []int32, qua
 		}
 		p, stop := ancestor(g, pos, k)
 		callee := svcOf(k)
-		l := link{server: k, client: -1, owner: -1, consumer: stop == stopConsumer}
+		l := link{server: k, client: -1, owner: -1, consumer: stop == stopConsumer, lost: stop == stopMissing}
 		if p >= 0 {
 			if g[p].Kind == otlp.KindClient {
 				matched[p] = true
@@ -1878,7 +1951,7 @@ func collectCalls(g []otlp.Span, pos map[uint64]int, resSvc, resPod []int32, qua
 						ownClock: resPod[cs.Res] == resPod[g[owner].Res], quant: quantPod[resPod[cs.Res]]})
 					l.owner = owner
 				} else {
-					l.consumer = ostop == stopConsumer
+					l.consumer, l.lost = ostop == stopConsumer, ostop == stopMissing
 				}
 			} else if g[p].Kind == otlp.KindServer && svcOf(p) >= 0 {
 				// no client span: the call is timed by the callee's span, on the callee's clock
@@ -2110,17 +2183,16 @@ const (
 // causes (0: nothing): every span whose parent is not in the capture must be a
 // SERVER span of an entryLike service or a CONSUMER span of a consumerLike
 // one, in a trace whose top is not in the capture (no SERVER span of a service
-// without a parent). called gets the services of SERVER spans that fail only
-// because their service is not entryLike; orphan gets each span lost below a top.
-func topLoss(g []otlp.Span, pos map[uint64]int, resSvc, resName []int32, pp *prepass, called func(svc int32), orphan func(k int)) uint8 {
-	topIn := false
+// without a parent; topIn reports one). called gets the services of SERVER
+// spans that fail only because their service is not entryLike; orphan gets
+// each span lost below a top.
+func topLoss(g []otlp.Span, pos map[uint64]int, resSvc, resName []int32, pp *prepass, called func(svc int32), orphan func(k int)) (loss uint8, topIn bool) {
 	for k := range g {
 		if g[k].Parent == 0 && g[k].Kind == otlp.KindServer && resSvc[g[k].Res] >= 0 {
 			topIn = true
 			break
 		}
 	}
-	var loss uint8
 	for k := range g {
 		pid := g[k].Parent
 		if pid == 0 {
@@ -2145,7 +2217,7 @@ func topLoss(g []otlp.Span, pos map[uint64]int, resSvc, resName []int32, pp *pre
 			orphan(k)
 		}
 	}
-	return loss
+	return loss, topIn
 }
 
 // processTrace adds one trace's visits and calls to a. keepSegs keeps the
@@ -2162,17 +2234,18 @@ func topLoss(g []otlp.Span, pos map[uint64]int, resSvc, resName []int32, pp *pre
 // unless it is an entry from outside (topLoss), or when a call to a peer that a
 // service answers on has no server span under it: a span was lost (an
 // exporter's full queue, a pod that went away, a capture cut mid-request). Its
-// visits still count in the queues and the rates; its calls and entries do
-// not, since a lost caller would turn its callees into entries and a lost
-// callee its calls into external delays. The reference counts every absent
-// parent as a loss.
+// visits still count in the queues and the rates (and the route each of its
+// calls reached, in the caller's route weights, when the caller's visit is in
+// the capture); its calls and entries do not, since a lost caller would turn
+// its callees into entries and a lost callee its calls into external delays.
+// The reference counts every absent parent as a loss.
 func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName []int32, nSvc int, unknownPeer int32, keepSegs bool,
 	pp *prepass) {
 	svcOf := func(k int) int32 { return resSvc[g[k].Res] }
 	pos := spanIndex(g)
 	a.traces++
 	var calledTop []int32
-	loss := topLoss(g, pos, resSvc, resName, pp, func(s int32) {
+	loss, topIn := topLoss(g, pos, resSvc, resName, pp, func(s int32) {
 		if !slices.Contains(calledTop, s) {
 			calledTop = append(calledTop, s)
 		}
@@ -2198,6 +2271,9 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 	} else {
 		for _, l := range tc.links {
 			callee, sp := svcOf(l.server), &g[l.server]
+			if l.owner < 0 {
+				a.routeEdge[routeEdgeKey{-1, callee, sp.Route}]++
+			}
 			switch {
 			case l.owner < 0:
 				a.entries[callee]++
@@ -2228,6 +2304,31 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 			case lc.consumer:
 				a.consumerX++
 			}
+		}
+	}
+	// A call counts toward its caller's route weights in every trace (routes.go): a broken trace may have lost a span
+	// anywhere, and a link that keeps its caller's visit still says which route that caller reached, so a caller keeps
+	// its own mix however often its traces break against another's (lean/Rbproofs/Lanes/Infer.lean, INFER-1). A
+	// broken trace's visits whose caller is known (its visit, or an entry as a complete trace would have it: nothing
+	// lost above, or an entry-like service's span entered from outside a trace whose top is not in the capture) count
+	// apart, for each route's completeness.
+	for _, l := range tc.links {
+		callee, sp := svcOf(l.server), &g[l.server]
+		if l.owner >= 0 && !asyncLink(g, l, svcOf(l.owner), callee, resPod, pp) {
+			// a caller's route weights are those of the calls it waits for: a fire-and-forget visit to another
+			// route of the callee is not one of them (lean/Rbproofs/Lanes/Infer.lean, INFER-2)
+			a.routeEdge[routeEdgeKey{svcOf(l.owner), callee, sp.Route}]++
+		}
+		if !broken || sp.End < sp.Start {
+			continue
+		}
+		known := l.owner >= 0 || !l.lost
+		if !known && !topIn && pp.entryLike[callee] {
+			_, in := pos[sp.Parent]
+			known = !in // the span itself names the parent not in the capture (topLoss)
+		}
+		if known {
+			a.routeKnown[routeKey{callee, sp.Route}]++
 		}
 	}
 	var structCs []call
@@ -2332,7 +2433,7 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 		if ownNs := v.End - v.Start - covered; ownNs > preNs {
 			glue = float64(ownNs-preNs) / 1e6
 		}
-		a.vrec = append(a.vrec, visitRec{resPod[v.Res], svc, v.Start, held, alt, float32(pre), early})
+		a.vrec = append(a.vrec, visitRec{resPod[v.Res], svc, v.Start, held, alt, float32(pre), early, v.Route})
 		a.visits[svc]++
 		a.ownSum[svc] += pre
 		a.ownSq[svc] += pre * pre
@@ -2380,6 +2481,7 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 			}
 		}
 		if len(structCs) == 0 {
+			a.routeSigs[routeSigKey{svc, v.Route, ""}]++
 			continue
 		}
 		stages := stagesOf(structCs)
@@ -2387,6 +2489,7 @@ func processTrace(d *otlp.Data, g []otlp.Span, a *acc, resSvc, resPod, resName [
 			stages = placedStages
 		}
 		a.sigs[sigKey{svc, sigOf(structCs, stages).key()}]++
+		a.routeSigs[routeSigKey{svc, v.Route, sigOf(structCs, stages).key()}]++
 		if len(structCs) >= 2 {
 			a.multi[svc]++
 			if len(stages) < len(structCs) { // some stage holds two or more calls: they overlap

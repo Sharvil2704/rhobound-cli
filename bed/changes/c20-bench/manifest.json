@@ -1,7 +1,0 @@
-{
- "schema": "rbd.agent-change/v1",
- "task": "T4-base",
- "origin": "hand-written (the task has no code: SPEC2 T4)",
- "service": "catalog",
- "title": "Build the kshop image with the Go 1.27.3 builder (go127)"
-}

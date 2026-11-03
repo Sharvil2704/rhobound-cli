@@ -1,0 +1,778 @@
+{
+ "schema": "rbd.p4-score/v1",
+ "runs": [
+  {
+   "run": "v1",
+   "train": "m3",
+   "services": [
+    "rank",
+    "pricing",
+    "media"
+   ],
+   "digests": {
+    "rank": "sha256:b4a3bc37d5bb43f180a79a3031b890a8d05ee3921b7f597d5e35bf026ee78c4e",
+    "pricing": "sha256:cca20e9829c47eb456aa5f0804eeb9a2f0bd6e70c6998f5c54eb56abf6ff6d72",
+    "media": "sha256:8acde6499b299805c6959291139d4779a489b030f7b3872a261ef5216d57a98b"
+   },
+   "verdict": "inconclusive",
+   "checks": {
+    "1_three_images": {
+     "distinct_digests": 3,
+     "attested": [
+      "sha256:8acde6499b299805c6959291139d4779a489b030f7b3872a261ef5216d57a98b",
+      "sha256:b4a3bc37d5bb43f180a79a3031b890a8d05ee3921b7f597d5e35bf026ee78c4e",
+      "sha256:cca20e9829c47eb456aa5f0804eeb9a2f0bd6e70c6998f5c54eb56abf6ff6d72"
+     ],
+     "ok": true
+    },
+    "2_parallel": {
+     "parallel": 3,
+     "nodes": [
+      "rbd-d-ab1",
+      "rbd-d-ab2",
+      "rbd-d-ab3"
+     ],
+     "windows": {
+      "rank": [
+       "2026-11-03T15:58:41.244469+00:00",
+       "2026-11-03T16:03:41.222771+00:00"
+      ],
+      "pricing": [
+       "2026-11-03T15:58:41.202983+00:00",
+       "2026-11-03T16:03:41.213244+00:00"
+      ],
+      "media": [
+       "2026-11-03T15:58:41.219372+00:00",
+       "2026-11-03T16:03:41.236895+00:00"
+      ]
+     },
+     "common_window_s": 299.968775,
+     "ok": true
+    },
+    "3_time": {
+     "ab_step_s": 572,
+     "limit_s": 637,
+     "sequential_gates_ab_s": 1400,
+     "ab_all_s": 571,
+     "abx_step_s": 0,
+     "r_total_s": 575,
+     "build_s": 46,
+     "ok": true
+    },
+    "4_verdict": {
+     "verdict": "inconclusive",
+     "deciding": [
+      "range_straddles"
+     ],
+     "want": "pass",
+     "ok": false
+    },
+    "5_parallel_agrees": {
+     "services": [
+      {
+       "service": "rank",
+       "gate": "rank",
+       "parallel": [
+        0.124,
+        0.114
+       ],
+       "sequential": [
+        0.195,
+        0.106
+       ],
+       "diff": -0.071,
+       "limit": 0.467,
+       "z": -0.46,
+       "ok": true
+      },
+      {
+       "service": "pricing",
+       "gate": "pricing",
+       "parallel": [
+        -2.694,
+        0.03
+       ],
+       "sequential": [
+        -2.708,
+        0.028
+       ],
+       "diff": 0.015,
+       "limit": 0.123,
+       "z": 0.36,
+       "ok": true
+      },
+      {
+       "service": "media",
+       "gate": "media",
+       "parallel": [
+        0.092,
+        0.018
+       ],
+       "sequential": [
+        0.132,
+        0.018
+       ],
+       "diff": -0.04,
+       "limit": 0.076,
+       "z": -1.57,
+       "ok": true
+      }
+     ],
+     "ok": true
+    },
+    "6_prediction": {
+     "entries": [
+      {
+       "entry": "checkout",
+       "truth": -9.15,
+       "band": [
+        -16.89,
+        -4.09
+       ],
+       "centre": -9.87,
+       "additive_centre": -9.91,
+       "inside": true,
+       "closer_than_additive": true
+      },
+      {
+       "entry": "mobile",
+       "truth": 1.35,
+       "band": [
+        -2.08,
+        4.19
+       ],
+       "centre": 0.76,
+       "additive_centre": 1.59,
+       "inside": true,
+       "closer_than_additive": false
+      },
+      {
+       "entry": "partner",
+       "truth": -17.54,
+       "band": [
+        -29.45,
+        -8.84
+       ],
+       "centre": -18.7,
+       "additive_centre": -18.78,
+       "inside": true,
+       "closer_than_additive": true
+      },
+      {
+       "entry": "search-api",
+       "truth": -0.51,
+       "band": [
+        -2.07,
+        2.82
+       ],
+       "centre": 0.25,
+       "additive_centre": 0.72,
+       "inside": true,
+       "closer_than_additive": true
+      },
+      {
+       "entry": "web",
+       "truth": -0.2,
+       "band": [
+        -1.3,
+        2.32
+       ],
+       "centre": 0.46,
+       "additive_centre": 0.78,
+       "inside": true,
+       "closer_than_additive": true
+      }
+     ],
+     "ok": true
+    }
+   },
+   "ok": false,
+   "v3_bracket": {
+    "production_ok": true,
+    "entries": [
+     {
+      "entry": "checkout",
+      "truth": -10.39,
+      "band": [
+       -16.89,
+       -4.09
+      ],
+      "inside": true
+     },
+     {
+      "entry": "mobile",
+      "truth": 1.52,
+      "band": [
+       -2.08,
+       4.19
+      ],
+      "inside": true
+     },
+     {
+      "entry": "partner",
+      "truth": -21.74,
+      "band": [
+       -29.45,
+       -8.84
+      ],
+      "inside": true
+     },
+     {
+      "entry": "search-api",
+      "truth": 0.31,
+      "band": [
+       -2.07,
+       2.82
+      ],
+      "inside": true
+     },
+     {
+      "entry": "web",
+      "truth": 0.87,
+      "band": [
+       -1.3,
+       2.32
+      ],
+      "inside": true
+     }
+    ]
+   }
+  },
+  {
+   "run": "v2",
+   "train": "m3n",
+   "services": [
+    "rank",
+    "pricing",
+    "media"
+   ],
+   "digests": {
+    "rank": "sha256:66e6891c812dc5297245e615b1d3ccc0ade8e47cb7cf7f2c43b0dcde65e4a4ce",
+    "pricing": "sha256:844b034a71b2e8781ffaa53f0422e9f016e5366cdfc73e70a5feef26e411c3b3",
+    "media": "sha256:e553c186a5742afd059d435ae9e5e59a8e66df5f6f501e67b7d6ae49d459663f"
+   },
+   "verdict": "block",
+   "checks": {
+    "1_three_images": {
+     "distinct_digests": 3,
+     "attested": [
+      "sha256:66e6891c812dc5297245e615b1d3ccc0ade8e47cb7cf7f2c43b0dcde65e4a4ce",
+      "sha256:844b034a71b2e8781ffaa53f0422e9f016e5366cdfc73e70a5feef26e411c3b3",
+      "sha256:e553c186a5742afd059d435ae9e5e59a8e66df5f6f501e67b7d6ae49d459663f"
+     ],
+     "ok": true
+    },
+    "2_parallel": {
+     "parallel": 3,
+     "nodes": [
+      "rbd-d-ab1",
+      "rbd-d-ab2",
+      "rbd-d-ab3"
+     ],
+     "windows": {
+      "rank": [
+       "2026-11-03T16:09:36.486732+00:00",
+       "2026-11-03T16:14:36.490454+00:00"
+      ],
+      "pricing": [
+       "2026-11-03T16:09:36.623065+00:00",
+       "2026-11-03T16:14:36.623778+00:00"
+      ],
+      "media": [
+       "2026-11-03T16:09:37.282879+00:00",
+       "2026-11-03T16:14:37.291352+00:00"
+      ]
+     },
+     "common_window_s": 299.207575,
+     "ok": true
+    },
+    "3_time": {
+     "ab_step_s": 581,
+     "limit_s": 637,
+     "sequential_gates_ab_s": 1413,
+     "ab_all_s": 581,
+     "abx_step_s": 0,
+     "r_total_s": 584,
+     "build_s": 46,
+     "ok": true
+    },
+    "4_verdict": {
+     "verdict": "block",
+     "deciding": [
+      "utilization_after",
+      "mean_change"
+     ],
+     "want": "block",
+     "ok": true
+    },
+    "5_parallel_agrees": {
+     "services": [
+      {
+       "service": "rank",
+       "gate": "rank",
+       "parallel": [
+        0.181,
+        0.107
+       ],
+       "sequential": [
+        0.195,
+        0.106
+       ],
+       "diff": -0.013,
+       "limit": 0.453,
+       "z": -0.09,
+       "ok": true
+      },
+      {
+       "service": "pricing",
+       "gate": "pricing",
+       "parallel": [
+        -2.685,
+        0.028
+       ],
+       "sequential": [
+        -2.708,
+        0.028
+       ],
+       "diff": 0.023,
+       "limit": 0.117,
+       "z": 0.6,
+       "ok": true
+      },
+      {
+       "service": "media",
+       "gate": "plant",
+       "parallel": [
+        2.145,
+        0.017
+       ],
+       "sequential": [
+        2.049,
+        0.019
+       ],
+       "diff": 0.096,
+       "limit": 0.075,
+       "z": 3.83,
+       "ok": false
+      }
+     ],
+     "ok": false
+    },
+    "6_prediction": {
+     "entries": [
+      {
+       "entry": "checkout",
+       "truth": -8.31,
+       "band": [
+        -16.83,
+        -4.09
+       ],
+       "centre": -9.84,
+       "additive_centre": -9.91,
+       "inside": true,
+       "closer_than_additive": true
+      },
+      {
+       "entry": "mobile",
+       "truth": 38.01,
+       "band": [
+        10.96,
+        43.12
+       ],
+       "centre": 26.2,
+       "additive_centre": 23.84,
+       "inside": true,
+       "closer_than_additive": true
+      },
+      {
+       "entry": "partner",
+       "truth": -17.54,
+       "band": [
+        -29.27,
+        -8.83
+       ],
+       "centre": -18.61,
+       "additive_centre": -18.78,
+       "inside": true,
+       "closer_than_additive": true
+      },
+      {
+       "entry": "search-api",
+       "truth": -0.33,
+       "band": [
+        -1.58,
+        3.12
+       ],
+       "centre": 0.53,
+       "additive_centre": 0.72,
+       "inside": true,
+       "closer_than_additive": true
+      },
+      {
+       "entry": "web",
+       "truth": 38.36,
+       "band": [
+        10.97,
+        39.33
+       ],
+       "centre": 24.48,
+       "additive_centre": 21.99,
+       "inside": true,
+       "closer_than_additive": true
+      }
+     ],
+     "ok": true
+    }
+   },
+   "ok": false
+  },
+  {
+   "run": "v1b",
+   "train": "m3",
+   "services": [
+    "rank",
+    "pricing",
+    "media"
+   ],
+   "digests": {
+    "rank": "sha256:f12d3ff4abaaf5dfed07f09a6625244d2e41ce18dea2b55d4cfba9b8a5804352",
+    "pricing": "sha256:da6693a4f68b81a3532a36f5b87e16be07efce9d9d41fcf387a194c7cf916cde",
+    "media": "sha256:432f1005cea05bac6285e72940679db72be12775045d57faf9f67255bc69f6a8"
+   },
+   "verdict": "inconclusive",
+   "checks": {
+    "1_three_images": {
+     "distinct_digests": 3,
+     "attested": [
+      "sha256:432f1005cea05bac6285e72940679db72be12775045d57faf9f67255bc69f6a8",
+      "sha256:da6693a4f68b81a3532a36f5b87e16be07efce9d9d41fcf387a194c7cf916cde",
+      "sha256:f12d3ff4abaaf5dfed07f09a6625244d2e41ce18dea2b55d4cfba9b8a5804352"
+     ],
+     "ok": true
+    },
+    "2_parallel": {
+     "parallel": 3,
+     "nodes": [
+      "rbd-d-ab1",
+      "rbd-d-ab2",
+      "rbd-d-ab3"
+     ],
+     "windows": {
+      "rank": [
+       "2026-11-03T16:38:07.961626+00:00",
+       "2026-11-03T16:43:07.969771+00:00"
+      ],
+      "pricing": [
+       "2026-11-03T16:38:07.658353+00:00",
+       "2026-11-03T16:43:07.643329+00:00"
+      ],
+      "media": [
+       "2026-11-03T16:38:09.189934+00:00",
+       "2026-11-03T16:43:09.197465+00:00"
+      ]
+     },
+     "common_window_s": 298.453395,
+     "ok": true
+    },
+    "3_time": {
+     "ab_step_s": 575,
+     "limit_s": 637,
+     "sequential_gates_ab_s": 1400,
+     "ab_all_s": 575,
+     "abx_step_s": 11,
+     "r_total_s": 590,
+     "build_s": 7,
+     "ok": true
+    },
+    "4_verdict": {
+     "verdict": "inconclusive",
+     "deciding": [
+      "range_straddles"
+     ],
+     "want": "pass",
+     "ok": false
+    },
+    "5_parallel_agrees": {
+     "services": [
+      {
+       "service": "rank",
+       "gate": "rank",
+       "parallel": [
+        0.361,
+        0.099
+       ],
+       "sequential": [
+        0.195,
+        0.106
+       ],
+       "diff": 0.166,
+       "limit": 0.436,
+       "z": 1.14,
+       "ok": true
+      },
+      {
+       "service": "pricing",
+       "gate": "pricing",
+       "parallel": [
+        -2.678,
+        0.029
+       ],
+       "sequential": [
+        -2.708,
+        0.028
+       ],
+       "diff": 0.03,
+       "limit": 0.121,
+       "z": 0.74,
+       "ok": true
+      },
+      {
+       "service": "media",
+       "gate": "media",
+       "parallel": [
+        0.112,
+        0.019
+       ],
+       "sequential": [
+        0.132,
+        0.018
+       ],
+       "diff": -0.02,
+       "limit": 0.08,
+       "z": -0.75,
+       "ok": true
+      }
+     ],
+     "ok": true
+    },
+    "6_prediction": {
+     "entries": [
+      {
+       "entry": "checkout",
+       "truth": -9.15,
+       "band": [
+        -16.82,
+        -4.07
+       ],
+       "centre": -9.82,
+       "additive_centre": -9.91,
+       "inside": true,
+       "closer_than_additive": true
+      },
+      {
+       "entry": "mobile",
+       "truth": 1.35,
+       "band": [
+        -1.65,
+        5.73
+       ],
+       "centre": 1.92,
+       "additive_centre": 1.59,
+       "inside": true,
+       "closer_than_additive": false
+      },
+      {
+       "entry": "partner",
+       "truth": -17.54,
+       "band": [
+        -29.27,
+        -8.79
+       ],
+       "centre": -18.59,
+       "additive_centre": -18.78,
+       "inside": true,
+       "closer_than_additive": true
+      },
+      {
+       "entry": "search-api",
+       "truth": -0.51,
+       "band": [
+        -1.32,
+        4.16
+       ],
+       "centre": 1.23,
+       "additive_centre": 0.72,
+       "inside": true,
+       "closer_than_additive": false
+      },
+      {
+       "entry": "web",
+       "truth": -0.2,
+       "band": [
+        -1.28,
+        2.56
+       ],
+       "centre": 0.62,
+       "additive_centre": 0.78,
+       "inside": true,
+       "closer_than_additive": true
+      }
+     ],
+     "ok": true
+    }
+   },
+   "ok": false
+  },
+  {
+   "run": "v4",
+   "train": "m2-v4",
+   "services": [
+    "pricing",
+    "media"
+   ],
+   "digests": {
+    "pricing": "sha256:04a8c38087b912284fada82c5a570190ee409a721e07d543083ebb239a851650",
+    "media": "sha256:232cedd5957ba4baf0bd3641095589cdb9c5fb6b6f020e9c00176efd6baf7165"
+   },
+   "verdict": "pass",
+   "checks": {
+    "1_three_images": {
+     "distinct_digests": 2,
+     "attested": [
+      "sha256:04a8c38087b912284fada82c5a570190ee409a721e07d543083ebb239a851650",
+      "sha256:232cedd5957ba4baf0bd3641095589cdb9c5fb6b6f020e9c00176efd6baf7165"
+     ],
+     "ok": true
+    },
+    "2_parallel": {
+     "parallel": 2,
+     "nodes": [
+      "rbd-d-ab1",
+      "rbd-d-ab2"
+     ],
+     "windows": {
+      "pricing": [
+       "2026-11-03T16:52:55.774484+00:00",
+       "2026-11-03T16:57:55.771474+00:00"
+      ],
+      "media": [
+       "2026-11-03T16:52:55.619835+00:00",
+       "2026-11-03T16:57:55.623297+00:00"
+      ]
+     },
+     "common_window_s": 299.848813,
+     "ok": true
+    },
+    "3_time": {
+     "ab_step_s": 544,
+     "limit_s": 637,
+     "sequential_gates_ab_s": 941,
+     "ab_all_s": 543,
+     "abx_step_s": 4,
+     "r_total_s": 551,
+     "build_s": 45,
+     "ok": true
+    },
+    "4_verdict": {
+     "verdict": "pass",
+     "deciding": [],
+     "want": "pass",
+     "ok": true
+    },
+    "5_parallel_agrees": {
+     "services": [
+      {
+       "service": "pricing",
+       "gate": "pricing",
+       "parallel": [
+        -2.691,
+        0.026
+       ],
+       "sequential": [
+        -2.708,
+        0.028
+       ],
+       "diff": 0.017,
+       "limit": 0.114,
+       "z": 0.46,
+       "ok": true
+      },
+      {
+       "service": "media",
+       "gate": "media",
+       "parallel": [
+        0.099,
+        0.018
+       ],
+       "sequential": [
+        0.132,
+        0.018
+       ],
+       "diff": -0.032,
+       "limit": 0.078,
+       "z": -1.24,
+       "ok": true
+      }
+     ],
+     "ok": true
+    },
+    "6_prediction": {
+     "entries": [
+      {
+       "entry": "checkout",
+       "truth": -7.71,
+       "band": [
+        -16.85,
+        -4.12
+       ],
+       "centre": -9.86,
+       "additive_centre": null,
+       "inside": true,
+       "closer_than_additive": null
+      },
+      {
+       "entry": "mobile",
+       "truth": 1.44,
+       "band": [
+        -1.65,
+        2.87
+       ],
+       "centre": 0.57,
+       "additive_centre": null,
+       "inside": true,
+       "closer_than_additive": null
+      },
+      {
+       "entry": "partner",
+       "truth": -22.3,
+       "band": [
+        -29.36,
+        -8.89
+       ],
+       "centre": -18.69,
+       "additive_centre": null,
+       "inside": true,
+       "closer_than_additive": null
+      },
+      {
+       "entry": "search-api",
+       "truth": 0.55,
+       "band": [
+        -1.32,
+        1.32
+       ],
+       "centre": 0.0,
+       "additive_centre": null,
+       "inside": true,
+       "closer_than_additive": null
+      },
+      {
+       "entry": "web",
+       "truth": 1.13,
+       "band": [
+        -1.3,
+        2.4
+       ],
+       "centre": 0.52,
+       "additive_centre": null,
+       "inside": true,
+       "closer_than_additive": null
+      }
+     ],
+     "ok": true
+    }
+   },
+   "ok": true
+  }
+ ]
+}

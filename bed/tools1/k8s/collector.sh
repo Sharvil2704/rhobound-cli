@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# collector.sh   (as rbd on rbd-tools1) the trace pipeline in kshop-obs: collector-config.yaml + collector.yaml with the ECR images
+# collector.sh   (as rbd on rbd-tools1) the trace pipeline in maze-obs: collector-config.yaml + collector.yaml with the ECR images
 #   of images.json (collector, busybox) by digest; waits for the Collector and spans-reader. Under the cluster lock. Idempotent.
 #   The configuration is first checked by the pinned Collector image itself (docker run ... validate): a key that version does
 #   not know stops here with its message, not as a CrashLoopBackOff after the 300-s rollout wait.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# variance_guard.sh HEAD   the owner's "relax the variance rule for improvements" (2026-10-30), at merge time. The pinned CLI's
+# variance_guard.sh HEAD   the "relax the variance rule for improvements" decision (2026-10-30), at merge time. The pinned CLI's
 # policy can only drop profile.variance_changed from doubts_that_hold for EVERY change (repo/policy/gate.json does), so a
 # variance-changing pass reaches auto-merge whatever its direction; this guard lets orch/automerge.sh merge it only when it
 # is an improvement at every measured service: for every A/B of the run (runs/HEAD/ab*/, each ab.json ok with its service),

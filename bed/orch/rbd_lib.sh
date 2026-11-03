@@ -1,5 +1,5 @@
 # shellcheck shell=bash disable=SC2015,SC2029,SC2034
-# rbd_lib.sh: sourced by rbd_connect.sh, rbd_bootstrap.sh and rbd.sh (this box = the orchestrator: ssh only, no aws/kubectl/docker here).
+# rbd_lib.sh: sourced by rbd_connect.sh, rbd_bootstrap.sh and rbd.sh (your workstation: ssh only, no aws/kubectl/docker here).
 #   rsh NODE CMD       one command on a machine (no stdin)      rsh_in NODE CMD   the same with this shell's stdin passed on
 #   RBD_DRY=1          every remote command is printed ("DRY ssh NODE: CMD", stdin as a byte count) instead of run; output is empty
 #                      (RBD_DRY_SAVE=DIR also keeps each stdin in DIR, for the tests)
@@ -7,6 +7,10 @@
 # ~/.ssh/config and ~/.kube/config are never written.
 DEMO=${RBD_DEMO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 STATE=${RBD_STATE:-$DEMO/state}
+# a kit copy that drives another bed (the Muse experiment's bed 2) names its own ssh config, known hosts, repo and subnet in
+# state/kit.env (KEY=value lines), so that no command of that copy can reach the first bed's machines
+# shellcheck source=/dev/null
+if [ -f "$STATE/kit.env" ]; then set -a; . "$STATE/kit.env"; set +a; fi
 SSHC=${RBD_SSHC:-$HOME/.ssh/rbd_aws_config}
 KH=${RBD_KH:-$HOME/.ssh/rbd_known_hosts}
 SEED=$STATE/seed.json
@@ -16,7 +20,7 @@ SSHO=(-F "$SSHC" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30
 
 die() { echo "${RBD_ME:-rbd}: $1" >&2; exit "${2:-1}"; }
 log() { echo "[$(date -u +%H:%M:%S)] ${RBD_ME:-rbd}: $*" >&2; }
-need_seed() { [ -s "$SEED" ] && [ -s "$SSHC" ] || die "no seed yet: paste the output of 'bash spawn_demo.sh inventory' into a file and run: orch/rbd_connect.sh seed FILE" 2; }
+need_seed() { [ -s "$SEED" ] && [ -s "$SSHC" ] || die "no seed yet: paste the output of 'BED=1 bash spawn_two.sh inventory' into a file and run: orch/rbd_connect.sh seed FILE" 2; }
 seed_get() { jq -r --arg k "$1" '.[$k] // empty' "$SEED"; }
 running() { jq -r '.nodes | to_entries[] | select(.value.state == "running" and .value.public != "-") | .key' "$SEED"; }
 by_role() { jq -r --arg r "$1" '.nodes | to_entries[] | select(.value.state == "running" and .value.public != "-" and .value.role == $r) | .key' "$SEED"; }

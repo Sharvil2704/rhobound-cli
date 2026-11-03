@@ -1,1 +1,0 @@
-Fix promo rounding to half-even with integer math, faster Quote

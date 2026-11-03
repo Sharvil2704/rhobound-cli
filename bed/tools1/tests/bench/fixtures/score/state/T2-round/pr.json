@@ -1,8 +1,0 @@
-{
- "branch": "rbd/c8-bench",
- "change": "c8-bench",
- "head": "2222222222222222222222222222222222222222",
- "pr": 8,
- "run": "b-T2-round-302220",
- "task": "T2-round"
-}

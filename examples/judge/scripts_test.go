@@ -239,3 +239,55 @@ jq -n --arg t "$(sed "s/PACKET/$digest/" "` + tmpl + `")" '{output: {message: {r
 		"RHOBOUND=" + bin, "JUDGE_MODEL_ID=example-model", "FIT=" + fit, "POLICY_NAME=default"}, prediction, policy, out)
 	checkOutputs(t, out, code, stderr)
 }
+
+// A judge that answers badly is "judge unavailable": a refused answer (a loosening reason) or one that is not an
+// answer at all is recorded in judge-unavailable.json, the gate still runs without it, and the script's exit status
+// is the gate's (1: the first draft blocks), with no judge in gate.json.
+func TestJudgeUnavailable(t *testing.T) {
+	needTools(t, "bash", "curl", "jq", "sha256sum")
+	bin, fit, prediction, policy := loopPrediction(t)
+	for name, c := range map[string]struct {
+		content string
+		status  float64
+	}{
+		"refused":    {`{"schema":"rhobound-mcp.judge-answer/v1","packet":"PACKET","decision":"accept","reasons":[{"refs":["prediction.entries[0]"],"code":"waive_threshold"}]}`, 1},
+		"not answer": {"I think this change is fine.", 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req struct {
+					Messages []struct{ Role, Content string } `json:"messages"`
+				}
+				json.NewDecoder(r.Body).Decode(&req)
+				content := c.content
+				if m := digestRE.FindStringSubmatch(req.Messages[len(req.Messages)-1].Content); m != nil {
+					content = strings.Replace(content, "PACKET", m[1], 1)
+				}
+				json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{
+					"role": "assistant", "content": content}}}})
+			}))
+			defer srv.Close()
+			out := filepath.Join(t.TempDir(), "judge")
+			code, stderr := runScript(t, "openai-compatible.sh", []string{"RHOBOUND=" + bin, "JUDGE_ENDPOINT=" + srv.URL + "/v1",
+				"JUDGE_API_KEY=test-key", "JUDGE_MODEL_ID=example-model", "FIT=" + fit, "POLICY_NAME=default"}, prediction, policy, out)
+			if code != 1 {
+				t.Fatalf("exit %d, want the gate's 1 (block): %s", code, stderr)
+			}
+			var u struct {
+				Judge  string  `json:"judge"`
+				Status float64 `json:"judge_check_status"`
+			}
+			b, err := os.ReadFile(filepath.Join(out, "judge-unavailable.json"))
+			if err != nil || json.Unmarshal(b, &u) != nil || u.Judge != "unavailable" || u.Status != c.status {
+				t.Errorf("judge-unavailable.json: %v %s", err, b)
+			}
+			g, err := os.ReadFile(filepath.Join(out, "gate", "gate.json"))
+			if err != nil || strings.Contains(string(g), "ci-judge") {
+				t.Errorf("gate.json: %v %s", err, g)
+			}
+			if v, _ := os.ReadFile(filepath.Join(out, "gate", "verdict.txt")); strings.TrimSpace(string(v)) != "block" {
+				t.Errorf("verdict %q", v)
+			}
+		})
+	}
+}

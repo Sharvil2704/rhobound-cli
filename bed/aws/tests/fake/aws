@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# fake aws for spawn_demo.sh: STATEFUL, local only (no network, no credentials, never the real aws). Covers EC2, S3,
-# IAM (two roles), KMS, ECR, Secrets Manager and security-group rules.
+# fake aws for spawn_two.sh: STATEFUL, local only (no network, no credentials, never the real aws). Adapted from
+# aws-spawn/fake/aws_rs3 and extended for IAM (two roles), KMS, ECR, Secrets Manager and security-group rules.
 # The world lives in $FAKE_STATE/world.json; every call is appended to calls.log (argv as given: a secret passed as file:// shows
 # only its path), mutations also to muts.log. Wrong shorthand (e.g. Key= tags on KMS) fails like the real CLI (exit 254).
-# knobs: FAKE_QUOTA (64)  FAKE_USED (8: the orchestrator)  FAKE_NOCAP="type,type"  FAKE_NOFAMILY="m6a"  FAKE_NOPRICE=1  FAKE_BUCKET=0 (no bucket)
+# knobs: FAKE_QUOTA (64)  FAKE_USED (8: the workstation)  FAKE_NOCAP="type,type"  FAKE_NOFAMILY="m6a"  FAKE_NOPRICE=1  FAKE_BUCKET=0 (no bucket)
 #        FAKE_FAILRUN=n (n-th run-instances fails oddly)  FAKE_VCPULIMIT_AFTER=n  FAKE_PROFILE_LAG=n (first n run-instances: profile not ready)
 #        FAKE_KMS_LAG=n (first n KMS calls naming a new role: MalformedPolicyDocumentException)  FAKE_DENY="svc:op,..." (AccessDenied)
 import fcntl, json, os, re, shutil, sys, time
@@ -206,7 +206,7 @@ if svc == "ec2":
         res = [i for i in W["instances"] if matches(tagmap(i), fs, i["State"]["Name"])]
         used = int(os.environ.get("FAKE_USED", "8"))
         if not fs.get("tag:project") and used:
-            res = res + [{"InstanceId": "i-orchestrator", "InstanceType": "m7g.2xlarge", "State": {"Name": "running"}, "CpuOptions": {"CoreCount": used, "ThreadsPerCore": 1}, "Tags": []}]
+            res = res + [{"InstanceId": "i-workstation", "InstanceType": "m7g.2xlarge", "State": {"Name": "running"}, "CpuOptions": {"CoreCount": used, "ThreadsPerCore": 1}, "Tags": []}]
         done({"Reservations": [{"Instances": res}]})
     if op == "create-vpc" and "--dry-run" in rest:
         fail("DryRunOperation", "Request would have succeeded, but DryRun flag is set.", "CreateVpc")
@@ -321,6 +321,8 @@ if svc == "ec2":
              "Tags": [{"Key": k, "Value": v} for k, v in tm.items()], "_profile": prof, "_image": opt("--image-id"), "_key": opt("--key-name"),
              "_shutdown": opt("--instance-initiated-shutdown-behavior"), "_meta": opt("--metadata-options"), "_bdm": opt("--block-device-mappings"),
              "_public": "--associate-public-ip-address" in rest, "_tagspecs": optall("--tag-specifications")}
+        if "MarketType=spot" in (opt("--instance-market-options") or ""):
+            i["InstanceLifecycle"] = "spot"   # as EC2 reports a spot instance
         W["instances"].append(i)
         done(text=i["InstanceId"])
     if op == "wait":

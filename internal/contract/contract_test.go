@@ -105,7 +105,8 @@ func TestRegistry(t *testing.T) {
 func TestDefaultDoubtsAreRegisteredDoubts(t *testing.T) {
 	for _, id := range []string{TraceSamplingUnverified, FitQueueRebuildSampled, TraceClientSpansMissing,
 		TraceErrorsPresent, TraceRetries, TraceShedding, TraceArrivalsUnjudged, TraceArrivalsOverdispersed, TraceLoadTrend,
-		ModelBatchArrivals, ProfileVarianceChanged, ProfileStructureChanged, ProfileSelfReportMismatch} {
+		ModelBatchArrivals, ProfileVarianceChanged, ProfileStructureChanged, ProfileSelfReportMismatch,
+		ProfileRouteHeterogeneous} {
 		if c, ok := Lookup(id); !ok || c.Level != Doubt {
 			t.Errorf("%s: registered %v, level %q; want a doubt", id, ok, c.Level)
 		}

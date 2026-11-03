@@ -1,1 +1,0 @@
-Speed up hot.Rank with a prebuilt inverted index (same BM25)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -185,6 +186,23 @@ func TestValidNameIsCheckName(t *testing.T) {
 			`"captures":{%q:"captures/x"}}`, Schema, strings.Repeat("a", 64), name)
 		if _, err := Parse([]byte(cfg), t.TempDir()); err == nil || !strings.Contains(err.Error(), strconv.Quote(name)) {
 			t.Errorf("captures %q: %v", name, err)
+		}
+	}
+}
+
+// TestTildeWithoutHome: "~/" resolves from the user database when HOME is unset (an agent may start the server with
+// a cleared environment).
+func TestTildeWithoutHome(t *testing.T) {
+	u, err := user.Current()
+	if err != nil || !filepath.IsAbs(u.HomeDir) {
+		t.Skip("no user database entry")
+	}
+	for _, home := range []string{"", "rel/home"} {
+		t.Setenv("HOME", home)
+		c, err := Parse([]byte(`{"schema":"rhobound-mcp.config/v1","engine":{"path":"/bin/true","sha256":"`+
+			strings.Repeat("0", 64)+`"},"state_dir":"~/.local/state/rhobound-mcp"}`), "/")
+		if err != nil || c.StateDir != filepath.Join(u.HomeDir, ".local", "state", "rhobound-mcp") {
+			t.Errorf("HOME=%q: %v %+v", home, err, c)
 		}
 	}
 }

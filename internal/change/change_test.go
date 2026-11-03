@@ -83,7 +83,7 @@ func TestSetDigest(t *testing.T) {
 func TestSignOf(t *testing.T) {
 	want := map[string]string{
 		OpOwnMs: SignIncreasing, OpOwnPct: SignIncreasing, OpGlueMs: SignIncreasing, OpLoadScale: SignIncreasing,
-		OpAddCall: SignIncreasing, OpSetP: SignIncreasing, OpScaleCount: SignIncreasing,
+		OpAddCall: SignIncreasing, OpSetP: SignIncreasing, OpScaleCount: SignIncreasing, OpOwnVar: SignIncreasing,
 		OpWorkers:  SignDecreasing,
 		OpSetAsync: SignUnsigned, OpMakeParallel: SignUnsigned,
 		OpCS2: "", OpRemoveCall: "", "own_seconds": "",

@@ -50,6 +50,9 @@ func TestRefusalCodesOfTheFitAndPredictFixtures(t *testing.T) {
 				sort.Strings(ws)
 				opts = append(opts, "--workers", strings.Join(ws, ","))
 			}
+			if cs.Plain {
+				opts = append(opts, "--plain")
+			}
 			args := append([]string{"predict", cs.Dir, "--json"}, opts...)
 			if cs.Patch != "" {
 				args = append(args, "--patch", cs.Patch)

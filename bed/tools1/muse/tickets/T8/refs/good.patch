@@ -1,0 +1,121 @@
+diff --git a/maze/app/internal/svc/pricing/pricing.go b/maze/app/internal/svc/pricing/pricing.go
+index 7e98937..812718f 100644
+--- a/maze/app/internal/svc/pricing/pricing.go
++++ b/maze/app/internal/svc/pricing/pricing.go
+@@ -3,6 +3,9 @@ package pricing
+ 
+ import (
+ 	"fmt"
++	"slices"
++	"strings"
++	"sync"
+ 	"sync/atomic"
+ 
+ 	"maze/internal/rt"
+@@ -54,9 +57,105 @@ func cart(seed uint64) []Line {
+ 	return ls
+ }
+ 
++// Promotion is one active promotion; a combination holds at most one per Group.
++type Promotion struct {
++	Code, Group, Kind       string
++	MinQty, MinTotal, Value int
++}
++
++// Promotions are the active promotions, in the order they apply within a kind.
++var Promotions = []Promotion{
++	{"SPRING10", "season", "pct_line", 1, 0, 100}, {"SUMMER15", "season", "pct_line", 5, 0, 150},
++	{"FLASH20", "season", "pct_line", 12, 0, 200}, {"BULK5", "volume", "pct_line", 10, 0, 50},
++	{"FREE1", "volume", "free_unit", 6, 0, 1}, {"FREE2", "volume", "free_unit", 12, 0, 2},
++	{"OFF500", "cart", "fixed_cart", 0, 10000, 500}, {"OFF2000", "cart", "fixed_cart", 0, 40000, 2000},
++	{"OFF5000", "cart", "fixed_cart", 0, 90000, 5000}, {"LOYAL3", "loyalty", "pct_line", 1, 0, 30},
++	{"WELCOME", "loyalty", "fixed_cart", 0, 0, 300}, {"STACK7", "stack", "pct_line", 3, 0, 70},
++}
++
++var discOnce = sync.OnceValue(discounts)
++
++// QuotePromo returns the lowest total over every combination of promotions and the sorted codes of that combination.
++func QuotePromo(lines []Line) (int, []string) {
++	d := discOnce()
++	base := make([]int, len(lines))
++	for i, l := range lines {
++		base[i] = (l.Cents*l.Qty*(1000-d[min(l.Qty, 100)]) + 500) / 1000
++	}
++	var groups []string
++	for _, p := range Promotions {
++		if !slices.Contains(groups, p.Group) {
++			groups = append(groups, p.Group)
++		}
++	}
++	pick := make([]int, len(groups)) // index into Promotions + 1, 0 for none
++	bestT, bestC := -1, []string(nil)
++	lt := make([]int, len(lines))
++	var rec func(g int)
++	rec = func(g int) {
++		if g < len(groups) {
++			pick[g] = 0
++			rec(g + 1)
++			for i, p := range Promotions {
++				if p.Group == groups[g] {
++					pick[g] = i + 1
++					rec(g + 1)
++				}
++			}
++			pick[g] = 0
++			return
++		}
++		in := func(i int) bool { return slices.Contains(pick, i+1) }
++		copy(lt, base)
++		for i, p := range Promotions {
++			if in(i) && p.Kind == "pct_line" {
++				for j, l := range lines {
++					if l.Qty >= p.MinQty {
++						lt[j] -= (lt[j]*p.Value + 500) / 1000
++					}
++				}
++			}
++		}
++		for i, p := range Promotions {
++			if in(i) && p.Kind == "free_unit" {
++				for j, l := range lines {
++					if l.Qty >= p.MinQty {
++						lt[j] = max(0, lt[j]-p.Value*l.Cents)
++					}
++				}
++			}
++		}
++		sub := 0
++		for _, x := range lt {
++			sub += x
++		}
++		var codes []string
++		for i, p := range Promotions {
++			if in(i) {
++				codes = append(codes, p.Code)
++				if p.Kind == "fixed_cart" && sub >= p.MinTotal {
++					sub = max(0, sub-p.Value)
++				}
++			}
++		}
++		slices.Sort(codes)
++		if bestC == nil || sub < bestT || (sub == bestT && (len(codes) < len(bestC) ||
++			(len(codes) == len(bestC) && slices.Compare(codes, bestC) < 0))) {
++			bestT, bestC = sub, append([]string{}, codes...)
++		}
++	}
++	rec(0)
++	return bestT, bestC
++}
++
+ func init() {
+ 	rt.Register("pricing.quote", func(r *rt.Req) error {
+-		r.Out = fmt.Appendf(nil, `{"total":%d}`, Quote(cart(n.Add(1))))
++		total, codes := QuotePromo(cart(n.Add(1)))
++		q := make([]string, len(codes))
++		for i, c := range codes {
++			q[i] = `"` + c + `"`
++		}
++		r.Out = fmt.Appendf(nil, `{"total":%d,"promos":[%s]}`, total, strings.Join(q, ","))
+ 		return nil
+ 	})
+ }

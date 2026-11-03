@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "name": "rhobound",
+  "displayName": "rhobound",
+  "version": "0.1.0",
+  "description": "Skills and hooks for rhobound-mcp, mean-latency previews of code changes from OpenTelemetry traces. The MCP server is registered in Muse settings by `rhobound-mcp init` (mode optional); until then the plugin does nothing. See README.md.",
+  "compat": {
+    "source": "native",
+    "manifestDir": ".muse-plugin"
+  },
+  "capabilities": {
+    "skills": [
+      { "id": "rhobound-loop", "path": "skills/rhobound-loop/SKILL.md", "enabledDefault": true },
+      { "id": "rhobound-setup", "path": "skills/rhobound-setup/SKILL.md", "enabledDefault": true },
+      { "id": "rhobound-judge-review", "path": "skills/rhobound-judge-review/SKILL.md", "enabledDefault": false }
+    ],
+    "commands": [],
+    "hooks": [
+      { "id": "rhobound-session-start", "event": "SessionStart", "command": ["/bin/sh", "hooks/session-start.sh"], "timeoutMs": 5000 },
+      { "id": "rhobound-stop", "event": "Stop", "command": ["/bin/sh", "hooks/stop.sh"], "timeoutMs": 5000 }
+    ],
+    "mcpServers": [],
+    "reminders": []
+  }
+}

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # build.sh with stub docker/aws: the kit's Dockerfile, the build args and label, the tag (the full sha), the digest from the
-# push and the registry agreeing, candidate.json; kshop-load; the refusals; no account id in what goes to GitHub. The context
+# push and the registry agreeing, candidate.json; maze-load; the refusals; no account id in what goes to GitHub. The context
 # is GIT_SHA's git objects (git archive in a temporary RBD_HOME/tmp/build.* folder, removed after), never the checkout's
 # working tree or HEAD; nothing the runner-owned .git/ or the caller's GIT_* names runs (round-1 recheck finding 1); a plain
-# tree only as RBD_HOME/src/main of the commit in src/main.sha (its resolved path); from a checkout never kshop-load nor main's
+# tree only as RBD_HOME/src/main of the commit in src/main.sha (its resolved path); from a checkout never maze-load nor main's
 # commit; every object re-hashed (a forged object in the checkout's store is refused); no VCS metadata in the tree; no
 # rebuild once the run holds a prediction; the run lock. CI v2: with pr-check's pr.json, ONE image for every listed service
 # (candidate-<svc>.json each), SERVICE = the first; a base -> --build-arg GO_IMAGE (refused without ARG GO_IMAGE in the kit's
@@ -16,24 +16,24 @@ mkenv build
 S=$T/src
 mkrepo "$S"
 mkbaseline
-H=$(branch "$S" c2 "git apply $KIT/changes/c2-auth-small/change.patch")
-LIB=kshop/app/internal/work/lib_v11.go
-ctxsub=kshop/app ctxrel=app/
-grep -q '^COPY app/' "$TROOT/kshop/Dockerfile" && ctxsub=kshop ctxrel=
+H=$(branch "$S" c2 "git apply $HERE/fixtures/changes/c2-auth-small/change.patch")
+LIB=maze/app/internal/work/lib_v11.go
+ctxsub=maze/app ctxrel=app/
+grep -q '^COPY app/' "$TROOT/maze/Dockerfile" && ctxsub=maze ctxrel=
 tmpclean() { [[ -z $(ls -A "$THOME/tmp" 2> /dev/null) ]]; }
-# ctx_has PATH: the last build's context holds PATH (relative to kshop/) with the bytes of GIT_SHA's blob
-ctx_has() { grep -q "^$(git -C "$S" show "$H:kshop/$1" | sha256sum | cut -d' ' -f1)  ./${1#"$ctxrel"}$" "$T/stub/images/last-ctx"; }
+# ctx_has PATH: the last build's context holds PATH (relative to maze/) with the bytes of GIT_SHA's blob
+ctx_has() { grep -q "^$(git -C "$S" show "$H:maze/$1" | sha256sum | cut -d' ' -f1)  ./${1#"$ctxrel"}$" "$T/stub/images/last-ctx"; }
 "$CI/build.sh" "$S" "$H" auth > "$T/out" 2> "$T/err"
 rc=$?
 check "builds and pushes auth (exit $rc)" test "$rc" -eq 0
 b=$(cat "$T/stub/images/last-build" 2> /dev/null)
 check "uses the KIT's Dockerfile and a context made by git archive: RBD_HOME/tmp/build.*/src/$ctxsub" \
-  grep -qE -- "-f $TROOT/kshop/Dockerfile .* $THOME/tmp/build\.[A-Za-z0-9]{6}/src/$ctxsub$" <<< "$b"
+  grep -qE -- "-f $TROOT/maze/Dockerfile .* $THOME/tmp/build\.[A-Za-z0-9]{6}/src/$ctxsub$" <<< "$b"
 check "the context holds GIT_SHA's files (lib_v11.go = the commit's blob)" ctx_has app/internal/work/lib_v11.go
 check "the temporary context folder is removed after the build" tmpclean
-check "LIB=kshop_v11, SERVICE=auth, CMD=kshop-svc, revision label" grep -q -- \
-  "--build-arg LIB=kshop_v11 --build-arg SERVICE=auth --build-arg CMD=kshop-svc --label org.opencontainers.image.revision=$H" <<< "$b"
-check "tag RBD_ECR:auth-<the full 40-hex sha>" grep -q -- "-t 123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop:auth-$H " <<< "$b"
+check "LIB=maze_v11, SERVICE=auth, CMD=auth (its spec.json image), revision label" grep -q -- \
+  "--build-arg LIB=maze_v11 --build-arg SERVICE=auth --build-arg CMD=auth --label org.opencontainers.image.revision=$H" <<< "$b"
+check "tag RBD_ECR:auth-<the full 40-hex sha>" grep -q -- "-t 123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze:auth-$H " <<< "$b"
 check "logs in to ECR before the build" grep -q "docker login --username AWS --password-stdin 123456789012.dkr.ecr" "$T/stub/calls.log"
 want=$(cat "$T/stub/ecr/auth-$H.digest")
 check "digest = the push's own = the registry's (describe-images) = $(cut -c1-19 <<< "$want")..." test "$(fget "$T/out" digest)" = "$want"
@@ -42,26 +42,26 @@ base=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["servi
 check "prints baseline_digest = production's auth" test "$(fget "$T/out" baseline_digest)" = "$base"
 check "candidate.json = candidate-auth.json, with service/digest/git_sha" python3 -I -c '
 import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2]))
-sys.exit(not (a==b and a["service"]=="auth" and a["digest"]==sys.argv[3] and a["git_sha"]==sys.argv[4] and a["lib"]=="kshop_v11"))' \
+sys.exit(not (a==b and a["service"]=="auth" and a["digest"]==sys.argv[3] and a["git_sha"]==sys.argv[4] and a["lib"]=="maze_v11"))' \
   "$THOME/runs/$H/candidate.json" "$THOME/runs/$H/candidate-auth.json" "$want" "$H"
 check "no account id on stdout/stderr (redacted)" bash -c "! grep -q 123456789012 '$T/out' '$T/err'"
 nb=$(grep -c '^docker build' "$T/stub/calls.log")
-"$CI/build.sh" "$S" "$H" kshop-load > "$T/out" 2> "$T/err"
+"$CI/build.sh" "$S" "$H" maze-load > "$T/out" 2> "$T/err"
 rc=$?
-check "refuses kshop-load from a checkout: the load generator is built only from src/main (exit $rc, no docker build)" bash -c "[ $rc -eq 1 ] &&
-  grep -q 'kshop-load is built only from' '$T/err' && [ \$(grep -c '^docker build' '$T/stub/calls.log') -eq $nb ]"
+check "refuses maze-load from a checkout: the load generator is built only from src/main (exit $rc, no docker build)" bash -c "[ $rc -eq 1 ] &&
+  grep -q 'maze-load is built only from' '$T/err' && [ \$(grep -c '^docker build' '$T/stub/calls.log') -eq $nb ]"
 "$CI/build.sh" "$S" "$H" billing > "$T/out" 2> "$T/err"
 check "refuses an unknown service (exit $?)" grep -q "unknown service" "$T/err"
 # the working tree is the runner's: an edit or an untracked file there never reaches the image
 echo '// not committed' >> "$S/$LIB"
-echo 'package work' > "$S/kshop/app/extra.go"
+echo 'package work' > "$S/maze/app/extra.go"
 "$CI/build.sh" "$S" "$H" auth > "$T/out" 2> "$T/err"
 rc=$?
 check "a modified and an untracked file in the checkout: built from GIT_SHA anyway (exit $rc)" test "$rc" -eq 0
 check "  the context has the committed lib_v11.go, not the edited one" ctx_has app/internal/work/lib_v11.go
 check "  the untracked extra.go is not in the context" bash -c "! grep -q 'extra.go' '$T/stub/images/last-ctx'"
 git -C "$S" checkout -q -- "$LIB"
-rm -f "$S/kshop/app/extra.go"
+rm -f "$S/maze/app/extra.go"
 # a filter (smudge) or fsmonitor named in the runner-owned .git/config never runs as rbd
 git -C "$S" config filter.ev.smudge "sh -c 'touch $T/SMUDGED; cat'"
 git -C "$S" config core.fsmonitor "touch $T/FSMONITOR #"
@@ -73,7 +73,7 @@ check "a smudge filter and core.fsmonitor in the checkout's .git/config: neither
 rm -f "$S/.git/info/attributes"
 git -C "$S" config --unset filter.ev.smudge
 git -C "$S" config --unset core.fsmonitor
-HA=$(branch "$S" attrs "git apply $KIT/changes/c2-auth-small/change.patch; echo '*.go export-ignore' > kshop/app/.gitattributes")
+HA=$(branch "$S" attrs "git apply $HERE/fixtures/changes/c2-auth-small/change.patch; echo '*.go export-ignore' > maze/app/.gitattributes")
 "$CI/build.sh" "$S" "$HA" auth > "$T/out" 2> "$T/err"
 check "refuses a commit with a .gitattributes (export-ignore/export-subst; exit $?)" grep -q "has a .gitattributes" "$T/err"
 check "  and leaves no temporary folder" tmpclean
@@ -94,10 +94,10 @@ echo "$MS" > "$THOME/src/main.sha"
 check "refuses the plain tree labelled with another commit than src/main.sha's (exit $?)" grep -q "holds commit .*, not GIT_SHA $H" "$T/err"
 "$CI/build.sh" "$M" "$MS" auth > "$T/out" 2> "$T/err"
 check "builds the plain tree RBD_HOME/src/main as src/main.sha's commit (bootstrap's upload of main; exit $?)" bash -c "[ \"\$(sed -n '\$p' '$T/out' | python3 -I -c 'import json,sys; print(json.load(sys.stdin)[\"ok\"])')\" = True ] && grep -q \"bootstrap's main tree\" '$T/err' && grep -q -- ' $M/$ctxsub\$' '$T/stub/images/last-build'"
-"$CI/build.sh" "$M" "$MS" kshop-load > "$T/out" 2> "$T/err"
+"$CI/build.sh" "$M" "$MS" maze-load > "$T/out" 2> "$T/err"
 rc=$?
-check "builds kshop-load from src/main with CMD=kshop-load (exit $rc)" bash -c "[ $rc -eq 0 ] && grep -q -- '--build-arg CMD=kshop-load' '$T/stub/images/last-build'"
-check "kshop-load has no baseline digest" test "$(fget "$T/out" baseline_digest)" = ""
+check "builds maze-load from src/main with CMD=maze-load (exit $rc)" bash -c "[ $rc -eq 0 ] && grep -q -- '--build-arg CMD=maze-load' '$T/stub/images/last-build'"
+check "maze-load has no baseline digest" test "$(fget "$T/out" baseline_digest)" = ""
 # a caller's symlink to src/main: the context is the resolved src/main, so a repoint after the check is never read
 # (round-2 recheck B, poc_maintag part b)
 ln -sfn "$M" "$T/mainlink"
@@ -189,7 +189,7 @@ check "  and leaves no temporary folder" tmpclean
 FG=$T/forged
 git clone -q --no-local "$S" "$FG"
 git -C "$FG" rev-parse -q --verify refs/heads/main > /dev/null || git -C "$FG" branch -q main origin/main
-HF=$(branch "$FG" forged "git apply $KIT/changes/c2-auth-small/change.patch; echo '// forged-test' >> $LIB")
+HF=$(branch "$FG" forged "git apply $HERE/fixtures/changes/c2-auth-small/change.patch; echo '// forged-test' >> $LIB")
 "$CI/build.sh" "$FG" "$HF" auth > "$T/out" 2> "$T/err"
 check "the control: an untouched new commit in a fresh clone builds (exit $?)" grep -q 'build: auth at' "$T/err"
 FB=$(git -C "$FG" rev-parse "$HF:$LIB")
@@ -204,9 +204,9 @@ check "a loose blob of GIT_SHA forged in the checkout's store: refused by index-
 check "  and leaves no temporary folder" tmpclean
 # ---- VCS metadata in the tree: go build's VCS stamping would run hg/svn/bzr/fossil on it (round-2 recheck A) ----
 for v in .hg/hgrc internal/.svn/entries .bzr/branch-format _FOSSIL_ .fslckout; do
-  HV=$(branch "$S" "vcs${v//[^a-z]/}" "git apply $KIT/changes/c2-auth-small/change.patch; mkdir -p kshop/app/\$(dirname $v); echo x > kshop/app/$v")
+  HV=$(branch "$S" "vcs${v//[^a-z]/}" "git apply $HERE/fixtures/changes/c2-auth-small/change.patch; mkdir -p maze/app/\$(dirname $v); echo x > maze/app/$v")
   "$CI/build.sh" "$S" "$HV" auth > "$T/out" 2> "$T/err"
-  check "refuses a commit with kshop/app/$v (VCS metadata; exit $?)" grep -q "has VCS metadata" "$T/err"
+  check "refuses a commit with maze/app/$v (VCS metadata; exit $?)" grep -q "has VCS metadata" "$T/err"
 done
 git -C "$S" checkout -q c2
 # ---- one step of a run at a time ----
@@ -249,18 +249,18 @@ nb=$(nbuilds)
 rc=$?
 check "refuses SERVICE pricing for a request whose first service is catalog (exit $rc, no docker build)" bash -c "[ $rc -eq 1 ] &&
   grep -q 'is not the change request.s first service catalog' '$T/err' && [ \$(grep -c '^docker build' '$T/stub/calls.log') -eq $nb ]"
-HC=$(branch "$S" v1pr "git apply $KIT/changes/c2-auth-small/change.patch")
+HC=$(branch "$S" v1pr "git apply $HERE/fixtures/changes/c2-auth-small/change.patch")
 prc "$HC"
 "$CI/build.sh" "$S" "$HC" auth > "$T/out" 2> "$T/err"
 rc=$?
 check "a v1 request with pr.json: built as before (exit $rc), services [auth], no GO_IMAGE" bash -c "[ $rc -eq 0 ] &&
   ! grep -q GO_IMAGE '$T/stub/images/last-build' && python3 -I -c 'import json,sys; c=json.load(open(sys.argv[1])); sys.exit(not (c[\"services\"]==[\"auth\"] and c[\"service\"]==\"auth\" and c[\"base\"] is None))' '$THOME/runs/$HC/candidate.json'"
 # a base: the kit's Dockerfile must take ARG GO_IMAGE (refused, never silently the default builder, while it does not)
-G127=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["go127"])' "$TROOT/kshop/bases.json")
+G127=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["go127"])' "$TROOT/maze/bases.json")
 HB=$(branch "$S" v2base "v2req '[\"catalog\", \"pricing\"]' go127")
 prc "$HB"
-cp "$TROOT/kshop/Dockerfile" "$T/Dockerfile.keep"
-python3 -I - "$TROOT/kshop/Dockerfile" "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["go1269"])' "$TROOT/kshop/bases.json")" << 'PY'
+cp "$TROOT/maze/Dockerfile" "$T/Dockerfile.keep"
+python3 -I - "$TROOT/maze/Dockerfile" "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["go1269"])' "$TROOT/maze/bases.json")" << 'PY'
 import re, sys
 p, img = sys.argv[1:3]
 t = re.sub(r"(?m)^ARG GO_IMAGE.*\n", "", open(p).read())
@@ -271,18 +271,18 @@ nb=$(nbuilds)
 rc=$?
 check "a base (go127) with a kit Dockerfile that has no ARG GO_IMAGE: refused, not built on the default builder (exit $rc)" \
   bash -c "[ $rc -eq 1 ] && grep -q \"has no 'ARG GO_IMAGE'\" '$T/err' && [ \$(grep -c '^docker build' '$T/stub/calls.log') -eq $nb ]"
-cp "$T/Dockerfile.keep" "$TROOT/kshop/Dockerfile"
+cp "$T/Dockerfile.keep" "$TROOT/maze/Dockerfile"
 goimage_dockerfile
 "$CI/build.sh" "$S" "$HB" catalog > "$T/out" 2> "$T/err"
 rc=$?
 check "a base (go127), the Dockerfile with ARG GO_IMAGE: built with --build-arg GO_IMAGE=<bases.json go127> (exit $rc)" bash -c "[ $rc -eq 0 ] &&
-  grep -q -- '--build-arg GO_IMAGE=$G127 --build-arg LIB=kshop_v11 --build-arg SERVICE=catalog ' '$T/stub/images/last-build'"
+  grep -q -- '--build-arg GO_IMAGE=$G127 --build-arg LIB=maze_v11 --build-arg SERVICE=catalog ' '$T/stub/images/last-build'"
 check "  candidate-catalog/pricing.json record base go127 and the builder image, one digest" python3 -I -c '
 import json,sys; run,g=sys.argv[1:3]
 c=[json.load(open("%s/candidate-%s.json" % (run, s))) for s in ("catalog","pricing")]
 sys.exit(not all(x["base"]=="go127" and x["go_image"]==g and x["digest"]==c[0]["digest"] for x in c))' "$THOME/runs/$HB" "$G127"
 python3 -I -c 'import json,sys; b=json.load(open(sys.argv[1])); b["go127"]="golang:1.27.3-bookworm@sha256:"+"9"*64; json.dump(b,open(sys.argv[1],"w"))' \
-  "$TROOT/kshop/bases.json"
+  "$TROOT/maze/bases.json"
 nb=$(nbuilds)
 "$CI/build.sh" "$S" "$HB" catalog > "$T/out" 2> "$T/err"
 rc=$?

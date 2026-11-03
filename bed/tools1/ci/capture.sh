@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # capture.sh NAME SECONDS SEED   one production window (SPEC 3, SPEC 0b rules 1-2) -> $RBD_HOME/captures/NAME/
 #   raw/traces/          the Collector files covering the window (raw/ holds nothing else: the folder the CLI reads)
-#   request-count.json   rhobound.request-count/v1 from the load's own log: window S = the "kshop-load: N requests over" line, E = S + SECONDS
+#   request-count.json   rhobound.request-count/v1 from the load's own log: window S = the "maze-load: N requests over" line, E = S + SECONDS
 #   cut/                 rhobound check raw --window S,E --cut entry-start --out cut --request-count request-count.json
 #   meta/                load.json (the Job's log, then one rbd.load/v1 line: the load setting the window ran at), load-job.json,
 #                        k8s.json, capture.json (its "load": the same setting), check.json (+ .err) -- never inside raw/ or cut/
@@ -39,7 +39,7 @@ need_cmd kubectl jq python3
 LOAD_IMAGE=$(images_get load) || fail "no load image"
 rbd_lock "${RBD_LOCK_WAIT:-3600}" || fail "the cluster lock is busy"
 # the load setting, once (the trap's bgload.sh start reads the same file under this lock); its reason is the error when refused
-LOADSET=$(python3 -I "$RBD_OPT/kshop/loadmix.py" show "$RBD_HOME/load.env" 2>&1) && jq -e '.schema == "rbd.load/v1"' <<< "$LOADSET" > /dev/null 2>&1 \
+LOADSET=$(python3 -I "$RBD_OPT/maze/loadmix.py" show "$RBD_HOME/load.env" 2>&1) && jq -e '.schema == "rbd.load/v1"' <<< "$LOADSET" > /dev/null 2>&1 \
   || fail "the load setting is refused: ${LOADSET#loadmix: }"
 LOADARGS=()
 [ "$(jq -r .source <<< "$LOADSET")" = default ] || LOADARGS=(--rps "$(jq -r .rps <<< "$LOADSET")" --mix-weights "$(jq -r .mix <<< "$LOADSET")")
@@ -47,38 +47,38 @@ LOADARGS=()
 WORK=$RBD_HOME/captures/.$NAME.tmp
 rm -rf "$WORK"; mkdir -p "$WORK/raw/traces" "$WORK/meta" || fail "cannot create $WORK"
 STOPPED=""
-restart_bg() { if [ -n "$STOPPED" ] && [ -z "${RBD_KEEP_BGLOAD_STOPPED:-}" ]; then "$RBD_OPT/kshop/bgload.sh" start || log "WARNING: the background load did not start again"; fi; }
+restart_bg() { if [ -n "$STOPPED" ] && [ -z "${RBD_KEEP_BGLOAD_STOPPED:-}" ]; then "$RBD_OPT/maze/bgload.sh" start || log "WARNING: the background load did not start again"; fi; }
 trap restart_bg EXIT
 started_at=$(now_utc)
 
 log "$NAME: stopping the background load"
-"$RBD_OPT/kshop/bgload.sh" stop || fail "could not stop the background load"
+"$RBD_OPT/maze/bgload.sh" stop || fail "could not stop the background load"
 STOPPED=1
 sleep "${RBD_SETTLE_S:-5}"
-kubectl -n "$RBD_NS" delete job kshop-load --ignore-not-found --wait=true --timeout=120s > /dev/null || fail "could not delete the old kshop-load Job"
-python3 -I "$RBD_OPT/kshop/render.py" load --load-image "$LOAD_IMAGE" --name kshop-load --seconds "$SECS" --seed "$SEED" "${LOADARGS[@]}" \
+kubectl -n "$RBD_NS" delete job maze-load --ignore-not-found --wait=true --timeout=120s > /dev/null || fail "could not delete the old maze-load Job"
+python3 -I "$RBD_OPT/maze/render.py" load --load-image "$LOAD_IMAGE" --name maze-load --seconds "$SECS" --seed "$SEED" "${LOADARGS[@]}" \
   > "$WORK/meta/load-job.json" || fail "render.py load failed"
-kubectl apply -f "$WORK/meta/load-job.json" > /dev/null || fail "could not create the kshop-load Job"
+kubectl apply -f "$WORK/meta/load-job.json" > /dev/null || fail "could not create the maze-load Job"
 log "$NAME: window Job running for $SECS s (seed $SEED; $(jq -r .summary <<< "$LOADSET"))"
 deadline=$(( $(date +%s) + SECS + 300 ))
 while :; do
   # "/" keeps the fields apart: with a space, read drops the leading blank of " 1" (failed, never succeeded) and sees succ=1
-  st=$(kubectl -n "$RBD_NS" get job kshop-load -o jsonpath='{.status.succeeded}/{.status.failed}' 2> /dev/null) || st="?/?"
+  st=$(kubectl -n "$RBD_NS" get job maze-load -o jsonpath='{.status.succeeded}/{.status.failed}' 2> /dev/null) || st="?/?"
   IFS=/ read -r succ failed <<< "$st"
   [ "${succ:-}" = 1 ] && break
-  [ -n "${failed:-}" ] && [ "$failed" != "?" ] && [ "$failed" -ge 1 ] && fail "the kshop-load Job failed (kubectl -n $RBD_NS logs job/kshop-load)"
-  [ "$(date +%s)" -lt "$deadline" ] || fail "the kshop-load Job did not finish within $((SECS + 300)) s"
+  [ -n "${failed:-}" ] && [ "$failed" != "?" ] && [ "$failed" -ge 1 ] && fail "the maze-load Job failed (kubectl -n $RBD_NS logs job/maze-load)"
+  [ "$(date +%s)" -lt "$deadline" ] || fail "the maze-load Job did not finish within $((SECS + 300)) s"
   if [ "$(date +%s)" -gt "$((deadline - SECS - 210))" ]; then   # 90 s after the start: a pod still Pending will not run (image pull?)
-    ph=$(kubectl -n "$RBD_NS" get pods -l job-name=kshop-load -o jsonpath='{.items[0].status.phase} {.items[0].status.containerStatuses[0].state.waiting.reason}' 2> /dev/null || true)
-    [[ $ph != Pending* ]] || fail "the kshop-load pod is still $ph after 90 s (kubectl -n $RBD_NS describe pod -l job-name=kshop-load)"
+    ph=$(kubectl -n "$RBD_NS" get pods -l job-name=maze-load -o jsonpath='{.items[0].status.phase} {.items[0].status.containerStatuses[0].state.waiting.reason}' 2> /dev/null || true)
+    [[ $ph != Pending* ]] || fail "the maze-load pod is still $ph after 90 s (kubectl -n $RBD_NS describe pod -l job-name=maze-load)"
   fi
   sleep "${RBD_POLL_S:-10}"
 done
-kubectl -n "$RBD_NS" logs job/kshop-load > "$WORK/meta/load.json" || fail "could not read the Job's log"
+kubectl -n "$RBD_NS" logs job/maze-load > "$WORK/meta/load.json" || fail "could not read the Job's log"
 # the setting the window ran at, as load.json's last line (verify copies only load.json); no "url" key: loadlog, score.py, load_ok skip it
 tl=$(tail -c 1 "$WORK/meta/load.json")   # not empty: the log does not end in a newline
 { [ -z "$tl" ] || echo; jq -c . <<< "$LOADSET"; } >> "$WORK/meta/load.json" || fail "could not record the load setting in load.json"
-win=$(python3 -I "$RBD_OPT/kshop/loadlog.py" "$WORK/meta/load.json" --seconds "$SECS" --out "$WORK/request-count.json") || fail "the load log is not one finished window"
+win=$(python3 -I "$RBD_OPT/maze/loadlog.py" "$WORK/meta/load.json" --seconds "$SECS" --out "$WORK/request-count.json") || fail "the load log is not one finished window"
 S=$(jq -r .start <<< "$win") E=$(jq -r .end <<< "$win")
 jq -e --argjson s "$LOADSET" '.rps == $s.rps' <<< "$win" > /dev/null \
   || fail "the window ran at $(jq -r .rps <<< "$win") rps (the Job's log), the load setting is $(jq -r .rps <<< "$LOADSET") rps"

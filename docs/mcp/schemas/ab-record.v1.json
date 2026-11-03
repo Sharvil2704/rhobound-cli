@@ -24,7 +24,9 @@
       "properties": {
         "log_sha256": {"$ref": "defs.v1.json#/$defs/Sha256Hex"},
         "requests": {"$ref": "#/$defs/pairInt"},
-        "client_latency_ms": {"$ref": "#/$defs/delta"}
+        "client_latency_ms": {"$ref": "#/$defs/delta"},
+        "response_bytes": {"$ref": "#/$defs/pair",
+                           "description": "the mean response body the load generator read from each arm, bytes, when its log has the bytes column; a change of more than 10% is ab.payload_changed"}
       },
       "required": ["log_sha256", "requests", "client_latency_ms"],
       "additionalProperties": false,
@@ -44,6 +46,8 @@
           "own_ms": {"$ref": "#/$defs/delta"},
           "glue_ms": {"$ref": "#/$defs/delta"},
           "own_cs2": {"$ref": "#/$defs/delta"},
+          "own_var": {"$ref": "#/$defs/delta",
+                      "description": "the own time's variance in each arm, ms^2, and its difference with the standard error by batch means: the evidence of a measured own_var_ms2 item"},
           "calls": {
             "type": "array",
             "items": {
@@ -51,7 +55,10 @@
               "properties": {
                 "callee": {"type": "string", "minLength": 1},
                 "baseline": {"type": "number", "minimum": 0},
-                "candidate": {"type": "number", "minimum": 0}
+                "candidate": {"type": "number", "minimum": 0},
+                "baseline_se": {"type": "number", "minimum": 0,
+                                "description": "standard error of the baseline's mean calls per visit: sd/sqrt(n) over the visits (the counts are kept as a histogram, not in order, so not batch means)"},
+                "candidate_se": {"type": "number", "minimum": 0, "description": "the same for the candidate"}
               },
               "required": ["callee", "baseline", "candidate"],
               "additionalProperties": false
@@ -59,8 +66,23 @@
             "description": "calls per visit to each callee, per arm"
           },
           "calls_changed": {"type": "boolean", "description": "profile.structure_changed: the own-time difference is never applied alone"},
-          "variance_changed": {"type": "boolean", "description": "profile.variance_changed: the own time's variance differs beyond 2 standard errors (batch means). The variance, not the cs2: an own-time difference applied as a shift keeps the variance and lowers the cs2, so a pure shift is no variance change"},
-          "error_share": {"$ref": "#/$defs/pair"}
+          "variance_changed": {"type": "boolean", "description": "profile.variance_changed: the own time's variance differs beyond 2 standard errors (batch means). The variance, not the cs2: an own-time difference applied as a shift keeps the variance and lowers the cs2, so a pure shift is no variance change. With routes, against the variance the routes' own shifts predict (each route's variance kept, its mean moved by its delta, mixed by the candidate's shares)"},
+          "error_share": {"$ref": "#/$defs/pair"},
+          "routes": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "properties": {
+                "route": {"type": "string", "minLength": 1, "description": "as the fit names it (the SERVER span's http.route with its method, else its name 'METHOD /path', else its url.path), or other"},
+                "visits": {"$ref": "#/$defs/pairInt"},
+                "share": {"$ref": "#/$defs/pair"},
+                "own_ms": {"$ref": "#/$defs/delta"}
+              },
+              "required": ["route", "visits", "share", "own_ms"],
+              "additionalProperties": false
+            },
+            "description": "the own-time difference of each route both arms read (two or more, each at least 5% of the visits, at most 8, the rest as other); absent for a service with one route. A route moving apart from the blend beyond 3 standard errors is profile.route_heterogeneous"}
         },
         "required": ["service", "visits", "own_ms", "glue_ms", "own_cs2", "calls", "calls_changed", "variance_changed",
                      "error_share"],

@@ -2,9 +2,13 @@
 // B at once, keep-alive by default; it writes loadgen.csv, rc-a.json, rc-b.json and summary.json (last) to -out.
 //
 //	abdrive -a URL -b URL -mix mix.json -out DIR [-rate R] [-seconds 600] [-warmup 60] [-seed S] [-service NAME]
-//	        [-host HOST[:PORT]] [-fresh-conn] [-timeout 30s] [-min-answered 0.99]
+//	        [-host HOST[:PORT]] [-fresh-conn] [-timeout 30s] [-min-answered 0.99] [-log-bytes]
 //
-// The requests are what kshop's own callers send (Go's default headers, no driver header); -host sets the Host header
+// summary.json gives each arm's mean response body (mean_bytes); -log-bytes also writes each body's size into
+// loadgen.csv as a 6th column, bytes, which a rhobound that reads it turns into the record's response_bytes and the
+// ab.payload_changed doubt.
+//
+// The requests are what maze's own callers send (Go's default headers, no driver header); -host sets the Host header
 // both arms see to the one production's callers send (e.g. auth:8080), so an arm cannot tell the A/B by it.
 //
 // Exit 0 when both arms answered at least -min-answered of the measured arrivals, 1 otherwise (outputs still
@@ -31,7 +35,7 @@ func main() {
 }
 
 const usage = "usage: abdrive -a URL -b URL -mix mix.json -out DIR [-rate R] [-seconds 600] [-warmup 60] [-seed S] " +
-	"[-service NAME] [-host HOST[:PORT]] [-fresh-conn] [-timeout 30s] [-min-answered 0.99]"
+	"[-service NAME] [-host HOST[:PORT]] [-fresh-conn] [-timeout 30s] [-min-answered 0.99] [-log-bytes]"
 
 func run(ctx context.Context, args []string, stderr io.Writer) int {
 	fs := flag.NewFlagSet("abdrive", flag.ContinueOnError)
@@ -49,6 +53,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) int {
 	fresh := fs.Bool("fresh-conn", false, "a new connection per request (default keep-alive)")
 	timeout := fs.Duration("timeout", 30*time.Second, "per-request timeout")
 	minAnswered := fs.Float64("min-answered", 0.99, "the share of answers each arm needs for exit 0")
+	logBytes := fs.Bool("log-bytes", false, "add each response body's size to loadgen.csv (a 6th column, bytes)")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
 		fmt.Fprintln(stderr, usage)
 		return 2
@@ -84,7 +89,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) int {
 		return 2
 	}
 	cfg := Config{URLs: [2]string{*a, *b}, Rate: *rate, Seconds: *seconds, Warmup: *warmup, Seed: *seed,
-		FreshConn: *fresh, Host: *host, Timeout: *timeout, Log: stderr}
+		FreshConn: *fresh, Host: *host, Timeout: *timeout, Log: stderr, LogBytes: *logBytes}
 	for _, p := range mix.Paths {
 		cfg.Paths = append(cfg.Paths, p.Path)
 		cfg.Weights = append(cfg.Weights, p.W)
@@ -103,9 +108,10 @@ func run(ctx context.Context, args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "abdrive:", err)
 		return 2
 	}
-	fmt.Fprintf(stderr, "abdrive: window %s .. %s; A answered %d/%d (mean %.3f ms), B answered %d/%d (mean %.3f ms); "+
-		"late max %.2f ms; ok %v\n", s.Window.Start, s.Window.End, s.Arms["A"].Answered, s.Arms["A"].Scheduled,
-		s.Arms["A"].MeanMs, s.Arms["B"].Answered, s.Arms["B"].Scheduled, s.Arms["B"].MeanMs, s.LateMaxMs, s.OK)
+	fmt.Fprintf(stderr, "abdrive: window %s .. %s; A answered %d/%d (mean %.3f ms, %.0f bytes), B answered %d/%d (mean "+
+		"%.3f ms, %.0f bytes); late max %.2f ms; ok %v\n", s.Window.Start, s.Window.End, s.Arms["A"].Answered,
+		s.Arms["A"].Scheduled, s.Arms["A"].MeanMs, s.Arms["A"].MeanBytes, s.Arms["B"].Answered, s.Arms["B"].Scheduled,
+		s.Arms["B"].MeanMs, s.Arms["B"].MeanBytes, s.LateMaxMs, s.OK)
 	if !s.OK {
 		return 1
 	}

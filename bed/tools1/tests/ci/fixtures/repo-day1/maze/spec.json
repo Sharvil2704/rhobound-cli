@@ -1,0 +1,175 @@
+{
+ "_doc": "maze, the demo shop the end-to-end test deploys on kind. GROUND TRUTH: maze/render.py writes the Kubernetes manifests from it and maze/e2e.py checks what rhobound inferred against it. rhobound itself never reads this file: it sees only the traces (and, for profiling, the Deployment of the image it profiles).",
+ "namespace": "maze",
+ "services": {
+  "storefront": {
+   "workers": 16,
+   "work": {
+    "mean_ms": 1.0,
+    "cs2": 1.0
+   },
+   "mode": "sequential",
+   "calls": [
+    {
+     "to": "auth",
+     "path": "/verify"
+    },
+    {
+     "to": "product",
+     "path": "/item"
+    },
+    {
+     "to": "recommend",
+     "path": "/recs",
+     "p": 0.35
+    }
+   ],
+   "image": "storefront"
+  },
+  "checkout": {
+   "workers": 8,
+   "work": {
+    "mean_ms": 2.0,
+    "cs2": 0.5
+   },
+   "mode": "sequential",
+   "calls": [
+    {
+     "to": "auth",
+     "path": "/verify"
+    },
+    {
+     "to": "cart",
+     "path": "/cart"
+    },
+    {
+     "to": "pricing",
+     "path": "/quote"
+    },
+    {
+     "to": "inventory",
+     "path": "/reserve"
+    },
+    {
+     "to": "payments",
+     "path": "/charge/{tail}"
+    }
+   ],
+   "image": "checkout"
+  },
+  "auth": {
+   "workers": 2,
+   "work": {
+    "mean_ms": 9.0,
+    "cs2": 0.5
+   },
+   "code_paths": [
+    "verify_token"
+   ],
+   "image": "auth"
+  },
+  "product": {
+   "workers": 8,
+   "work": {
+    "mean_ms": 1.5,
+    "cs2": 1.0
+   },
+   "mode": "parallel",
+   "calls": [
+    {
+     "to": "catalog",
+     "path": "/item",
+     "fresh_conn": true
+    },
+    {
+     "to": "pricing",
+     "path": "/quote"
+    },
+    {
+     "to": "inventory",
+     "path": "/stock"
+    }
+   ],
+   "image": "product"
+  },
+  "catalog": {
+   "replicas": 2,
+   "workers": 2,
+   "work": {
+    "mean_ms": 22.0,
+    "cs2": 1.0
+   },
+   "image": "hot"
+  },
+  "pricing": {
+   "workers": 3,
+   "work": {
+    "mean_ms": 16.0,
+    "cs2": 2.0
+   },
+   "image": "hot"
+  },
+  "inventory": {
+   "workers": 3,
+   "work": {
+    "mean_ms": 14.0,
+    "cs2": 0.25
+   },
+   "code_paths": [
+    "stock_check"
+   ],
+   "image": "inventory"
+  },
+  "cart": {
+   "workers": 1,
+   "work": {
+    "mean_ms": 9.0,
+    "cs2": 1.0
+   },
+   "image": "cart"
+  },
+  "payments": {
+   "workers": 1,
+   "work": {
+    "mean_ms": 14.0,
+    "cs2": 0.5
+   },
+   "code_paths": [
+    "risk_check"
+   ],
+   "image": "payments"
+  },
+  "recommend": {
+   "workers": 2,
+   "work": {
+    "mean_ms": 30.0,
+    "cs2": 1.0
+   },
+   "image": "recommend"
+  }
+ },
+ "load": {
+  "rps": 100,
+  "mix": [
+   {
+    "url": "http://storefront.maze.svc.cluster.local:8080/browse",
+    "w": 0.7
+   },
+   {
+    "url": "http://checkout.maze.svc.cluster.local:8080/buy/card",
+    "w": 0.18
+   },
+   {
+    "url": "http://checkout.maze.svc.cluster.local:8080/buy/wallet",
+    "w": 0.12
+   }
+  ]
+ },
+ "versions": {
+  "base": "1.0",
+  "change": {
+   "auth": "1.1",
+   "payments": "1.1"
+  }
+ }
+}

@@ -1,0 +1,109 @@
+diff --git a/maze/app/internal/svc/fraud/fraud.go b/maze/app/internal/svc/fraud/fraud.go
+index e23086f..81f3ffe 100644
+--- a/maze/app/internal/svc/fraud/fraud.go
++++ b/maze/app/internal/svc/fraud/fraud.go
+@@ -3,7 +3,10 @@ package fraud
+ 
+ import (
+ 	"fmt"
++	"strings"
++	"sync"
+ 	"sync/atomic"
++	"time"
+ 
+ 	"maze/internal/rt"
+ )
+@@ -21,9 +24,92 @@ func Score(seed uint64) int {
+ 	return s % 100
+ }
+ 
++// Card is the card of the charge with request counter seed.
++func Card(seed uint64) int { return int(seed % 997) }
++
++// Amount is the amount, in cents, of the charge with request counter seed.
++func Amount(seed uint64) int { return 500 + int(seed*7919%20000) }
++
++type event struct {
++	card, amount int
++	at           time.Time
++}
++
++// Velocity holds the charges of the last 10 minutes.
++type Velocity struct {
++	mu     sync.Mutex
++	byCard map[int][]event
++	queue  []event // every kept charge, oldest first
++}
++
++// NewVelocity returns an empty history.
++func NewVelocity() *Velocity { return &Velocity{byCard: map[int][]event{}} }
++
++// Check records the charge and returns its extra risk and the reasons.
++func (v *Velocity) Check(card, amountCents int, at time.Time) (int, []string) {
++	v.mu.Lock()
++	defer v.mu.Unlock()
++	cut := at.Add(-10 * time.Minute)
++	for len(v.queue) > 0 && !v.queue[0].at.After(cut) {
++		old := v.queue[0]
++		v.queue = v.queue[1:]
++		h := v.byCard[old.card]
++		for i, e := range h {
++			if e == old {
++				h = append(h[:i:i], h[i+1:]...)
++				break
++			}
++		}
++		if len(h) == 0 {
++			delete(v.byCard, old.card)
++		} else {
++			v.byCard[old.card] = h
++		}
++	}
++	h := v.byCard[card]
++	n60, nPrev, sum := 1, 0, 0
++	for _, e := range h {
++		if e.at.After(at.Add(-60*time.Second)) && !e.at.After(at) {
++			n60++
++		}
++		if e.at.After(cut) && e.at.Before(at) {
++			nPrev++
++			sum += e.amount
++		}
++	}
++	e := event{card, amountCents, at}
++	v.byCard[card] = append(h, e)
++	v.queue = append(v.queue, e)
++	extra, reasons := 0, []string{}
++	if n60 >= 4 {
++		extra += 30
++		reasons = append(reasons, "velocity")
++	}
++	if nPrev >= 3 && float64(amountCents) > 3*float64(sum)/float64(nPrev) {
++		extra += 25
++		reasons = append(reasons, "amount")
++	}
++	return extra, reasons
++}
++
++// Len is the number of charges kept.
++func (v *Velocity) Len() int {
++	v.mu.Lock()
++	defer v.mu.Unlock()
++	return len(v.queue)
++}
++
++var velocity = NewVelocity()
++
+ func init() {
+ 	rt.Register("fraud.score", func(r *rt.Req) error {
+-		r.Out = fmt.Appendf(nil, `{"risk":%d}`, Score(n.Add(1)))
++		seed := n.Add(1)
++		extra, reasons := velocity.Check(Card(seed), Amount(seed), time.Now())
++		q := make([]string, len(reasons))
++		for i, x := range reasons {
++			q[i] = `"` + x + `"`
++		}
++		r.Out = fmt.Appendf(nil, `{"risk":%d,"reasons":[%s]}`, min(99, Score(seed)+extra), strings.Join(q, ","))
+ 		return nil
+ 	})
+ }

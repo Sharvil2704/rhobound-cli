@@ -555,3 +555,43 @@ func TestSweepGraceCountsFromTheLastStore(t *testing.T) {
 		t.Errorf("an artifact unreferenced for two days: %d removed, %v", n, err)
 	}
 }
+
+// TestPreviewedSince: rows are judged by their time, not their file's; a missing store or log is no row and is not
+// created; a torn line is skipped.
+func TestPreviewedSince(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "server")
+	t0 := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	if ok, err := PreviewedSince(root, t0); ok || err != nil {
+		t.Errorf("no store: %v %v", ok, err)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Error("PreviewedSince created the store")
+	}
+	d, err := NewDir(root, func() time.Time { return t0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := PreviewKey{Repo: "r", Principal: "p", Branch: "b"}
+	if _, err := d.AppendPreview(context.Background(), k, PreviewRow{Time: t0.Add(-time.Minute), Verdict: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := PreviewedSince(root, t0); ok {
+		t.Error("a row from before counted")
+	}
+	f, _ := os.OpenFile(filepath.Join(root, "previews", previewKey(k)+".jsonl"), os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString(`{"time":"2026-11-02T12:00:01Z","verd` + "\n")
+	f.Close()
+	if ok, err := PreviewedSince(root, t0); ok || err != nil {
+		t.Errorf("a torn line counted: %v %v", ok, err)
+	}
+	k2 := PreviewKey{Repo: "r2", Principal: "q", Branch: "main"}
+	if _, err := d.AppendPreview(context.Background(), k2, PreviewRow{Time: t0, Verdict: "block"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := PreviewedSince(root, t0); !ok || err != nil {
+		t.Errorf("a row at t, in another log: %v %v", ok, err)
+	}
+	if ok, _ := PreviewedSince(root, t0.Add(time.Nanosecond)); ok {
+		t.Error("a row before t counted")
+	}
+}

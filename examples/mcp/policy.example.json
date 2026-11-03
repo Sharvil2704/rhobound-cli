@@ -13,7 +13,7 @@
                        "trace.context_not_propagated", "trace.errors_present", "trace.retries", "trace.shedding",
                        "trace.arrivals_unjudged", "trace.arrivals_overdispersed", "trace.load_trend",
                        "model.batch_arrivals", "profile.variance_changed", "profile.structure_changed",
-                       "profile.self_report_mismatch"],
+                       "profile.self_report_mismatch", "profile.route_heterogeneous"],
   "max_preview_attempts": 5,
   "enforce": false,
   "exceptions": []

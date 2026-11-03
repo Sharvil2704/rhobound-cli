@@ -105,7 +105,8 @@ var DefaultDoubtsThatHold = []string{contract.TraceSamplingUnverified, contract.
 	contract.TraceClientSpansMissing, contract.TraceContextNotPropagated, contract.TraceErrorsPresent,
 	contract.TraceRetries, contract.TraceShedding, contract.TraceArrivalsUnjudged, contract.TraceArrivalsOverdispersed,
 	contract.TraceLoadTrend, contract.ModelBatchArrivals, contract.ProfileVarianceChanged,
-	contract.ProfileStructureChanged, contract.ProfileSelfReportMismatch}
+	contract.ProfileStructureChanged, contract.ProfileSelfReportMismatch, contract.ProfileRouteHeterogeneous,
+	contract.ABPayloadChanged}
 
 // DefaultTrustedLabels are the labels that pass rule 11 by default.
 var DefaultTrustedLabels = []string{change.LabelMeasuredAB, change.LabelMeasuredPaired}

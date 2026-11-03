@@ -12,7 +12,7 @@
 set -euo pipefail
 MARGIN_BEFORE=${RBD_TRACE_MARGIN_BEFORE:-120}
 MARGIN_AFTER=${RBD_TRACE_MARGIN_AFTER:-60}
-OBS_NS=${RBD_OBS_NS:-kshop-obs}
+OBS_NS=${RBD_OBS_NS:-maze-obs}
 POD=${RBD_SPANS_POD:-spans-reader}
 CTR=${RBD_SPANS_CONTAINER:-reader}
 usage() { echo "usage: copy_traces.sh SINCE_NS UNTIL_NS OUTDIR | copy_traces.sh --select SINCE_NS UNTIL_NS < LISTING" >&2; exit 2; }

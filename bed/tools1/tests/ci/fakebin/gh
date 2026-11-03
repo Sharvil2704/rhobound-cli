@@ -8,7 +8,7 @@ case "${1:-} ${2:-}" in
   "repo view") printf '{"visibility":"%s","mergeCommitAllowed":true,"squashMergeAllowed":%s,"rebaseMergeAllowed":false}\n' \
     "${STUB_GH_VIS:-PRIVATE}" "${STUB_GH_SQUASH:-false}" ;;
   "pr list") echo "${STUB_GH_OPEN_PR:-}" ;;
-  "pr create") echo "https://github.com/Sharvil2704/rhobound-demo/pull/$((RANDOM % 90 + 10))" ;;
+  "pr create") echo "https://github.com/Sharvil2704/rhobound-maze-bed/pull/$((RANDOM % 90 + 10))" ;;
   "label list") echo "${STUB_GH_LABELS:-[]}" ;;
   "label create") exit 0 ;;
   "auth git-credential") exit 0 ;;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # images.sh MAIN_DIR GIT_SHA   (as rbd on rbd-tools1) every image the cluster runs, in ECR by digest (SPEC 3, 6):
-#   the 10 kshop services and kshop-load from the repo's main tree (part D's /opt/rbd/ci/build.sh MAIN_DIR GIT_SHA SERVICE, which
+#   every maze service (spec.json) and maze-load from the repo's main tree (part D's /opt/rbd/ci/build.sh MAIN_DIR GIT_SHA SERVICE, which
 #   pushes RBD_ECR:SERVICE-<GIT_SHA> (40 hex)); the Collector and busybox mirrored from Docker Hub by digest; abdrive built from
 #   /opt/rbd/abdrive (part C's Dockerfile + binary). A tag already in ECR is not built again. Digests are read from ECR itself.
 #   Writes RBD_HOME/images.json (rbd.images/v1: load, collector, busybox, abdrive, services) and, when there is none yet,
@@ -16,7 +16,7 @@ RBD_OPT=${RBD_OPT:-/opt/rbd}
 . "$RBD_OPT/setup/pins.env"
 export RBD_STEP=images
 MAIN=${1:-} SHA=${2:-}
-[ -d "$MAIN/kshop/app" ] && [[ $SHA =~ ^[0-9a-f]{40}$ ]] || die "usage: images.sh MAIN_DIR GIT_SHA(40 hex) (MAIN_DIR/kshop/app must exist)"
+[ -d "$MAIN/maze/app" ] && [[ $SHA =~ ^[0-9a-f]{40}$ ]] || die "usage: images.sh MAIN_DIR GIT_SHA(40 hex) (MAIN_DIR/maze/app must exist)"
 REPO=${RBD_ECR#*/}
 need_cmd aws docker jq
 rbd_lock "${RBD_LOCK_WAIT:-3600}" || exit 1
@@ -30,9 +30,9 @@ ecr_digest() {   # TAG -> sha256:... of that tag in ECR, or nothing
 }
 
 declare -A DIG
-mapfile -t SVCS < <(jq -r '.services | keys[]' "$RBD_OPT/kshop/spec.json")
-[ "${#SVCS[@]}" = 10 ] || die "spec.json lists ${#SVCS[@]} services, want 10"
-for s in "${SVCS[@]}" kshop-load; do
+mapfile -t SVCS < <(jq -r '.services | keys[]' "$RBD_OPT/maze/spec.json")
+[ "${#SVCS[@]}" -ge 1 ] || die "spec.json lists no services"
+for s in "${SVCS[@]}" maze-load; do
   tag="$s-$SHA" d=$(ecr_digest "$s-$SHA")
   if [ -z "$d" ]; then
     log "build $s at ${SHA:0:12}"
@@ -76,7 +76,7 @@ else
 fi
 
 svcjson=$(for s in "${SVCS[@]}"; do printf '%s\t%s\n' "$s" "${DIG[$s]}"; done | jq -Rn '[inputs | split("\t") | {key: .[0], value: .[1]}] | from_entries')
-jq -n --arg r "$RBD_ECR" --arg sha "$SHA" --arg load "$RBD_ECR@${DIG[kshop-load]}" --arg col "$RBD_ECR@$col" --arg bb "$RBD_ECR@$bb" \
+jq -n --arg r "$RBD_ECR" --arg sha "$SHA" --arg load "$RBD_ECR@${DIG[maze-load]}" --arg col "$RBD_ECR@$col" --arg bb "$RBD_ECR@$bb" \
   --argjson ab "$ab" --argjson svc "$svcjson" --arg t "$(now_utc)" \
   '{schema: "rbd.images/v1", image_ref: $r, main_sha: $sha, load: $load, collector: $col, busybox: $bb, abdrive: $ab, services: $svc, updated_at: $t}' \
   | atomic_write "$RBD_HOME/images.json" || die "cannot write images.json"
@@ -89,6 +89,6 @@ else
   jq -n --arg r "$RBD_ECR" --argjson svc "$svcjson" --arg t "$(now_utc)" --arg sha "$SHA" \
     '{schema: "rbd.baseline/v1", services: $svc, image_ref: $r, fit: null, capture: null, main_sha: $sha, updated_at: $t}' \
     | atomic_write "$BL" || die "cannot write baseline.json"
-  log "baseline.json: main ${SHA:0:12}'s 10 digests (no fit yet: refit.sh)"
+  log "baseline.json: main ${SHA:0:12}'s ${#SVCS[@]} digests (no fit yet: refit.sh)"
 fi
 rbd_result images true "$(jq -c '{main_sha, load, collector, busybox, abdrive}' "$RBD_HOME/images.json")"

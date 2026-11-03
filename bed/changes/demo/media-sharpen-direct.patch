@@ -1,0 +1,48 @@
+diff --git a/maze/app/internal/svc/media/media.go b/maze/app/internal/svc/media/media.go
+index 135a053..a42bc80 100644
+--- a/maze/app/internal/svc/media/media.go
++++ b/maze/app/internal/svc/media/media.go
+@@ -25,9 +25,42 @@ func Thumb(seed uint64) []byte {
+ 	return out
+ }
+ 
++// g7 is the binomial kernel: the 7x7 blur's weight at (dy, dx) is g7[dy+3]*g7[dx+3] (their sum is 4096).
++var g7 = [7]int{1, 6, 15, 20, 15, 6, 1}
++
++func clampi(v, lo, hi int) int {
++	if v < lo {
++		return lo
++	}
++	if v > hi {
++		return hi
++	}
++	return v
++}
++
++// Sharpen returns a sharpened copy of the 128x128 thumbnail img (img is not modified): an unsharp mask whose blur S is
++// the 7x7 binomial sum around each pixel, edges clamped; out = clamp(floor((20480*p - 3*S + 4096) / 8192), 0, 255).
++func Sharpen(img []byte) []byte {
++	const w = 128
++	out := make([]byte, len(img))
++	for y := 0; y < w; y++ {
++		for x := 0; x < w; x++ {
++			s := 0
++			for dy := -3; dy <= 3; dy++ {
++				for dx := -3; dx <= 3; dx++ {
++					s += g7[dy+3] * g7[dx+3] * int(img[clampi(y+dy, 0, w-1)*w+clampi(x+dx, 0, w-1)])
++				}
++			}
++			v := (20480*int(img[y*w+x]) - 3*s + 4096) >> 13 // an arithmetic shift: floor, also below zero
++			out[y*w+x] = byte(clampi(v, 0, 255))
++		}
++	}
++	return out
++}
++
+ func init() {
+ 	rt.Register("media.thumb", func(r *rt.Req) error {
+-		r.Out = Thumb(n.Add(1))
++		r.Out = Sharpen(Thumb(n.Add(1)))
+ 		return nil
+ 	})
+ }

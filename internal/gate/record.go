@@ -30,17 +30,20 @@ const MaxSummaryChars = 65000
 // digests of the inputs; the effective policy and the keys it ignored; the readiness record, echoed. Under the
 // policy's block_band "model" it lists rule 10 at each entry with both bands too.
 type Record struct {
-	Schema            string             `json:"schema"`
-	Verdict           string             `json:"verdict"`
-	ExitCode          int                `json:"exit_code"`
-	Advisory          bool               `json:"advisory"`
-	Preview           bool               `json:"preview"`
-	Now               string             `json:"now"`
-	FitAgeH           *float64           `json:"fit_age_h,omitempty"`
-	EvaluatedAt       string             `json:"evaluated_at"`
-	LoadScale         *float64           `json:"load_scale,omitempty"` // what_if only: Result.LoadScale
-	Rules             []Rule             `json:"rules"`
-	DecideWith        []string           `json:"decide_with"`
+	Schema      string   `json:"schema"`
+	Verdict     string   `json:"verdict"`
+	ExitCode    int      `json:"exit_code"`
+	Advisory    bool     `json:"advisory"`
+	Preview     bool     `json:"preview"`
+	Now         string   `json:"now"`
+	FitAgeH     *float64 `json:"fit_age_h,omitempty"`
+	EvaluatedAt string   `json:"evaluated_at"`
+	LoadScale   *float64 `json:"load_scale,omitempty"` // what_if only: Result.LoadScale
+	Rules       []Rule   `json:"rules"`
+	DecideWith  []string `json:"decide_with"`
+	// ABScale is Result.ABScale: rule 10's measurement-limited straddle, how many times the A/B's visits would decide it
+	// (absent otherwise). CI's ab.sh preview reads it to run one longer A/B before the prediction is recorded.
+	ABScale           *float64           `json:"ab_scale,omitempty"`
 	Digests           Digests            `json:"digests"`
 	Policy            *Policy            `json:"policy"`
 	UnknownPolicyKeys []string           `json:"unknown_policy_keys"`
@@ -106,7 +109,11 @@ func NewRecord(res *Result, p *Policy, rd *Readiness, d Digests) (*Record, error
 				ThresholdMs: num(en.ThresholdMs), Effect: en.Effect})
 		}
 	}
-	return &Record{Schema: RecordSchema, Verdict: res.Verdict, ExitCode: res.ExitCode, Advisory: res.Advisory,
+	var abScale *float64
+	if res.ABScale > 0 && res.Verdict == Inconclusive {
+		abScale = num(res.ABScale)
+	}
+	return &Record{Schema: RecordSchema, Verdict: res.Verdict, ExitCode: res.ExitCode, Advisory: res.Advisory, ABScale: abScale,
 		Preview: res.Preview, Now: res.Now.UTC().Format(time.RFC3339Nano), FitAgeH: res.FitAgeH,
 		EvaluatedAt: res.EvaluatedAt, LoadScale: scale, Rules: res.Rules, DecideWith: res.DecideWith, Digests: d,
 		Policy: p, UnknownPolicyKeys: unknown, ExceptionsApplied: res.Exceptions, Readiness: rd, Judge: res.Judge,
@@ -164,6 +171,8 @@ func (r Rule) Why() string {
 		return fmt.Sprintf("%s: band high end %s ms above threshold %s ms%s, low end at or under it", r.Rule, v, t, at)
 	case r.Rule == RuleChangeUpperBound:
 		return fmt.Sprintf("%s: band low end %s ms above threshold %s ms%s, with lower-bound workers", r.Rule, v, t, at)
+	case r.Rule == RuleRangeInverted:
+		return fmt.Sprintf("%s: change range low end %s ms above its high end%s; no band is formed", r.Rule, v, at)
 	case r.Rule == RuleUnmeasuredDelta || r.Rule == RuleTransferUnvalidated:
 		return fmt.Sprintf("%s: change items without a trusted label: %s", r.Rule, v)
 	case r.Rule == RuleFitStale:

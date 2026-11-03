@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 # shellcheck disable=SC1090,SC1091,SC2012,SC2015,SC2016,SC2088,SC2155  # test code
-# lib.sh: shared by the offline tests. A scratch dir T under $HOME/rbd-dev/tmp/partB (never /tmp), stubs first on PATH:
+# lib.sh: shared by the offline tests. A scratch dir T under $RBD_SCRATCH/partB (default $TMPDIR/rbd/partB), stubs first on PATH:
 # kubectl (orch/tests/stubs/kubectl), and ssh, gh, aws, docker that fail loudly (exit 97) if anything calls them; RBD_LOAD_RPS
 # and RBD_LOAD_MIX unset (the load setting comes from the test's own load.env, or none).
 DEMO=${RBD_DEMO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
 TESTS=$DEMO/orch/tests
-SCR=$HOME/rbd-dev/tmp/partB
+SCR=${RBD_SCRATCH:-${TMPDIR:-/tmp}/rbd}/partB
 mkdir -p "$SCR"
 T=$(mktemp -d "$SCR/t.XXXXXX")
 export TMPDIR=$T
@@ -23,7 +23,7 @@ unset RBD_LOAD_RPS RBD_LOAD_MIX
 # the policy pins rbd.env carries for repo/policy/gate.json: its sha256, and the effective-policy digest the CLI writes as
 # gate.json digests.policy (the offline proof's testdata/leaf/gate/gate.json says the same)
 PIN_SHA=$(sha256sum < "$DEMO/repo/policy/gate.json" | cut -d' ' -f1)
-PIN_DIGEST=sha256:c25759e8e43b0a3b78139fda45880be754a716c46d2f5949b2af3c27c53d830f   # the effective policy digest of repo/policy/gate.json (block_band model, 4.0 ms)
+PIN_DIGEST=sha256:ccfbd1e11a48e23dd1db5ead4312578016722836c5a70c5ccbbd26076ed0dbdc   # 2026-11-02 cluster test 3: + profile.route_heterogeneous, ab.payload_changed (CLI 91a039e2); SPEC3 F1 sha256:c25759e8: + block_band model (CLI 19baaed); F2/F3 strict was sha256:bcb4f9e9...; max_entry_mean_change_ms 4.0, profile.variance_changed restored, ab.errors_differ (demo2 relaxed: sha256:6318343c...; day 1: sha256:67fdf7dc...d633)
 PASS=0 FAILN=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $*"; }
 bad() { FAILN=$((FAILN + 1)); echo "  FAIL $*"; }
@@ -40,14 +40,14 @@ mk_env() {
 RBD_REGION=ap-south-1
 RBD_ACCOUNT=123456789012
 RBD_BUCKET=rhobound-research-123456789012-ap-south-1
-RBD_ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/kshop
+RBD_ECR=123456789012.dkr.ecr.ap-south-1.amazonaws.com/rhobound-demo/maze
 RBD_KMS=awskms:///alias/rhobound-demo-verdict
 KUBECONFIG=$T/kubeconfig
 RHOBOUND_STATE=$T/home/state
 RBD_HOME=$T/home
-RBD_REPO=Sharvil2704/rhobound-demo
+RBD_REPO=Sharvil2704/rhobound-maze-bed
 RBD_POLICY_SHA256=$PIN_SHA
 RBD_POLICY_DIGEST=$PIN_DIGEST
 EOF
-  export RBD_ENV_FILE=$T/rbd.env RBD_OPT=$DEMO/tools1 RBD_CLI=$DEMO/build/rhobound-arm64
+  export RBD_ENV_FILE=$T/rbd.env RBD_OPT=$DEMO/tools1 RBD_CLI=${RBD_LOCAL_CLI:-$DEMO/build/rhobound-local}
 }

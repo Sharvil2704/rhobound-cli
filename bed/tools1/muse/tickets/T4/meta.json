@@ -1,0 +1,103 @@
+{
+ "schema": "rbd.muse-ticket/v1",
+ "id": "T4",
+ "ticket": "SRCH-19",
+ "title": "Search should forgive typos",
+ "source": "the maze campaign repo's tasks/T4-typos (task.json prompt, hidden/typo_hidden_test.go, refs/good.patch), paths internal/ -> maze/app/internal/",
+ "prompt": "task.md: the campaign's SRCH-19 text with bed paths; its judging line (BenchmarkSearch, measured before it ships) replaced by the SLO sentence and an arm-neutral judging line",
+ "services": [
+  "catalog"
+ ],
+ "image": "catalog",
+ "routes": [
+  "catalog GET /search"
+ ],
+ "entries_touched": [
+  "search-api"
+ ],
+ "user_facing_entries": [
+  "web /browse",
+  "mobile /feed",
+  "search-api /q",
+  "checkout /buy",
+  "partner /bulk"
+ ],
+ "slo_ms": 4.0,
+ "writable": [
+  "maze/app/internal/svc/catalog/"
+ ],
+ "test_tags": "hidden",
+ "footprint": {
+  "files": [
+   "maze/app/internal/svc/catalog/catalog.go"
+  ],
+  "refs_within": "orch/agent_take.sh: maze/app/**/*.go only, 1..8 files, no build constraint changed"
+ },
+ "payload": "unchanged: on the bed's /search route catalog.merge replaces the code hook's output; /item untouched",
+ "hidden": {
+  "dir": "hidden/",
+  "files": {
+   "maze/app/internal/svc/catalog/typo_hidden_test.go": "189ef71f4b26a01e37d1fb81aaf9ea6c41461f600c8ca871e8b1f4986a49a538"
+  },
+  "tags": "hidden",
+  "run": "cd maze/app && go test -tags hidden -race -count=1 ./internal/svc/catalog/",
+  "baseline": "fails: TestHiddenTypos (lanp, chaor, lam, lamps find nothing); TestHiddenExactStillFound passes",
+  "tests": [
+   "TestHiddenTypos",
+   "TestHiddenExactStillFound"
+  ]
+ },
+ "base": {
+  "bed_main_sha": "7ccb6922da148ddcc259cdd3b2a9a750845a4a07",
+  "kit_head": "ea293c9fdd866064c5e3f6933e2fd2a458a07cfe",
+  "catalog.go_blob": "9f1d6f5ab6301ea5d98b9a9e7054dd1a42c3d528",
+  "apply": "git apply PATCH from the bed repo root (paths maze/app/...; the kit's repo/ is that tree); fails if main's catalog.go moves"
+ },
+ "refs": [
+  {
+   "name": "naive",
+   "patch": "refs/naive.patch",
+   "sha256": "0d5a73a8720c004364380b9c4da94031d6bdc4e9cdff35e9d5c4026cc59bd7df",
+   "what": "the campaign's refs/good.patch (c1) ported byte for byte: a full edit-distance table, two allocations, for every (title word, query term) pair of every product on every search",
+   "hidden": "pass (-race and without)",
+   "local_bench_ms": {
+    "BenchmarkSearch_base": 1.295,
+    "BenchmarkSearch_ref": 3.945,
+    "delta": 2.65
+   },
+   "bed_estimate_ms": {
+    "catalog /search own": 3.68,
+    "search-api": "+3.6..+4.2 (centre 3.85)",
+    "web": "<= +0.3",
+    "others": 0
+   },
+   "basis": "this exact patch on the AWS bed (run 1, PR 7): A/B catalog own +0.869 blended, /search share 0.236 (CT3 PR 18: 1.457 / 6.17) -> /search +3.68 (bed/local 1.39); truth search-api +3.89 (one bracket, noise +-2), web +0.24; the local campaign's truth +3.75 (noise 0.52)",
+   "expected_gate": "pass or inconclusive, about even: c17's band/A-B ratio (5.78..6.60 for 6.17) puts search-api at about +3.45..+3.95; an A/B reading of /search above about +3.75 makes the band straddle 4; block only above about +4.3",
+   "expected_truth": "about +3.85 at search-api: under the SLO by about 0.15 ms; one 300-s bracket (noise sd about 2) reads over +4 about 45% of the time",
+   "confidence": "medium-high on the true effect (two measured truths of this code agree within 0.15 ms); low on which side of 4 a single bracket or the gate lands"
+  },
+  {
+   "name": "good",
+   "patch": "refs/good.patch",
+   "sha256": "171e5789d4b5b3ea771ac882a3d29a4f4ae59d5187b4ebfbefa41f82a8511716",
+   "what": "each query term expanded once per search into the title words (df's keys) equal to it or one edit away (a linear one-edit check), then matched against that short list; identical ids and order to naive on 3968 queries (k=50: every vocabulary word and pair, one-edit variants of every word, the ticket's typos, empty and odd inputs)",
+   "hidden": "pass (-race and without)",
+   "local_bench_ms": {
+    "BenchmarkSearch_base": 1.295,
+    "BenchmarkSearch_ref": 1.353,
+    "delta": 0.058
+   },
+   "bed_estimate_ms": {
+    "catalog /search own": "+0.08 (x1.39)",
+    "search-api": "about +0.1",
+    "others": 0
+   },
+   "basis": "local benchmark x the bed/local ratio of the naive patch; the campaign's Meta agent wrote the same idea (precompute the matching words per query): AWS A/B catalog own +0.039 blended (about +0.17 on /search)",
+   "expected_gate": "pass",
+   "expected_truth": "noise (0 +- 2 at search-api)",
+   "confidence": "high (< 1 ms at every entry)"
+  }
+ ],
+ "expected_effect": "benign only when written well: the obvious per-word edit distance (naive) sits on the 4-ms SLO at search-api on the bed (about +3.85 true), the precomputed one is noise; DECLARE.md's '+2.7 ms on /search, under the threshold' is the local figure",
+ "calibration": "bed/local 1.39 for this string- and allocation-heavy code (AWS run 1's A/B of the same patch); the current bed has run 1's layout (app nodes of 4 vCPU, m6a family unless a fallback was taken)"
+}

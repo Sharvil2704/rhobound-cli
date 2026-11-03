@@ -21,7 +21,7 @@
       "properties": {
         "op": {"enum": ["own_ms", "own_pct", "workers", "load_scale",
                         "glue_ms", "cs2", "add_call", "remove_call", "set_p", "scale_count", "set_async",
-                        "make_parallel"]},
+                        "make_parallel", "own_var_ms2"]},
         "service": {"$ref": "#/$defs/Name"},
         "callee": {"$ref": "#/$defs/Name"},
         "value": {"$ref": "#/$defs/Value"},

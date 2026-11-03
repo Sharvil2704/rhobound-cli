@@ -2,7 +2,7 @@
 # verify/vlib.sh: helpers of truth.sh, aa.sh, collect.sh (sourced; bash). The verifier never calls rhobound: files and kubectl only.
 # Paths (test hooks): RBD_LIB [/opt/rbd/lib] (rbd-env.sh, lock.sh), RBD_CI [/opt/rbd/ci] (capture.sh), RBD_WINDOW_S [600],
 #   RBD_CAPTURE_SLACK_S [1200: a capture.sh that runs longer than window + slack is killed], RBD_LOCK_WAIT [60 s],
-#   RBD_ROLLOUT_TIMEOUT [300s], RBD_NS [kshop]
+#   RBD_ROLLOUT_TIMEOUT [300s], RBD_NS [maze]
 # Lock (SPEC 3: flock on $RBD_HOME/lock, one job on the cluster at a time). The verifier holds it for its whole run and EXPORTS
 #   RBD_LOCK_HELD; capture.sh, run under it, must not lock again when RBD_LOCK_HELD is set (or must flock the inherited fd 9
 #   without reopening it). part B's lock.sh (tools1/lib/lock.sh) does exactly that: rbd_lock [WAIT_S] [WHAT] flocks fd 9 and exports
@@ -17,7 +17,7 @@ WINDOW_S=${RBD_WINDOW_S:-600}
 CAPTURE_SLACK_S=${RBD_CAPTURE_SLACK_S:-1200}
 LOCK_WAIT=${RBD_LOCK_WAIT:-60}
 ROLLOUT_TIMEOUT=${RBD_ROLLOUT_TIMEOUT:-300s}
-NS=${RBD_NS:-kshop}
+NS=${RBD_NS:-maze}
 VLOG=${VLOG:-/dev/null}
 WHO=${WHO:-verify}
 
@@ -37,8 +37,8 @@ seed_of() {   # seed_of NAME: a positive int from sha256(NAME), stable across ru
 valid_name() { [[ $1 =~ ^[a-z0-9][a-z0-9-]{0,40}$ ]]; }
 valid_capture() { [[ $1 =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]]; }   # capture.sh's NAME rule (truth-<CHANGE>-b0 is up to 50 chars)
 valid_digest() { [[ $1 =~ ^sha256:[0-9a-f]{64}$ ]]; }
-load_ok() {   # load_ok FILE: kshop-load's log of a finished window (the done line, 3 URL result lines)
-  [[ -s $1 ]] && grep -q 'kshop-load: done in' "$1" && (($(grep -c '"url"' "$1") >= 3))
+load_ok() {   # load_ok FILE: maze-load's log of a finished window (the done line, 3 URL result lines)
+  [[ -s $1 ]] && grep -q 'maze-load: done in' "$1" && (($(grep -c '"url"' "$1") >= 3))
 }
 
 env_load() {   # rbd.env through part B's rbd-env.sh; RBD_HOME and RBD_ECR are required
