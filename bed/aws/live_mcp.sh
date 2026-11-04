@@ -153,7 +153,8 @@ status() {
   code=$(curl -s -o "$STATE/tools.json" -w '%{http_code}' --max-time 20 -X POST "https://$host/mcp" \
     -H "Authorization: Bearer $(cat "$STATE/token-demo")" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' || true)
-  echo "tools    HTTP $code: $(jq -r '[.result.tools[].name] | join(" ")' "$STATE/tools.json" 2> /dev/null || echo none)"
+  if [[ $code == 200 ]]; then echo "tools    HTTP 200: $(jq -r '[.result.tools[].name] | join(" ")' "$STATE/tools.json" 2> /dev/null)"
+  else echo "tools    HTTP $code: $(head -c 160 "$STATE/tools.json" 2> /dev/null | tr '\n' ' ')"; fi
 }
 
 down() {

@@ -8,7 +8,8 @@
 # LIVE_HOURS hours. Progress goes to the serial console, every line prefixed "rhobound-live:"; the last is "READY URL".
 #   live_mcp.sh writes these first: LIVE_SHA (40 hex), LIVE_TOKENS ("NAME=<64 hex> ...", one per token), LIVE_EXPIRES
 #   (RFC 3339), LIVE_HOURS
-#   LIVE_TEST=1 (tests, in a container): no shutdown, no IMDS (host localhost), no systemd, Caddy with its internal CA
+#   LIVE_TEST=1 (tests, in a container): no shutdown, no IMDS (host live.test, not a loopback name, so the Host check
+#   below is exercised), no systemd, Caddy with its internal CA
 set -euo pipefail
 : "${LIVE_SHA:?}" "${LIVE_TOKENS:?}" "${LIVE_EXPIRES:?}" "${LIVE_HOURS:?}"
 TEST=${LIVE_TEST:-0}
@@ -82,7 +83,7 @@ su -s /bin/bash rhobound -c "set -e; $O/bin/rhobound fit $O/data/loop --name=loo
   RBD_MCP_STATE=/var/lib/rhobound-mcp bash $O/src/bed/tools1/mcp/register-fit.sh /var/lib/rhobound-mcp/fit-prod/fit.json prod"
 
 if [[ $TEST == 1 ]]; then
-  HOST=localhost
+  HOST=live.test
 else
   t=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
   ip=$(curl -fsS -H "X-aws-ec2-metadata-token: $t" http://169.254.169.254/latest/meta-data/public-ipv4)
@@ -100,7 +101,11 @@ install -d -m 0755 /etc/caddy
 {
   echo "$HOST {"
   [[ $TEST == 1 ]] && echo "  tls internal"
-  echo "  reverse_proxy 127.0.0.1:8765"
+  # the upstream's own address as Host: rhobound-mcp listens on loopback, and the MCP SDK's DNS-rebinding protection
+  # refuses a request to a loopback listener whose Host is not loopback (Forbidden: invalid Host header)
+  echo "  reverse_proxy 127.0.0.1:8765 {"
+  echo "    header_up Host {upstream_hostport}"
+  echo "  }"
   echo "}"
 } > /etc/caddy/Caddyfile
 /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile > /root/caddy-validate.log 2>&1 || { cat /root/caddy-validate.log; exit 1; }
@@ -148,7 +153,7 @@ EOF
 fi
 
 say "waiting for https://$HOST/healthz (the certificate comes first)"
-k=(); [[ $TEST == 1 ]] && k=(-k)
+k=(); [[ $TEST == 1 ]] && k=(-k --resolve "$HOST:443:127.0.0.1")
 for _ in $(seq 120); do curl -fsS "${k[@]}" "https://$HOST/healthz" > /dev/null 2>&1 && break; sleep 5; done
 curl -fsS "${k[@]}" "https://$HOST/healthz" > /dev/null
 say "READY https://$HOST/mcp"
