@@ -160,6 +160,14 @@ git clone https://github.com/Sharvil2704/rhobound-maze-challenge ~/maze-challeng
 
 Muse Code on your laptop, with the rhobound plugin, calls rhobound's MCP server on a machine in your AWS account.
 
+**Why a recorded sample.** A full run of the product takes 2 to 3 hours on a ten-machine bed
+([JUDGES.md, tier 2](../JUDGES.md#tier-2-the-gate-live-on-aws)): a 32-service app under load emitting real OpenTelemetry
+traces, an A/B of each changed image on its own node, real pull requests gated in CI, and the change deployed and
+measured. This endpoint is the five-minute version. The engine, the MCP tools and the gate's rules are the same, and
+they answer live, but on a recorded sample capture (120 s of a simulated three-service chain, 3,099 requests) instead
+of a live system. Every prediction below is computed when it is asked; only the traces were recorded in advance. A change
+you only declare cannot pass here: passing needs the A/B that the full run measures.
+
 ```text
 your laptop                                       one arm64 machine in your AWS account
 Muse Code (Muse Spark 1.3)                        Caddy: HTTPS, a Let's Encrypt certificate
@@ -326,10 +334,47 @@ bash live_mcp.sh down
 
 To point Muse back at the local server, run part 3's `rhobound-mcp init ... --write` again.
 
-## 7. Afterwards
+## 7. Clean up: everything this demo put on your machine
+
+Run these in order; each removes only what the demo made. First, in AWS CloudShell, the endpoint and its files:
 
 ```bash
-rm ~/.meta-key
+bash live_mcp.sh down; rm -rf ~/.rhobound-live ~/live_mcp.sh
 ```
+
+On your laptop, the plugin and its data (while `muse` is still there), the `rhobound` entry in Muse's settings, and
+Muse's saved Meta key:
+
+```bash
+muse plugins remove rhobound --delete-data
+```
+
+```bash
+f=~/.config/muse/settings.json && [ -f "$f" ] && jq 'del(.mcpServers.rhobound, .mcp_servers.rhobound)' "$f" > "$f.new" && mv "$f.new" "$f"
+```
+
+```bash
+muse logout; rm -f ~/.meta-key; unset RHOBOUND_TOKEN H W A
+```
+
+rhobound-mcp's configuration, state and backups, and the two binaries:
+
+```bash
+rm -rf ~/.config/rhobound-mcp ~/.local/state/rhobound-mcp ~/.cache/rhobound-mcp && find ~/.config/muse -maxdepth 1 -name '*.rhobound-bak-*' -delete 2>/dev/null; rm -f ~/.local/bin/rhobound ~/.local/bin/rhobound-mcp
+```
+
+The clones and the demo's scratch folders. Check a clone for work of your own first (`git -C ~/rbd-video status`):
+
+```bash
+rm -rf ~/rbd-video ~/maze-challenge ~/rhobound-try ~/rbd-judge ~/rbd-scratch ~/muse-manifest.json "${TMPDIR:-/tmp}/rbd"
+```
+
+If you cloned `~/rhobound-cli` only for this demo (JUDGES.md uses that name), remove it too: `rm -rf ~/rhobound-cli`.
+
+Optional, only if you do not use them for anything else:
+- **Muse Code itself,** with its settings and sessions:
+  `rm -rf ~/.local/bin/muse ~/.config/muse ~/.local/share/muse "$HOME/Library/Application Support/Muse"`.
+- **Go's caches** (all Go projects rebuild afterwards): `go clean -cache -modcache`.
+- **The Homebrew packages part 0 added:** `brew uninstall bash coreutils`, and `go python jq` if nothing else needs them.
 
 The gate live on AWS, with real pull requests, is [JUDGES.md, tier 2](../JUDGES.md#tier-2-the-gate-live-on-aws).

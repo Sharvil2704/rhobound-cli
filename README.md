@@ -64,7 +64,9 @@ plugin's skill, called `context`, `budget` and `predict` on the hosted endpoint,
 ```
 
 At +1 ms it answered `inconclusive`: the change fits the budget, but a declared estimate cannot pass, and only a
-measured A/B of b can. It then planned the feature inside the 1.07-ms budget. One script, `bed/aws/live_mcp.sh`,
+measured A/B of b can. It then planned the feature inside the 1.07-ms budget. The endpoint answers live, on a recorded
+sample capture: the full run, with a live app's OpenTelemetry traces, A/B tests and real pull requests, takes 2 to 3
+hours ([JUDGES.md, tier 2](JUDGES.md#tier-2-the-gate-live-on-aws)). One script, `bed/aws/live_mcp.sh`,
 starts the endpoint in your own AWS account in about 5 minutes. The session, its full output and how it works are in
 [demo/README.md, part 6](demo/README.md#6-live-on-aws-muse-code-asks-rhobound-running-in-the-cloud).
 
