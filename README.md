@@ -1,233 +1,134 @@
-# rhobound-cli
+# rhobound
 
-rhobound reads OpenTelemetry traces of a microservice system and predicts the **mean latency** of every service and
-of the requests users send. It also predicts what a change does: "if `checkout` did 3 ms more work per request, how
-much slower would the whole request be?" It models each service as a queue, so it accounts for the extra waiting a
-busier service causes, not only for the added time. It is for engineers who already collect traces and want an
-answer before they deploy. It is one static Go binary with no dependencies beyond the standard library, under the
-Apache-2.0 license, and a port of an unpublished Python prototype (called "the reference implementation" in the docs).
+**Know what a code change will do to production latency before you deploy it.**
 
-> **This branch, `rhobound-mcp`**, adds:
-> - an MCP server for coding agents;
-> - a signed deploy gate for CI: multi-image changes, with the A/Bs run in parallel;
-> - a Muse Code plugin;
-> - the AWS bed that measured all of it against production.
->
-> **Judges: start with [JUDGES.md](JUDGES.md)** (an offline demo in about 10 minutes, then the gate live on AWS). The
-> results, with their limits, are in [docs/RESULTS.md](docs/RESULTS.md).
+rhobound is a deploy gate for coding agents and CI. A change goes in: code written by a person or by an agent such as
+Meta's Muse Code. rhobound measures the changed services side by side, off production. Then it predicts the mean
+latency of every user-facing request in the live system. The verdict comes out signed: **pass**, **block** or
+**inconclusive**. Production is deployed only on a signed pass.
 
-## What it does and does not do
+## What it is
 
-It does:
-- read traces (OTLP/JSON files) and infer the call graph, each service's own time, its worker count and its replicas;
-- read the traces of real software, not only of services built for it: a framework's nested spans of one kind (Next.js, flagd's handler, .NET's gRPC
-  client) are one visit or one call, a service that makes a different number of calls on different requests (a cart service that calls its
-  cache 1, 2 or 3 times) enters with its mean count and a service of many endpoints as a mixture of up to 12 call shapes, a caller whose
-  SDK stamps span starts on whole milliseconds (Node.js) is read by where its callees' spans are, and lost spans are named, not only counted
-  ([REAL_CLUSTER.md](docs/REAL_CLUSTER.md) tells how that was found);
-- predict the mean latency of every service, and compare it with what the traces measured;
-- predict the effect of a change you specify (`--patch svc=+3ms` or `svc=-10%`) on every service above it;
-- refuse, with a reason, when the data or the load is outside what it can model: also a capture whose server spans are gRPC streams or long
-  polls (it asks for a window cut by the time its traces started).
+| part | what it does | where |
+|---|---|---|
+| **Engine** | Rebuilds the call graph and every service's queue from OpenTelemetry traces, then predicts mean latency before and after a change. | [cmd/](cmd/), [internal/](internal/) |
+| **Measurement** | An A/B of each changed image on its own node, off production, with the same traffic as the production image. | [bed/tools1/](bed/tools1/) |
+| **Gate** | GitHub Actions: build by digest, A/B, prediction, verdict signed with AWS KMS. Only a signed pass deploys. | [bed/repo/](bed/repo/README.md) |
+| **Agent side** | An MCP server with six tools, and a native Muse Code plugin. | [mcp/](mcp/), [integrations/muse-code/](integrations/muse-code/README.md) |
+| **Test bed** | Ten AWS machines running *maze*, a 32-service Go app built to stress the model. | [bed/](bed/README.md) |
 
-It does not:
-- predict tails (p95, p99), only the mean;
-- model bursts, retries, timeouts, circuit breakers, autoscaling or CPU throttling;
-- work above 85% utilization of the busiest service (`--max-rho`, at most 0.95), or for load that is not steady;
-- measure a change for you: you say how much a service's time changes;
-- tell round-robin or least-request balancing from a random split (it assumes random; the predicted wait is then too
-  high).
-- model queueing on real software, as yet **untested**: the OpenTelemetry Demo run (about 25 services) was at 1-2% utilization, so what it checked is the
-  reading of real spans, and its agreement with the callers' latencies is partly fitted, not predicted ([REAL_CLUSTER.md](docs/REAL_CLUSTER.md)).
+## Built before and during the hackathon
 
-## Quick start
+| | built |
+|---|---|
+| **Before Oct 26** | **The engine:** a Go CLI that predicts mean latency from traces. Its median error on entry latency was 2.0% over 288 simulated scenarios. On Kubernetes it predicted 46.15 ms against 46.10 ms measured. |
+| Oct 26-27 | **The engine became a gate:** `fit` once and predict many times, `diff-fit` (an A/B as a measured change), `budget`, `gate`, and `judge-packet` for a second model. **The MCP server.** |
+| Oct 30-31 | **The first live AWS bed:** KMS-signed verdicts, images by digest. A change written by Meta's Muse Spark 1.3 through MCP passed it. |
+| Nov 1-2 | **maze** and cluster tests 2 and 3. In test 3 the gate made no wrong pass and no wrong block. **The Muse Code plugin.** |
+| Nov 3-4 | **The Muse Code experiments,** the deploy-time measurement, **multi-image changes with parallel A/Bs,** and the public release |
 
-You need Go 1.23 or later. From a clone of this repository:
+## Results, measured on AWS
 
-```
-$ go build -o bin/rhobound ./cmd/rhobound
-$ bin/rhobound predict testdata/capture-chain --patch b=+6ms
-rhobound-cli: mean latency from traces
-capture   testdata/capture-chain
-window    120 s, 3099 entry requests (25.8 /s), 15495 spans
-busiest   c at 26% utilization
-model     refined: arrival variability propagated through the graph (weight 0.7), parallel branches as correlated gammas
-scope     Mean latency only, for steady load below the utilization limit, assuming Poisson arrivals. No tail (p95/p99), burst, retry or timeout modelling. Worker counts marked + are lower bounds.
+Every prediction was committed before production was measured
+([docs/RESULTS.md](docs/RESULTS.md)).
 
-  service   rps  pods x w  own ms   cs2  util  wait ms  seen wait  model ms  seen ms  err %  after ms  change ms  change %
-      a *  25.8    1 x 1+    7.83  1.00   20%     1.99       0.00     45.22    43.74   +3.4     52.37      +7.15     +15.8
-        b  25.8    1 x 2+   19.94  1.00   26%     1.42       1.61     35.40    35.91   -1.4     42.56      +7.15     +20.2
-        c  25.8    1 x 1+    9.98  1.00   26%     3.47       3.78     13.75    14.06   -2.2     13.71      -0.04      -0.3
+| | result |
+|---|---|
+| **Every verdict came true** | 8 passes, all measured clean; 2 blocks, both real regressions (+35 to +38 ms); no wrong pass |
+| **Stopped before users saw it** | A costly three-image change was blocked in 9.7 min, with the culprit named. A 5-min bake took 15.5 min to see it, while users ran +38 ms for 9 min. |
+| **Faster than a bake** | One image: 7.5 min against 15.4. Two images: 9.2 min against 15.5. |
+| **Parallel A/Bs** | Three A/Bs in 572 s instead of 1,400 |
+| **Predictions inside their bands** | 25 of 25 entries in the multi-image runs, and 34 of 35 in the deploy-time runs |
 
-* entry service   || parallel fan-out   w+ = workers per pod, a lower bound (too few requests waited, or too briefly, to read it from)
-own ms: service time per visit (up to its first call out), without the wait for a worker inside the span. seen wait: queueing the traces show (in-span plus between client and server span).
-seen ms: the mean the callers' client spans measured (entries: the server span).
+## How Meta's models are used
 
-change applied: b +6 ms (+6ms);
+- **Muse Code (1.4.14)** is the coding agent rhobound plugs into. The plugin has a native manifest and three skills: read the budget before coding and predict after, setup, and an optional self-review. It also has an opt-in Stop hook. Its MCP server runs in optional mode, so a failure never stops a Muse session.
+- **Muse Spark 1.3** writes the code.
+  - **The experiments:** on two identical AWS beds, Muse Code took tickets with hidden tests, with and without the plugin. Every change it shipped was measured in production, and none regressed ([reports](bed/reports/muse-live/)).
+  - **The first bed:** an agent on the Meta Model API wrote the change and called rhobound's tools over MCP.
+- **Muse Wonder 1.0** is a second, independent model that reviews the gate's evidence packet. `rhobound judge-check` accepts only a well-formed answer.
+  - On the first bed it ran inside the gate step.
+  - Here it is a pluggable step ([meta-judge.py](bed/tools1/judge/meta-judge.py)), not wired into the maze gate.
 
-warnings:
-  - no service shows enough requests waiting for a worker inside its spans to pin its worker count (none can when spans start once a worker has taken the request), so the counts are lower bounds: a 1+ (0 waited; up to 1 in a pod at once), b 2+ (0 waited; up to 2 in a pod at once), c 1+ (0 waited; up to 1 in a pod at once)
+## Try it
+
+### 1. Offline, about 10 minutes (Go 1.25+, python3, git, jq; no cloud)
+
+```bash
+git clone -b rhobound-mcp https://github.com/Sharvil2704/rhobound-cli && cd rhobound-cli
 ```
 
-`testdata/capture-chain` is a small synthetic capture in the repository: 120 s of a simulated chain where `a` calls
-`b`, which calls `c`. How to read the key columns:
+```bash
+bash demo/judges.sh --quick
+```
 
-- `own ms`: each service's own work per request, read from the spans (the simulator used 8, 20 and 10 ms).
-- `model ms` and `seen ms`: the model's mean latency and the one the traces measured; `err %` compares them.
-- `after ms` and `change ms`: the latency after the change. Here +6 ms of work in `b` makes the entry `a` 7.15 ms
-  slower, because `b` also queues more.
-- `+` after a worker count: only a lower bound. Give the real count with `--workers b=N` if you know it.
+It builds everything and runs the agent's MCP loop on sample traces: a measured change passes, and one over the budget
+is blocked. It then installs the Muse Code plugin into a scratch home, checks the bed against a fake AWS, and prints
+the results. Expected output and the full test suites:
+[JUDGES.md, tier 1](JUDGES.md#tier-1-offline-about-10-minutes).
 
-[DEMO.md](docs/DEMO.md) explains every line and column. To install the binary instead,
-`go install github.com/Sharvil2704/rhobound-cli/cmd/rhobound@latest`; [BUILD.md](docs/BUILD.md) has the details.
+### 2. The plugin in your own Muse Code
 
-## The CLI at a glance
+1. Build both binaries and install the plugin:
+   ```bash
+   go build -o ~/.local/bin/rhobound ./cmd/rhobound && (cd mcp && go build -o ~/.local/bin/rhobound-mcp ./cmd/rhobound-mcp)
+   ```
+   ```bash
+   muse plugins install ./integrations/muse-code && muse plugins approve rhobound
+   ```
+2. Register the server with `rhobound-mcp init`, giving it the engine, a capture and a policy:
+   - run it as a dry run;
+   - then with `--write`;
+   - then once more, which must report `keep`.
 
-| command | what it does |
+   The commands are in [JUDGES.md, part 4](JUDGES.md#4-the-plugin-in-your-own-muse-code).
+
+### 3. The gate live on AWS, about 1 h 45 min (about 4 USD)
+
+Every command and variable is in [JUDGES.md, tier 2](JUDGES.md#tier-2-the-gate-live-on-aws).
+
+1. **Workstation:** clone, `cd rhobound-cli/bed` (run every workstation step from there), make an ssh key, and note
+   your public IPv4.
+2. **AWS CloudShell:** download `bed/aws/spawn_two.sh`, then run `spawn_two.sh plan` and `spawn_two.sh up`. Save the
+   inventory to `state/inventory.txt`.
+3. **Connect:**
+   ```bash
+   bash orch/rbd_connect.sh seed state/inventory.txt && bash orch/rbd_connect.sh test
+   ```
+4. **Create your private app repository:**
+   ```bash
+   export REPO=<you>/maze-app RBD_GH_REPO=<you>/maze-app && bash orch/publish_main.sh
+   ```
+5. **Bootstrap** (about 45 min):
+   ```bash
+   bash orch/rbd_bootstrap.sh build
+   bash orch/rbd_bootstrap.sh core
+   bash orch/rbd_connect.sh ssh rbd-tools1 'printf "AB_SECONDS=300\nRBD_WINDOW_S=300\n" | sudo tee /opt/rbd/etc/rbd.env.local'
+   bash orch/rbd.sh refit prod-0
+   bash orch/rbd_bootstrap.sh mcp runner verify
+   ```
+6. **Two real pull requests,** about 10 min each. `pass` changes pricing and media; `block` adds a costly media filter
+   and is stopped before production:
+   ```bash
+   bash orch/demo_live.sh pass block
+   ```
+7. **Tear down** from CloudShell:
+   ```bash
+   BED=1 bash spawn_two.sh down
+   ```
+
+## Repository map
+
+| path | what is in it |
 |---|---|
-| `rhobound predict CAPTURE [--patch svc=+3ms,...]` | infer the call graph from traces and predict the mean latency, before and after a change |
-| `rhobound infer CAPTURE` | print the inferred call graph as a topology JSON |
-| `rhobound model TOPOLOGY.json --rps N` | evaluate a topology you wrote or edited, at N requests/s |
-| `rhobound version [--json]` | print the version; with `--json`, also the Go release, the architecture and the source it was built from |
-
-Common flags: `--workers svc=N`, `--kept-share F`, `--max-rho R`, `--plain`, `--json`, `--out DIR`. See
-[USAGE.md](docs/USAGE.md) for every flag, exit code, refusal and warning. The commands of the `rhobound-mcp` branch
-(below) are listed by `rhobound` without arguments and in [USAGE.md](docs/USAGE.md#11-the-rhobound-mcp-commands).
-
-## What you need to supply
-
-- Traces from every service: SERVER spans, and CLIENT spans for outgoing calls, with W3C trace context across
-  services.
-- `service.name` and `k8s.pod.name` (or `service.instance.id`) on each span's resource.
-- Every request, or a known head-sampling share (`--kept-share`).
-- A window cut by the time its traces started (not by the time its spans ended), so that it holds no stream or long poll that began earlier.
-- Clocks in step (NTP), or CLIENT spans for every call.
-- One steady window of at least 100 entry requests; a few minutes at 20 or more requests/s is a good start.
-- OTLP/JSON files, as the OpenTelemetry Collector's file exporter writes them, in `CAPTURE/traces/`.
-
-Nothing else: no metrics, no logs, no access to the cluster. [REQUIREMENTS.md](docs/REQUIREMENTS.md) says why each
-item matters, what is refused, and has an example Collector configuration.
-
-## How it works
-
-1. **Read** the trace files in parallel, keeping only ids, kinds, times and a few resource attributes.
-2. **Infer the call graph**: which service calls which, how often per visit, and whether the calls run one after
-   another, in parallel or in stages (a service whose calls vary by request type is a mean count or a mixture of
-   shapes). Health probes are dropped, a framework's nested spans of one kind are made one, and calls sent after the response are
-   kept off the caller's latency path.
-3. **Rebuild each pod's queue** from the spans, first come first served, to read its worker count and its service time
-   without the wait. A count is reported as a lower bound (`2+`) when too few requests waited to pin it.
-4. **Model** each service as an M/G/c queue (Erlang C with the Allen-Cunneen correction). The burstiness of arrivals is
-   carried through the graph (Whitt's QNA, damped by 0.7), and parallel calls take the expected maximum of correlated
-   gamma-distributed branches. `--plain` switches both refinements off.
-5. **Apply the change** (`+N ms` of work that holds the worker, or `+N%` of the service's own time) and solve again.
-6. **Refuse** what it cannot model: a service above `--max-rho`, fewer than 100 requests, more than 5% broken traces,
-   server spans that are streams, a call graph with a cycle, or call shapes it has no form for.
-
-[ACCURACY.md section 6](docs/ACCURACY.md#6-how-a-capture-is-read) gives the rules of steps 2 and 3 in full.
-
-## Accuracy
-
-Measured, with failures stated first, in [ACCURACY.md](docs/ACCURACY.md):
-
-- **Simulated, 70-80% utilization** (288 scenarios, one 400 s capture each): the entry latency is off by a median of
-  **2.0%**, 5.9% at the 90th percentile and **12.5%** at worst (basic `--plain` model: 3.0 / 10.5 / 29.7%). The change
-  is off by 5.6 / 16.3 / 35.5% of the change. Even given the true parameters, the model misses the change by more
-  than three standard errors of the simulated truth on 46% of the rows.
-- **Kubernetes (kind), run 6**: entry 46.15 ms against 46.10 ms measured; +8 ms of work in one service predicted
-  +14.93 ms against +13.56 ms measured. That gap is about one standard deviation of the measurement; with run 5 it
-  suggests the predicted change runs about 1 ms high on that demo.
-- **Real Python services at 55-57%** (five captures): the entry latency within -0.8% to +1.4% of the traces.
-- **The OpenTelemetry Demo on a real cluster** (about 25 services, 1-1.4% utilization): the tool **refused both load mixes** as first captured and was
-  wrong by 20-31% (browse mix) and up to 48% (shipped mix) once they were read; both are fixed, and it now reads them, within 2.3% of what the callers measured. That agreement is partly fitted: the model
-  fitted on one window is as far from another window as the windows are from each other, so do not read it as a prediction accuracy, and queueing was not
-  tested ([REAL_CLUSTER.md](docs/REAL_CLUSTER.md)). The repository's own demo on the same cluster: two of three loads passed, the third (72% busy) was unstable.
-- The simulated studies' truth is our own simulator, and the cluster demo's services are queues of the kind the model
-  describes, so none of this is a claim about your system. [VALIDATION.md](docs/VALIDATION.md) lists every check.
-
-## rhobound-mcp: the branch for coding agents and CI
-
-The branch `rhobound-mcp` extends rhobound-cli for coding agents and deploy gates. **It predicts mean latency only, like
-the CLI it extends**, and `rhobound predict CAPTURE` prints exactly what it printed before on the repository's test
-captures and on every capture without a platform pod identity (a test compares the output byte for byte with that of
-commit 1a2df09, on linux/arm64), except on refusals and bad input: `--workers` naming a service the capture does not
-have is now refused (`change.unknown_service`, exit 1) where 1a2df09 ignored it
-([USAGE.md](docs/USAGE.md#7-the-other-flags), section 7); with `--json` a refusal also prints the coded refusal object
-on standard output ([USAGE.md](docs/USAGE.md#9-exit-codes-and-refusals), section 9), where 1a2df09 printed nothing; on a
-file that is JSON but not in OTLP's shape, the decoder's text after `bad OTLP/JSON: ` names the decode type, which has
-gained fields since ([testdata/golden-1a2df09](testdata/golden-1a2df09/README.md)); and `--fit`, `--changes` or
-`--report`, flags 1a2df09 did not have, given with a capture print this build's usage message on standard error where
-1a2df09 printed its own, with exit 1 and nothing on standard output as before. On a capture that names its pods only by
-`k8s.pod.uid` or an ECS task (`aws.ecs.task.arn`) and has no `k8s.pod.name`, pods are keyed by that identity, so the
-predictions can change: the pod count and the per-pod queues follow it, where 1a2df09 used `service.instance.id` or
-`host.name` or, with neither, read all of a service's spans as one pod, and the split warning names pods by it, an ECS
-task by its id ([DATA.md](docs/mcp/DATA.md#34-resource-attributes), 3.4). It adds:
-
-- to the CLI (still the standard library only): `check`, the data contract, which refuses or flags every known defect
-  of a capture by a stable code with a fix; `fit` and `predict --fit F --changes C`, which make and reuse a fit record;
-  `budget` and `context`, how much a service may add per visit before a threshold is crossed; `preview` and `gate`,
-  an advisory preview for an agent and a gate with exit codes for CI; `diff-fit`, the measured difference of an A/B
-  run; `explain`, `judge-packet` and `judge-check`, for a second model's review. Refusals print a coded JSON object
-  with `--json`.
-- `rhobound-mcp` (the nested Go module [mcp/](mcp/), Go 1.25 and the official MCP Go SDK): an MCP server with six
-  tools (`context`, `budget`, `predict`, `explain`, `fit_start`, `job_status`) over stdio or HTTP, and a bench
-  profile with the first four, for benchmarks. It runs the CLI as a subprocess and never computes a number itself:
-  `context`, `budget`, `predict` and `explain` return the JSON of a CLI command plus the server's handles, and its
-  refusals carry codes from the same registry as the CLI's. `rhobound-mcp version --json` prints the same build
-  information as `rhobound version --json`.
-
-It has been run as a deploy gate on AWS and measured against production, every prediction sealed before the measurement
-([docs/RESULTS.md](docs/RESULTS.md); the bed is [bed/](bed/README.md), the Muse Code plugin
-[integrations/muse-code/](integrations/muse-code/README.md)). The design, the data contract and its status are in
-[docs/mcp/](docs/mcp/ARCHITECTURE.md); [examples/mcp/](examples/mcp/README.md) runs the server locally,
-and [testdata/mcp/](testdata/mcp/README.md) walks the loop an agent follows.
-What this release does not do or guarantee is listed in [Known limits](docs/mcp/ARCHITECTURE.md#512-known-limits).
-
-## Documentation
-
-| document | contents |
-|---|---|
-| [JUDGES.md](JUDGES.md) | for judges: the offline demo, the gate live on AWS, the agent experiments |
-| [docs/RESULTS.md](docs/RESULTS.md) | every measured result: the gate's verdicts against production, deploy time, multi-image changes, the agent experiments |
-| [bed/](bed/README.md) | the AWS bed: spawn, bootstrap, the CI gate, the measurement scripts, the experiment harness and reports |
-| [integrations/muse-code/](integrations/muse-code/README.md) | the Muse Code plugin: install, use, troubleshooting |
-| [BUILD.md](docs/BUILD.md) | requirements, building, cross-compiling, installing, running the tests, CI, troubleshooting |
-| [USAGE.md](docs/USAGE.md) | the command line step by step: capture, infer, predict, model, flags, exit codes, refusals, warnings |
-| [REQUIREMENTS.md](docs/REQUIREMENTS.md) | what the traces must contain, how much data, load conditions, a Collector configuration |
-| [DEMO.md](docs/DEMO.md) | what a result looks like: the example capture line by line, and the Kubernetes demo's result |
-| [ACCURACY.md](docs/ACCURACY.md) | the full accuracy study: method, tables, where it is still wrong |
-| [VALIDATION.md](docs/VALIDATION.md) | every check that has been run, failures first |
-| [REAL_CLUSTER.md](docs/REAL_CLUSTER.md) | the run on a real cluster: the OpenTelemetry Demo and the repository's demo, what failed, the causes, the fixes, before and after, what is still open |
-| [validation/cluster/](validation/cluster/README.md) | the scripts of the real-cluster runs (Phase A and Phase B); how to run them on your own cluster is in [REAL_CLUSTER.md](docs/REAL_CLUSTER.md#2-how-to-reproduce-it) |
-| [docs/mcp/](docs/mcp/ARCHITECTURE.md) | rhobound-mcp: the architecture, the data contract (every code, generated from the registry), deployment on AWS and locally, the evaluation plan, the code-path research plan, and the JSON Schemas |
-
-Example topologies for `rhobound model` are in [examples/](examples/).
-
-## rbfast: an optional Rust build
-
-[rust/](rust/) holds rbfast, a parallel Rust port of the reader, the inference, the model and the report. It takes
-the same `predict`, `infer` and `model` commands and flags and prints the same output: byte-identical to the Go
-binary on linux/arm64 on every input compared (2,677 comparisons), and about 6-7x faster on large captures (a
-579 MB capture in 0.15 s instead of 1.0 s at 8 threads; less on a single gzipped file). It adds a `sweep` command
-for many what-ifs at once. The Go binary stays the reference: where the two disagree, the Go binary is right.
-Other architectures than linux/arm64 were not tested. [rust/README.md](rust/README.md) has the build, the tests,
-the parity runs and the benchmarks.
-
-**Those figures are for the Go code of the first release (commit 6841f9f of this repository). rbfast has not been
-updated since and does not have what the Go binary now does:** nested spans of one kind in one pod, calls per visit
-that vary and visits of several call shapes, the named lost spans, the network time of a call per edge (the mean on a
-quiet callee, where rbfast takes the quietest tenth per callee), the refusal of streams, the reading of callers that
-stamp whole milliseconds, and the warnings and `--plain` handling that came with them. So its output differs from the
-Go binary's wherever those apply: it refuses a capture with nested spans or varying counts (the OpenTelemetry Demo's),
-and on any capture with a callee at most 30% busy and an edge of 50 calls or more, which is most captures, its
-latencies differ (by under 0.1% on the older test-bed captures, by 2.6-3.8% on the repository's demo's cache row, by
-20-31% on the Demo's browse mix once its nested spans are made one before the file is read). Use the Go binary
-when it matters; byte parity holds only against the first release's code.
+| [cmd/](cmd/), [internal/](internal/) | the engine and its CLI |
+| [mcp/](mcp/) | the MCP server |
+| [integrations/muse-code/](integrations/muse-code/README.md) | the Muse Code plugin |
+| [bed/](bed/README.md) | the AWS bed, the maze app and its gate, the experiment reports |
+| [docs/](docs/) | [results](docs/RESULTS.md), [usage](docs/USAGE.md), [trace requirements](docs/REQUIREMENTS.md), [architecture](docs/mcp/ARCHITECTURE.md) |
+| [demo/](demo/), [examples/](examples/), [testdata/](testdata/) | the judges' demo, MCP client configurations, sample traces |
+| [e2e/](e2e/), [validation/](validation/), [tools/](tools/), [rust/](rust/README.md) | end-to-end and real-cluster tests, tools, an optional Rust build |
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The Rust port in [rust/](rust/) also contains
-code derived from the Go standard library under the BSD-3-Clause licence ([rust/LICENSE-GO](rust/LICENSE-GO));
-see NOTICE. The MCP server in [mcp/](mcp/) is a separate Go module whose binary links third-party Go modules
-(the official MCP Go SDK and its dependencies, under Apache-2.0, MIT and BSD-3-Clause), listed with their licences in
-[mcp/THIRD-PARTY.md](mcp/THIRD-PARTY.md).
+Apache License 2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE); third-party modules in [mcp/THIRD-PARTY.md](mcp/THIRD-PARTY.md)).

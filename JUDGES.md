@@ -430,6 +430,6 @@ bash orch/kitenv.sh bash orch/rbd_bootstrap.sh core
 |---|---|
 | the results, with the verdict and its limits | [docs/RESULTS.md](docs/RESULTS.md) |
 | the bed: what runs where, the CI pipeline, the measurement scripts | [bed/README.md](bed/README.md) |
-| the engine: model, data contract, refusals | [README.md](README.md), [docs/](docs/) |
+| the engine: model, data contract, refusals | [docs/USAGE.md](docs/USAGE.md), [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md), [docs/ACCURACY.md](docs/ACCURACY.md) |
 | the MCP server and the gate's design | [docs/mcp/ARCHITECTURE.md](docs/mcp/ARCHITECTURE.md) |
 | the Muse Code plugin | [integrations/muse-code/](integrations/muse-code/README.md) |
