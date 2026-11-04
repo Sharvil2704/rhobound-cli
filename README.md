@@ -117,6 +117,12 @@ Every command and variable is in [JUDGES.md, tier 2](JUDGES.md#tier-2-the-gate-l
    BED=1 bash spawn_two.sh down
    ```
 
+### 4. A challenge for your own agent
+
+[rhobound-maze-challenge](https://github.com/Sharvil2704/rhobound-maze-challenge) is maze with a correct but slow
+thumbnail filter in production. The ticket asks an agent to make it fast without changing a byte of output. The gate
+then measures what the fix does to every user-facing request before it deploys. It runs on the same bed as step 3.
+
 ## Repository map
 
 | path | what is in it |
