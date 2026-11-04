@@ -14,7 +14,7 @@ install -d -o "$u" -g "$u" -m 0700 "$out"
 install -o "$u" -g "$u" -m 0600 "$pf" "$out/prompt.md"
 date -u +%FT%TZ > "$out/started"; chown "$u:$u" "$out/started"
 rc=0
-sudo -u rbd /usr/local/bin/aws secretsmanager get-secret-value --secret-id rhobound-demo/anthropic-key \
+sudo -u rbd /usr/local/bin/aws secretsmanager get-secret-value --secret-id rhobound-demo/meta-key \
     --query SecretString --output text \
   | /opt/muse/hide.sh "$u" sudo -u "$u" -H env PATH="/opt/muse/bin:/opt/muse/go/bin:/usr/local/bin:/usr/bin:/bin" GOFLAGS=-mod=mod \
       GOPROXY=off GOTOOLCHAIN=local GOCACHE="$ws/.gocache" GOTMPDIR="$ws/.gotmp" bash -c '

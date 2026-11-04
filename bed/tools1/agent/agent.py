@@ -13,7 +13,7 @@ Providers (RBD_AGENT_PROVIDER):
   meta (default)  Meta Model API, Chat Completions: POST https://api.meta.ai/v1/chat/completions, Authorization: Bearer,
                   model muse-spark-1.3, OpenAI-style function tools, reasoning_effort (dev.meta.ai/docs, read 2026-10-30)
   anthropic       Claude Messages API: claude-opus-5-5, anthropic-version 2026-10-21, fallbacks "default"
-The API key: AWS Secrets Manager RBD_AGENT_SECRET [rhobound-demo/anthropic-key: a historical name; it holds the Meta key]
+The API key: AWS Secrets Manager RBD_AGENT_SECRET [rhobound-demo/meta-key]
 (the tools role), read with the aws CLI into memory only: never written, never printed, never passed to a child. OUT (new or
 empty): files/<path> for each changed file, manifest.json (rbd.agent-change/v1), rhobound-change.json (rbd.change-request/v1),
 change.patch (for reading; the workstation rebuilds it), transcript.jsonl, result.json. Last stdout line:
@@ -63,7 +63,7 @@ MODEL = os.environ.get("RBD_AGENT_MODEL", DEFAULTS[PROVIDER][1])
 EFFORT = os.environ.get("RBD_AGENT_EFFORT", "high")
 MAX_TURNS = int(os.environ.get("RBD_AGENT_MAX_TURNS", "40"))
 MAX_OUTPUT_TOTAL = 400_000          # output tokens over the whole run: a runaway stops here
-SECRET_ID = os.environ.get("RBD_AGENT_SECRET", "rhobound-demo/anthropic-key")
+SECRET_ID = os.environ.get("RBD_AGENT_SECRET", "rhobound-demo/meta-key")
 REGION = os.environ.get("RBD_REGION", "ap-south-1")
 REPO = os.environ.get("RBD_REPO", "Sharvil2704/rhobound-maze-bed")
 BRANCH = os.environ.get("RBD_AGENT_BRANCH", "rbd/c5-model")

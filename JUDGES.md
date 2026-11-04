@@ -405,8 +405,8 @@ These compared Muse Code (Meta's coding agent) with and without the rhobound plu
 
 They are documented as a protocol, not as a one-command run, because they need software and keys that are not public:
 - **Muse Code** 1.4.14 and its `muse-spark-1.3` model;
-- **a Meta model API key,** stored from CloudShell with `BED=1 bash spawn_two.sh secret anthropic-key`. The name is
-  historical; the secret holds the Meta key, and only the tools machine's role can read it.
+- **a Meta model API key,** stored from CloudShell with `BED=1 bash spawn_two.sh secret meta-key`. Only the tools
+  machine's role can read it.
 
 **Two beds, one per arm.**
 - **Bed 1, Muse with the plugin:** the bed of tier 2.
