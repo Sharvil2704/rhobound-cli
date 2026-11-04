@@ -40,10 +40,20 @@ echo "   the check after it: muse_settings $(jq -r '.muse_settings.action // "?"
 echo "   in Muse Code itself (not run here): muse plugins install ./integrations/muse-code; muse plugins approve rhobound;"
 echo "   then the init above with --write against your real home (integrations/muse-code/README.md)"
 
+# The bed's scripts run on Linux machines and CloudShell: they need bash 4 or later and GNU coreutils. A stock macOS has
+# bash 3.2 and BSD tools, so part 4 says so and skips there (brew install bash coreutils, then coreutils' gnubin first on
+# PATH, runs it).
+if (( BASH_VERSINFO[0] >= 4 )) && date --version > /dev/null 2>&1; then
 step "4a. the bed's spawn script against a fake AWS (bed/aws/tests/run_tests.sh)"
 RBD_SCRATCH=$T bash bed/aws/tests/run_tests.sh | tail -n 1
 step "4b. the live demo's changes, rebuilt from changes/demo/*.patch and checked against the gated code (demo_live.sh --dry)"
 RBD_SCRATCH=$T bash bed/orch/demo_live.sh --dry pass block single edge | grep -E 'matches|done'
+else
+step "4. the AWS bed's offline checks: skipped here"
+echo "   they need bash 4 or later and GNU coreutils (this shell: bash $BASH_VERSION). On macOS: brew install bash coreutils,"
+echo "   then export PATH=\"\$(brew --prefix coreutils)/libexec/gnubin:\$PATH\" and run judges.sh again with Homebrew's bash"
+QUICK=1
+fi
 if (( ! QUICK )); then
   step "4c. the CI pipeline's tests (bed/tools1/tests/ci): pr-check, multi-image builds, parallel A/Bs, predict, sign, deploy"
   RBD_SCRATCH=$T bash bed/tools1/tests/ci/run_tests.sh | grep -E ' -- |ALL PASSED|FAILURES' | tail -n 12
