@@ -9,6 +9,33 @@ Other ways to run rhobound:
 - **Your own endpoint on AWS, about 5 minutes:** `bash live_mcp.sh up` in AWS CloudShell ([bed/aws/live_mcp.sh](../bed/aws/live_mcp.sh)).
 - **The full gate on AWS, 2 to 3 hours:** real OpenTelemetry traces, A/B tests and pull requests ([JUDGES.md, tier 2](../JUDGES.md#tier-2-the-gate-live-on-aws)).
 
+## 0. Set up an empty machine
+
+On macOS, install Homebrew if you do not have it, then the tools:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+```bash
+brew install git jq
+```
+
+On Ubuntu: `sudo apt-get update && sudo apt-get install -y git curl jq`.
+
+Pull the repository the demo needs (its Muse Code plugin is in `integrations/muse-code`):
+
+```bash
+git clone -b rhobound-mcp https://github.com/Sharvil2704/rhobound-cli ~/rhobound-cli
+```
+
+Optionally, the challenge for your own agent: a 32-service app with a correct but slow filter to make fast
+([its README](https://github.com/Sharvil2704/rhobound-maze-challenge)).
+
+```bash
+git clone https://github.com/Sharvil2704/rhobound-maze-challenge ~/maze-challenge
+```
+
 ## 1. Try the endpoint from a terminal
 
 ```bash
@@ -23,7 +50,7 @@ It prints `"block"`: adding 4 ms to service `b` would break entry `a`'s latency 
 
 ## 2. Ask Muse Code
 
-You need `git`, `curl`, `jq` and a Meta API key. These commands are for macOS on Apple silicon; on Linux, use
+You need the setup of part 0 and a Meta API key. These commands are for macOS on Apple silicon; on Linux, use
 `A=aarch64_linux` or `A=x86_linux`.
 
 1. Install Muse Code from Meta's release manifest, checked against its sha256:
@@ -33,9 +60,9 @@ You need `git`, `curl`, `jq` and a Meta API key. These commands are for macOS on
    ```bash
    A=aarch64_macos && mkdir -p ~/.local/bin && curl -fsS "$(jq -r .artifacts.$A.url ~/muse-manifest.json)" -o ~/.local/bin/muse && echo "$(jq -r .artifacts.$A.checksum ~/muse-manifest.json)  $HOME/.local/bin/muse" | shasum -a 256 -c - && chmod 755 ~/.local/bin/muse && export PATH="$HOME/.local/bin:$PATH"
    ```
-2. Install the rhobound plugin:
+2. Install the rhobound plugin from the clone of part 0:
    ```bash
-   git clone -b rhobound-mcp https://github.com/Sharvil2704/rhobound-cli ~/rhobound-cli && muse plugins install ~/rhobound-cli/integrations/muse-code && muse plugins approve rhobound
+   muse plugins install ~/rhobound-cli/integrations/muse-code && muse plugins approve rhobound
    ```
 3. Point Muse at the live endpoint. Muse reads the token from `RHOBOUND_TOKEN`, so it is never written to the file:
    ```bash
@@ -84,7 +111,7 @@ muse plugins remove rhobound --delete-data; muse logout
 ```
 
 ```bash
-f=~/.config/muse/settings.json && jq 'del(.mcpServers.rhobound, .mcp_servers.rhobound)' "$f" > "$f.new" && mv "$f.new" "$f"; rm -rf ~/rhobound-cli ~/rhobound-try ~/muse-manifest.json
+f=~/.config/muse/settings.json && jq 'del(.mcpServers.rhobound, .mcp_servers.rhobound)' "$f" > "$f.new" && mv "$f.new" "$f"; rm -rf ~/rhobound-cli ~/maze-challenge ~/rhobound-try ~/muse-manifest.json
 ```
 
 To remove Muse Code too: `rm -rf ~/.local/bin/muse ~/.config/muse ~/.local/share/muse "$HOME/Library/Application Support/Muse"`.
