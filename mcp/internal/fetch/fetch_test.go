@@ -708,13 +708,14 @@ func sortedArray(m map[string]json.RawMessage) []byte {
 	return b.Bytes()
 }
 
-// TestRecordedAsRegistered: every refusal and finding the fetcher built in this package's tests carries numbers its
-// code lists in the registry, and store.too_large carries the registry's fix (the fetcher's caps are constants or
-// configuration: no fix of its may tell the reader to raise one). It reads what the other tests recorded, so it runs
-// last: Go runs a package's tests in source order, and this is the file's last.
-func TestRecordedAsRegistered(t *testing.T) {
+// recordedAsRegistered: every refusal and finding the fetcher built in this package's tests carries numbers its code
+// lists in the registry, and store.too_large carries the registry's fix (the fetcher's caps are constants or
+// configuration: no fix of its may tell the reader to raise one). It reads what the other tests recorded, so TestMain
+// runs it after all of them, in whatever order they ran (go test -shuffle).
+func recordedAsRegistered() []string {
 	goldenMu.Lock()
 	defer goldenMu.Unlock()
+	var bad []string
 	for _, docs := range []map[string]json.RawMessage{goldenFindings, goldenRefusals} {
 		for code, raw := range docs {
 			var d struct {
@@ -722,32 +723,41 @@ func TestRecordedAsRegistered(t *testing.T) {
 				Numbers map[string]float64 `json:"numbers"`
 			}
 			if err := json.Unmarshal(raw, &d); err != nil {
-				t.Fatal(err)
+				bad = append(bad, fmt.Sprintf("%s: %v", code, err))
+				continue
 			}
 			reg, ok := registry.Lookup(code)
 			if !ok {
-				t.Errorf("%s is not registered", code)
+				bad = append(bad, code+" is not registered")
+				continue
 			}
 			for k := range d.Numbers {
 				if !reg.HasNumber(k) {
-					t.Errorf("%s carries the number %s, which the registry does not list for it", code, k)
+					bad = append(bad, fmt.Sprintf("%s carries the number %s, which the registry does not list for it", code, k))
 				}
 			}
 			if code == codeTooLarge && d.Fix != reg.Fix {
-				t.Errorf("store.too_large's fix %q is not the registry's %q", d.Fix, reg.Fix)
+				bad = append(bad, fmt.Sprintf("store.too_large's fix %q is not the registry's %q", d.Fix, reg.Fix))
 			}
 		}
 	}
 	if len(goldenRefusals) > 0 && goldenRefusals[codeTooLarge] == nil {
-		t.Error("no store.too_large refusal was recorded")
+		bad = append(bad, "no store.too_large refusal was recorded")
 	}
+	sort.Strings(bad)
+	return bad
 }
 
 func TestMain(m *testing.M) {
 	flag.Parse()
 	code := m.Run()
-	// with the whole package run, every recorded document is compared with the golden lists
+	// with the whole package run, every recorded document is checked against the registry and compared with the golden
+	// lists
 	if code == 0 && flag.Lookup("test.run").Value.String() == "" {
+		for _, b := range recordedAsRegistered() {
+			fmt.Fprintln(os.Stderr, "recorded documents:", b)
+			code = 1
+		}
 		for name, docs := range map[string]map[string]json.RawMessage{
 			"findings.golden.json": goldenFindings, "refusals.golden.json": goldenRefusals} {
 			got := sortedArray(docs)
