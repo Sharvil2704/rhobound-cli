@@ -71,7 +71,7 @@ the results. Expected output and the full test suites:
 
 1. Build both binaries and install the plugin:
    ```bash
-   go build -o ~/.local/bin/rhobound ./cmd/rhobound && (cd mcp && go build -o ~/.local/bin/rhobound-mcp ./cmd/rhobound-mcp)
+   go build -o ~/.local/bin/rhobound ./cmd/rhobound && (cd mcp && go build -o ~/.local/bin/rhobound-mcp ./cmd/rhobound-mcp) && export PATH="$HOME/.local/bin:$PATH"
    ```
    ```bash
    muse plugins install ./integrations/muse-code && muse plugins approve rhobound

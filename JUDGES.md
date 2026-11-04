@@ -29,7 +29,9 @@ No cloud, no credentials. Network only for Go's module download.
 - python3, git and jq;
 - shellcheck, optionally (one CI test uses it).
 
-On Debian or Ubuntu: `sudo apt-get install -y python3 git jq shellcheck`, and Go from https://go.dev/dl/. On macOS:
+On Debian or Ubuntu: `sudo apt-get update && sudo apt-get install -y python3 git jq shellcheck curl`, and Go from
+https://go.dev/dl/ (download the archive for your machine, `sudo tar -C /usr/local -xzf` it, and add `/usr/local/go/bin`
+to your `PATH`). On macOS:
 `brew install go python git jq shellcheck`.
 
 ### 1. Clone and run
@@ -115,6 +117,12 @@ go build -o ~/.local/bin/rhobound ./cmd/rhobound
 
 ```bash
 (cd mcp && go build -o ~/.local/bin/rhobound-mcp ./cmd/rhobound-mcp)
+```
+
+Ubuntu adds `~/.local/bin` to your `PATH` only at login, and only if it existed then. In this terminal:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Install and approve the plugin:
