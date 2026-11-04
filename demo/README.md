@@ -156,15 +156,33 @@ thumbnail filter in production. Its own check, which every fix must pass:
 git clone https://github.com/Sharvil2704/rhobound-maze-challenge ~/maze-challenge && cd ~/maze-challenge/maze/app && go test ./internal/svc/media/ && go test -run XXX -bench Sharpen ./internal/svc/media/
 ```
 
-## 6. Live on AWS: the same agent against a hosted rhobound
+## 6. Live on AWS: Muse Code asks rhobound running in the cloud
 
-[bed/aws/live_mcp.sh](../bed/aws/live_mcp.sh) puts rhobound's MCP server on one small arm64 machine in your AWS
-account, behind HTTPS with a Let's Encrypt certificate and read-only bearer tokens. The machine builds rhobound from this
-repository at the branch's current commit, fits the sample traces (re-timed so their window ends at boot), and serves
-them as the environment `prod`. It has no ssh and no AWS role, and it terminates itself after 8 hours by default
-(about 0.02 USD per hour).
+Muse Code on your laptop, with the rhobound plugin, calls rhobound's MCP server on a machine in your AWS account.
 
-In AWS CloudShell:
+```text
+your laptop                                       one arm64 machine in your AWS account
+Muse Code (Muse Spark 1.3)                        Caddy: HTTPS, a Let's Encrypt certificate
+  + the rhobound plugin  --- MCP over HTTPS --->    rhobound-mcp: checks the bearer token (read-only)
+                             Bearer <token>           rhobound: the engine, on production's fit (env prod)
+```
+
+How it works:
+- **`bed/aws/live_mcp.sh up`** (from AWS CloudShell) makes a security group (ports 80 and 443 only) and one
+  `t4g.small` (Ubuntu 24.04, arm64). The machine has no ssh and no AWS role, uses IMDSv2 only, and terminates itself
+  after `HOURS` hours: 8 by default, at most 168. It costs about 0.02 USD per hour.
+- **The machine boots `bed/aws/live_mcp_boot.sh`** from the same commit:
+  - it builds rhobound and rhobound-mcp;
+  - it re-times the sample traces so their window ends at boot. Every timestamp moves by one constant, so every
+    duration and gap, and every number below, stays the same;
+  - it fits them and registers the fit as the environment `prod`'s baseline;
+  - it serves MCP on localhost, with Caddy in front on `https://<public IP, dashed>.sslip.io/mcp`.
+- **Two read-only tokens** are made in CloudShell: yours and the judges'. The machine keeps only their sha256. Read-only
+  means `context`, `budget`, `predict` and `explain` on `prod`; `fit_start` needs a scope a token never has.
+- **The plugin's skill** (`rhobound-loop`) tells Muse to read the context and the budget before it codes and to predict
+  after. The hosted tools have the same names as the local ones, so the plugin works unchanged.
+
+### Start it (AWS CloudShell)
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/rhobound-mcp/bed/aws/live_mcp.sh
@@ -174,14 +192,16 @@ curl -fsSLO https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/rhobound-
 bash live_mcp.sh up
 ```
 
-`up` prints the URL, the token and one command for your laptop. After 3-5 minutes, `status` shows the boot's `READY`
-line and the six tools:
+`up` prints the URL, your token and the commands for your laptop. After 3-5 minutes, `status` shows the boot's `READY`
+line and `tools HTTP 200: budget context explain fit_start job_status predict`:
 
 ```bash
 bash live_mcp.sh status
 ```
 
-On your laptop, with the token and the endpoint's host from `up`:
+### Check it from your laptop
+
+With the token and the host `up` printed:
 
 ```bash
 export RHOBOUND_TOKEN=<the token> H=<the host, NN-NN-NN-NN.sslip.io>
@@ -193,22 +213,112 @@ One request straight from the terminal: +4 ms on b, predicted on the hosted prod
 curl -s https://$H/mcp -H "Authorization: Bearer $RHOBOUND_TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"predict","arguments":{"env":"prod","changes":[{"op":"own_ms","service":"b","value":4}]}}}' | jq '.result.structuredContent.preview.verdict'
 ```
 
-Then point Muse Code's `rhobound` entry at the endpoint with the command `up` printed (it starts `f=~/.config/muse/...`),
-and run the same session with the hosted prompt, [muse-prompt-live.md](muse-prompt-live.md):
+### Point Muse Code at it
+
+Run the `f=~/.config/muse/settings.json && jq ...` command that `up` printed. It makes Muse's `rhobound` entry the
+hosted endpoint, under the key the settings file already uses: a file with both `mcp_servers` and `mcpServers` turns
+MCP off. Muse fills `${RHOBOUND_TOKEN}` from the terminal's environment, so the token is never written to the file.
+
+Store your Meta key in Muse once, off screen (`META_API_KEY`, when set, takes priority over a stored key):
+
+```bash
+unset META_API_KEY; muse auth set --api-key-stdin < ~/.meta-key
+```
+
+### Ask Muse, interactively
+
+In the terminal where `RHOBOUND_TOKEN` is exported:
+
+```bash
+cd ~/rhobound-try/work && muse --model muse-spark-1.3 --reasoning-effort high --trust-workspace
+```
+
+Muse asks before each tool call (`--approval-mode never` skips that). Type `/mcp` to see `rhobound` connected, then:
+
+```text
+Service b is called by a, our user-facing entry, and calls c. A new feature will add about 4 ms of work to every call of b. Before you write any code, use the rhobound tools on the environment prod: read entry a's context and b's latency budget, then predict the +4 ms change. Is it safe to ship?
+```
+
+```text
+What if b only adds 1 ms? Predict that on prod.
+```
+
+```text
+Explain in two sentences why the gate blocked the 4 ms version.
+```
+
+```text
+So how would you build the feature without breaking that budget?
+```
+
+What it answered (2026-11-04: Muse Code 1.4.14 on macOS, `muse-spark-1.3`, rhobound on AWS). The wording is the
+model's own; the numbers are rhobound's.
+
+```text
+❯ Service b is called by a, our user-facing entry, and calls c. A new feature will add about 4 ms of work to every
+  call of b. Before you write any code, use the rhobound tools on the environment prod: read entry a's context and
+  b's latency budget, then predict the +4 ms change. Is it safe to ship?
+
+◆ Read skill rhobound-loop · rhobound · 3 KB
+◆ 3 MCP calls · rhobound · ✓ ×3 · 0.6s
+◆ Not safe to ship. Preview verdict: block for entry a.
+  • Entry a mean is ~45.22 ms at ~25.8 rps.
+  • Budget for b: safe 1.07 ms, max 1.95 ms per visit. Your +4 ms is over both.
+  • Prediction for +4 ms on b: entry a rises ~4.70 ms, over its 2.26 ms threshold.
+  This preview is advisory; CI decides. To pass, you need a measured A/B of b where delta + 2 SE is at most
+  1.07 ms per visit, or a smaller change.
+
+❯ What if b only adds 1 ms? Predict that on prod.
+
+◆ predict(detail=summary, env=prod) · rhobound · ✓ · 0.3s
+◆ Preview verdict: inconclusive for entry a.
+  • +1 ms on b puts a at +1.15 ms, under its 2.26 ms threshold. That rule passes.
+  • A declared estimate previews as inconclusive at best, so this cannot pass on numbers alone.
+  What would decide it: an A/B of b (diff-fit): a measured delta passes if delta + 2 SE is at most 1.07 ms per
+  visit. This preview is advisory; CI decides.
+
+❯ Explain in two sentences why the gate blocked the 4 ms version.
+
+◆ The +4 ms on b exceeds its safe budget of 1.07 ms per visit (max 1.95 ms). It predicts entry a rises ~4.70 ms,
+  with even the low end at 3.67 ms over its 2.26 ms mean-change limit, so the gate blocks.
+
+❯ So how would you build the feature without breaking that budget?
+
+◆ Keep the mean added work on b at or under 1.07 ms per visit. Ways to do that:
+  • Do less per call: cache, sample a fraction of calls, or run only when needed.
+  • Move work off the request path: queue it async after responding.
+  • Make the work faster: cheaper check or lookup instead of 4 ms inline.
+  Then prove it with a measured A/B of b: it passes if delta + 2 SE stays at most 1.07 ms.
+```
+
+What the run shows:
+- **Muse asked before it coded.** It read the plugin's skill and called `context`, `budget` and `predict` on the
+  hosted endpoint first.
+- **The gate held its line twice.** +4 ms blocks: entry a would rise 3.67 to 5.73 ms against a 2.26-ms limit. +1 ms
+  fits the budget but stays inconclusive, because a declared estimate is not a measurement: only an A/B of the real
+  image can pass.
+- **The plan came from the numbers.** Muse designed the feature around the 1.07-ms budget and named the measurement
+  that would prove it.
+
+### Or headless
+
+The same question in one command, with [muse-prompt-live.md](muse-prompt-live.md):
 
 ```bash
 cd ~/rhobound-try/work && muse exec --json --api-key-stdin --model muse-spark-1.3 --reasoning-effort high --max-model-steps 30 --disable-approval --disable-request-user-input --trust-workspace --prompt-file ~/rbd-video/demo/muse-prompt-live.md < ~/.meta-key | tee ~/rhobound-try/events-live.jsonl | jq -j 'select(.payload_type == "run.output.delta") | .payload | (.delta // .text // .content // empty) | strings'
 ```
 
-For judges: `HOURS=168 bash live_mcp.sh up` keeps the machine up for a week (about 3 USD). `share` prints the block to
-paste into the submission: the URL, a separate judges' token, its expiry and how to try it. Never commit a token to
-the repository; a judge who wants an endpoint of their own runs `live_mcp.sh up` in their own account.
+### For judges
+
+`HOURS=168 bash live_mcp.sh up` keeps the machine up for a week (about 3 USD). `share` prints the block to paste into
+the submission: the URL, a separate judges' token, its expiry and how to try it. Never commit a token to the
+repository; a judge who wants an endpoint of their own runs `live_mcp.sh up` in their own account.
 
 ```bash
 bash live_mcp.sh share
 ```
 
-When you are done, in CloudShell:
+### Stop it
 
 ```bash
 bash live_mcp.sh down

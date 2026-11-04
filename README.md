@@ -50,6 +50,24 @@ Every prediction was committed before production was measured
   - On the first bed it ran inside the gate step.
   - Here it is a pluggable step ([meta-judge.py](bed/tools1/judge/meta-judge.py)), not wired into the maze gate.
 
+## Live demo: Meta's agent asks rhobound on AWS
+
+Muse Code on a laptop, running Muse Spark 1.3 with the rhobound plugin, calls rhobound hosted on AWS: one machine, MCP
+over HTTPS, a read-only token. Asked whether a feature that adds 4 ms to service b is safe to ship, it read the
+plugin's skill, called `context`, `budget` and `predict` on the hosted endpoint, and answered (2026-11-04):
+
+```text
+◆ Not safe to ship. Preview verdict: block for entry a.
+  • Entry a mean is ~45.22 ms at ~25.8 rps.
+  • Budget for b: safe 1.07 ms, max 1.95 ms per visit. Your +4 ms is over both.
+  • Prediction for +4 ms on b: entry a rises ~4.70 ms, over its 2.26 ms threshold.
+```
+
+At +1 ms it answered `inconclusive`: the change fits the budget, but a declared estimate cannot pass, and only a
+measured A/B of b can. It then planned the feature inside the 1.07-ms budget. One script, `bed/aws/live_mcp.sh`,
+starts the endpoint in your own AWS account in about 5 minutes. The session, its full output and how it works are in
+[demo/README.md, part 6](demo/README.md#6-live-on-aws-muse-code-asks-rhobound-running-in-the-cloud).
+
 ## Try it
 
 ### 1. Offline, about 10 minutes (Go 1.25+, python3, git, jq; no cloud)
