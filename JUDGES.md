@@ -104,7 +104,8 @@ The script ends with `judges.sh: done`.
 | `bash bed/orch/tests/run_all.sh --quick` | the bootstrap as a dry run, the load tools, the Muse harness's driver | about 6 min |
 | `bash bed/aws/tests/run_tests.sh` | `spawn_two.sh` against a fake AWS | under 1 min |
 
-Each prints `ALL PASSED`, or `N passed, 0 failed`. The CI suite downloads the maze's Go modules once (network), then
+Each prints `ALL PASSED`, or `N passed, 0 failed`. The bed's suites also use `file`, `rsync`, `gpg` and `visudo`, which a
+minimal Ubuntu lacks: `sudo apt-get install -y file rsync gnupg sudo`. The CI suite downloads the maze's Go modules once (network), then
 compiles offline. GitHub Actions runs the Go and Rust suites on every push (`.github/workflows/ci.yml`).
 
 ### 4. The plugin in your own Muse Code
