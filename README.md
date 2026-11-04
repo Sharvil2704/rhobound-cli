@@ -66,9 +66,9 @@ plugin's skill, called `context`, `budget` and `predict` on the hosted endpoint,
 At +1 ms it answered `inconclusive`: the change fits the budget, but a declared estimate cannot pass, and only a
 measured A/B of b can. It then planned the feature inside the 1.07-ms budget. The endpoint answers live, on a recorded
 sample capture: the full run, with a live app's OpenTelemetry traces, A/B tests and real pull requests, takes 2 to 3
-hours ([JUDGES.md, tier 2](JUDGES.md#tier-2-the-gate-live-on-aws)). One script, `bed/aws/live_mcp.sh`,
-starts the endpoint in your own AWS account in about 5 minutes. The session, its full output and how it works are in
-[demo/README.md, part 6](demo/README.md#6-live-on-aws-muse-code-asks-rhobound-running-in-the-cloud).
+hours ([JUDGES.md, tier 2](JUDGES.md#tier-2-the-gate-live-on-aws)).
+
+**Try it yourself, against the same endpoint (live until 2026-11-11):** [demo/README.md](demo/README.md).
 
 ## Try it
 
@@ -87,8 +87,7 @@ is blocked. It then installs the Muse Code plugin into a scratch home, checks th
 the results. Expected output and the full test suites:
 [JUDGES.md, tier 1](JUDGES.md#tier-1-offline-about-10-minutes).
 
-The demo's full command list, with Muse Code and Muse Wonder live and rhobound hosted on AWS for them, is
-[demo/README.md](demo/README.md).
+The live demo, Muse Code against rhobound on AWS, is [demo/README.md](demo/README.md).
 
 ### 2. The plugin in your own Muse Code
 

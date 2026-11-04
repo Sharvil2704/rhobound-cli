@@ -135,11 +135,10 @@ Try it from a terminal (it prints "block": +4 ms on service b would break entry 
   export RHOBOUND_TOKEN=$(cat "$STATE/token-judges") H=$host
   $(curl_cmd)
 
-With Muse Code and the rhobound plugin (https://github.com/$REPO/blob/rhobound-mcp/demo/README.md, part 3), point its
-rhobound entry here and ask with demo/muse-prompt-live.md (part 6):
+With Muse Code and the rhobound plugin, point its rhobound entry here (the steps: https://github.com/$REPO/blob/rhobound-mcp/demo/README.md):
   $(muse_cmd "$host")
 
-An endpoint of your own instead: bash live_mcp.sh up, in your own AWS CloudShell (demo/README.md, part 6).
+An endpoint of your own instead: bash live_mcp.sh up, in your own AWS CloudShell.
 EOF
 }
 
