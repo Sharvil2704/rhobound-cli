@@ -4,14 +4,16 @@
 # environment prod's baseline (bed/tools1/mcp/register-fit.sh, as the bed's tools machine does), serves MCP on
 # 127.0.0.1:8765, and puts Caddy in front of it on https://<public IP, dashed>.sslip.io with a Let's Encrypt certificate.
 # A token is read-only (rhobound:read): callers pass env "prod" to context, budget, predict and explain.
-# The one bearer token is stored only as its sha256 (LIVE_TOKEN_SHA). The machine shuts down, and so terminates, after
+# The bearer tokens are stored only as their sha256 (LIVE_TOKENS). The machine shuts down, and so terminates, after
 # LIVE_HOURS hours. Progress goes to the serial console, every line prefixed "rhobound-live:"; the last is "READY URL".
-#   live_mcp.sh writes these first: LIVE_SHA (40 hex), LIVE_TOKEN_SHA (64 hex), LIVE_EXPIRES (RFC 3339), LIVE_HOURS
+#   live_mcp.sh writes these first: LIVE_SHA (40 hex), LIVE_TOKENS ("NAME=<64 hex> ...", one per token), LIVE_EXPIRES
+#   (RFC 3339), LIVE_HOURS
 #   LIVE_TEST=1 (tests, in a container): no shutdown, no IMDS (host localhost), no systemd, Caddy with its internal CA
 set -euo pipefail
-: "${LIVE_SHA:?}" "${LIVE_TOKEN_SHA:?}" "${LIVE_EXPIRES:?}" "${LIVE_HOURS:?}"
+: "${LIVE_SHA:?}" "${LIVE_TOKENS:?}" "${LIVE_EXPIRES:?}" "${LIVE_HOURS:?}"
 TEST=${LIVE_TEST:-0}
-[[ $LIVE_SHA =~ ^[0-9a-f]{40}$ && $LIVE_TOKEN_SHA =~ ^[0-9a-f]{64}$ && $LIVE_HOURS =~ ^[0-9]+$ ]] || { echo "bad parameters" >&2; exit 2; }
+[[ $LIVE_SHA =~ ^[0-9a-f]{40}$ && $LIVE_HOURS =~ ^[0-9]+$ ]] || { echo "bad parameters" >&2; exit 2; }
+for t in $LIVE_TOKENS; do [[ $t =~ ^[a-z0-9-]{1,40}=[0-9a-f]{64}$ ]] || { echo "bad token entry" >&2; exit 2; }; done
 if [[ $TEST != 1 ]]; then
   exec > >(tee -a /var/log/rhobound-live.log | sed -u 's/^/rhobound-live: /' > /dev/console) 2>&1
   shutdown -h "+$((LIVE_HOURS * 60))"
@@ -69,7 +71,8 @@ jq -n --arg e "$O/bin/rhobound" --arg s "$(sha256sum "$O/bin/rhobound" | cut -d'
   envs: {prod: {store: "dir", root: "\($d)/env-prod"}}, policies: {default: "\($d)/policy.json"}, profile: "default"}' \
   > "$O/config.json"
 install -d -m 0755 "$O/data/env-prod"
-jq -n --arg s "$LIVE_TOKEN_SHA" --arg e "$LIVE_EXPIRES" '{tokens: [{sha256: $s, repo: "live-demo", expires: $e}]}' > "$O/tokens.json"
+# shellcheck disable=SC2086  # LIVE_TOKENS is a list of words, checked above
+printf '%s\n' $LIVE_TOKENS | jq -R --arg e "$LIVE_EXPIRES" 'split("=") | {sha256: .[1], repo: .[0], expires: $e}' | jq -s '{tokens: .}' > "$O/tokens.json"
 id rhobound > /dev/null 2>&1 || useradd --system --home-dir /var/lib/rhobound-mcp --shell /usr/sbin/nologin rhobound
 install -d -o rhobound -g rhobound -m 0700 /var/lib/rhobound-mcp
 chown root:rhobound "$O/config.json" "$O/tokens.json" && chmod 0640 "$O/config.json" "$O/tokens.json"

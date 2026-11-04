@@ -159,10 +159,10 @@ git clone https://github.com/Sharvil2704/rhobound-maze-challenge ~/maze-challeng
 ## 6. Live on AWS: the same agent against a hosted rhobound
 
 [bed/aws/live_mcp.sh](../bed/aws/live_mcp.sh) puts rhobound's MCP server on one small arm64 machine in your AWS
-account, behind HTTPS with a Let's Encrypt certificate and one bearer token. The machine builds rhobound from this
+account, behind HTTPS with a Let's Encrypt certificate and read-only bearer tokens. The machine builds rhobound from this
 repository at the branch's current commit, fits the sample traces (re-timed so their window ends at boot), and serves
-them as the environment `prod`. It has no ssh and no AWS role, and it terminates itself after 8 hours (about 0.02 USD
-per hour).
+them as the environment `prod`. It has no ssh and no AWS role, and it terminates itself after 8 hours by default
+(about 0.02 USD per hour).
 
 In AWS CloudShell:
 
@@ -198,6 +198,14 @@ and run the same session with the hosted prompt, [muse-prompt-live.md](muse-prom
 
 ```bash
 cd ~/rhobound-try/work && muse exec --json --api-key-stdin --model muse-spark-1.3 --reasoning-effort high --max-model-steps 30 --disable-approval --disable-request-user-input --trust-workspace --prompt-file ~/rbd-video/demo/muse-prompt-live.md < ~/.meta-key | tee ~/rhobound-try/events-live.jsonl | jq -j 'select(.payload_type == "run.output.delta") | .payload | (.delta // .text // .content // empty) | strings'
+```
+
+For judges: `HOURS=168 bash live_mcp.sh up` keeps the machine up for a week (about 3 USD). `share` prints the block to
+paste into the submission: the URL, a separate judges' token, its expiry and how to try it. Never commit a token to
+the repository; a judge who wants an endpoint of their own runs `live_mcp.sh up` in their own account.
+
+```bash
+bash live_mcp.sh share
 ```
 
 When you are done, in CloudShell:
