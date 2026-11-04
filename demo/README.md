@@ -1,7 +1,8 @@
 # The demo, command by command
 
 The commands for a short live demo on a laptop: macOS on Apple silicon, or Linux. Run them in order, in one terminal.
-Parts 1 and 5 need no key and no cloud. Parts 3 and 4 call Meta's models with your Meta API key.
+Parts 1 and 5 need no key and no cloud. Parts 3 and 4 call Meta's models with your Meta API key. Part 6 hosts
+rhobound on AWS and runs the same agent against it.
 
 ## 0. Once: install and clone
 
@@ -155,7 +156,59 @@ thumbnail filter in production. Its own check, which every fix must pass:
 git clone https://github.com/Sharvil2704/rhobound-maze-challenge ~/maze-challenge && cd ~/maze-challenge/maze/app && go test ./internal/svc/media/ && go test -run XXX -bench Sharpen ./internal/svc/media/
 ```
 
-## 6. Afterwards
+## 6. Live on AWS: the same agent against a hosted rhobound
+
+[bed/aws/live_mcp.sh](../bed/aws/live_mcp.sh) puts rhobound's MCP server on one small arm64 machine in your AWS
+account, behind HTTPS with a Let's Encrypt certificate and one bearer token. The machine builds rhobound from this
+repository at the branch's current commit, fits the sample traces (re-timed so their window ends at boot), and serves
+them as the environment `prod`. It has no ssh and no AWS role, and it terminates itself after 8 hours (about 0.02 USD
+per hour).
+
+In AWS CloudShell:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Sharvil2704/rhobound-cli/rhobound-mcp/bed/aws/live_mcp.sh
+```
+
+```bash
+bash live_mcp.sh up
+```
+
+`up` prints the URL, the token and one command for your laptop. After 3-5 minutes, `status` shows the boot's `READY`
+line and the six tools:
+
+```bash
+bash live_mcp.sh status
+```
+
+On your laptop, with the token and the endpoint's host from `up`:
+
+```bash
+export RHOBOUND_TOKEN=<the token> H=<the host, NN-NN-NN-NN.sslip.io>
+```
+
+One request straight from the terminal: +4 ms on b, predicted on the hosted production fit. It prints `"block"`:
+
+```bash
+curl -s https://$H/mcp -H "Authorization: Bearer $RHOBOUND_TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"predict","arguments":{"env":"prod","changes":[{"op":"own_ms","service":"b","value":4}]}}}' | jq '.result.structuredContent.preview.verdict'
+```
+
+Then point Muse Code's `rhobound` entry at the endpoint with the command `up` printed (it starts `f=~/.config/muse/...`),
+and run the same session with the hosted prompt, [muse-prompt-live.md](muse-prompt-live.md):
+
+```bash
+cd ~/rhobound-try/work && muse exec --json --api-key-stdin --model muse-spark-1.3 --reasoning-effort high --max-model-steps 30 --disable-approval --disable-request-user-input --trust-workspace --prompt-file ~/rbd-video/demo/muse-prompt-live.md < ~/.meta-key | tee ~/rhobound-try/events-live.jsonl | jq -j 'select(.payload_type == "run.output.delta") | .payload | (.delta // .text // .content // empty) | strings'
+```
+
+When you are done, in CloudShell:
+
+```bash
+bash live_mcp.sh down
+```
+
+To point Muse back at the local server, run part 3's `rhobound-mcp init ... --write` again.
+
+## 7. Afterwards
 
 ```bash
 rm ~/.meta-key

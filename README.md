@@ -67,7 +67,8 @@ is blocked. It then installs the Muse Code plugin into a scratch home, checks th
 the results. Expected output and the full test suites:
 [JUDGES.md, tier 1](JUDGES.md#tier-1-offline-about-10-minutes).
 
-The demo's full command list, including Muse Code and Muse Wonder live, is [demo/README.md](demo/README.md).
+The demo's full command list, with Muse Code and Muse Wonder live and rhobound hosted on AWS for them, is
+[demo/README.md](demo/README.md).
 
 ### 2. The plugin in your own Muse Code
 
